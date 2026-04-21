@@ -1,0 +1,192 @@
+version: '3'
+
+vars:
+  K2B_HOST: '{{.K2B_HOST | default "192.168.1.200"}}'
+  SERVER_BIN: bin/ct-server
+  CLI_BIN: bin/ct-client
+  CLI_BIN_ARM64: bin/ct-client-arm64
+
+dotenv: ['dev/.env']
+
+tasks:
+  # ── Development ──────────────────────────────────────────
+  dev:
+    desc: Start full dev environment (Vite + server container)
+    deps: [dev:vite, dev:server]
+
+  dev:vite:
+    desc: Start Vite dev server on host
+    dir: web
+    cmds:
+      - pnpm install
+      - pnpm dev --host 0.0.0.0
+
+  dev:server:
+    desc: Start server container via Docker Compose
+    cmds:
+      - docker compose -f dev/docker-compose.yml up --build
+
+  dev:down:
+    desc: Stop dev environment
+    cmds:
+      - docker compose -f dev/docker-compose.yml down
+
+  dev:reset:
+    desc: Stop dev environment and wipe volumes
+    cmds:
+      - docker compose -f dev/docker-compose.yml down -v
+
+  # ── Build ────────────────────────────────────────────────
+  build:
+    desc: Full production build (web + server with embedded UI)
+    cmds:
+      - task: build:web
+      - task: build:server
+
+  build:web:
+    desc: Build web UI for production
+    dir: web
+    cmds:
+      - pnpm install --frozen-lockfile
+      - pnpm build
+    sources:
+      - src/**/*
+      - package.json
+    generates:
+      - dist/**/*
+
+  build:server:
+    desc: Build server binary
+    dir: server
+    cmds:
+      - go build -o ../{{.SERVER_BIN}} ./cmd/ct-server
+    sources:
+      - '**/*.go'
+      - ../web/dist/**/*
+    generates:
+      - '../{{.SERVER_BIN}}'
+
+  build:cli:
+    desc: Build CLI client binary
+    dir: cli
+    cmds:
+      - go build -o ../{{.CLI_BIN}} ./cmd/ct-client
+
+  build:cli-arm64:
+    desc: Cross-compile CLI client for ARM64 (K2B)
+    dir: cli
+    env:
+      GOOS: linux
+      GOARCH: arm64
+    cmds:
+      - go build -o ../{{.CLI_BIN_ARM64}} ./cmd/ct-client
+
+  # ── Code Generation ──────────────────────────────────────
+  generate:
+    desc: Run all code generation
+    cmds:
+      - task: generate:proto
+
+  generate:proto:
+    desc: Generate Go + TypeScript types from Protobuf
+    cmds:
+      - mkdir -p proto/gen/go/crosstalk/v1 proto/gen/ts/crosstalk/v1
+      - >-
+        protoc
+        --go_out=proto/gen/go --go_opt=paths=source_relative
+        --go-grpc_out=proto/gen/go --go-grpc_opt=paths=source_relative
+        -I proto
+        proto/crosstalk/v1/*.proto
+    sources:
+      - proto/crosstalk/v1/*.proto
+    generates:
+      - proto/gen/go/**/*
+      - proto/gen/ts/**/*
+
+  # ── Lint ─────────────────────────────────────────────────
+  lint:
+    desc: Run all linters
+    cmds:
+      - task: lint:go
+      - task: lint:web
+
+  lint:go:
+    desc: Run golangci-lint on Go code
+    cmds:
+      - cd server && golangci-lint run ./...
+      - cd cli && golangci-lint run ./...
+
+  lint:web:
+    desc: Run ESLint + TypeScript type-check
+    dir: web
+    cmds:
+      - pnpm run lint
+      - pnpm run typecheck
+
+  # ── Test ─────────────────────────────────────────────────
+  test:
+    desc: Run all tests (unit)
+    cmds:
+      - task: test:unit
+
+  test:unit:
+    desc: Run all unit tests
+    cmds:
+      - task: test:unit:go
+      - task: test:unit:web
+
+  test:unit:go:
+    desc: Run Go unit tests
+    cmds:
+      - cd server && go test ./...
+      - cd cli && go test ./...
+
+  test:unit:web:
+    desc: Run TypeScript unit tests
+    dir: web
+    cmds:
+      - pnpm test run
+
+  test:integration:
+    desc: Run integration tests in Docker Compose
+    cmds:
+      - task: build
+      - >-
+        docker compose -f test/docker-compose.integration.yml
+        run --rm test-runner
+      - docker compose -f test/docker-compose.integration.yml down -v
+
+  test:e2e:
+    desc: Run E2E golden tests (requires K2B board)
+    cmds:
+      - dev/scripts/run-e2e-tests.sh
+
+  # ── Deploy ───────────────────────────────────────────────
+  deploy:k2b:
+    desc: Build and deploy CLI to K2B board
+    cmds:
+      - task: build:cli-arm64
+      - k2b-board/scripts/deploy.sh {{.K2B_HOST}} {{.CLI_BIN_ARM64}}
+
+  deploy:k2b:watch:
+    desc: Watch CLI source, auto-build and deploy to K2B on change
+    cmds:
+      - dev/scripts/watch-deploy-k2b.sh
+
+  deploy:k2b:test:
+    desc: Run audio test harness on K2B
+    cmds:
+      - dev/scripts/k2b-test.sh
+
+  # ── Utility ──────────────────────────────────────────────
+  clean:
+    desc: Remove build artifacts
+    cmds:
+      - rm -rf bin/ web/dist/
+
+  setup:
+    desc: Install all dependencies
+    cmds:
+      - cd server && go mod download
+      - cd cli && go mod download
+      - cd web && pnpm install

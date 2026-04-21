@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/anthropics/crosstalk/cli/config.schema.json",
+  "title": "CrossTalk CLI Client Configuration",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "server_url": {
+      "type": "string",
+      "description": "CrossTalk server URL"
+    },
+    "token": {
+      "type": "string",
+      "description": "API authentication token"
+    },
+    "source_name": {
+      "type": "string",
+      "description": "Override name for the primary audio source"
+    },
+    "sink_name": {
+      "type": "string",
+      "description": "Override name for the primary audio sink"
+    },
+    "log_level": {
+      "type": "string",
+      "enum": ["debug", "info", "warn", "error"],
+      "default": "info",
+      "description": "Minimum log level"
+    }
+  },
+  "required": ["server_url", "token"],
+  "additionalProperties": true
+}
