@@ -1,0 +1,135 @@
+import { useState, useEffect } from 'react'
+import { useParams, useNavigate, Link } from 'react-router-dom'
+import { getSession, endSession } from '@/lib/api/client'
+import type { SessionDetail } from '@/lib/api/types'
+import { Button } from '@/components/ui/button'
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
+import { Badge } from '@/components/ui/badge'
+
+export function SessionDetailPage() {
+  const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
+  const [session, setSession] = useState<SessionDetail | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!id) return
+    void getSession(id)
+      .then(setSession)
+      .catch(() => navigate('/sessions'))
+      .finally(() => setLoading(false))
+  }, [id, navigate])
+
+  const handleEnd = async () => {
+    if (!id || !confirm('End this session?')) return
+    await endSession(id)
+    setSession((prev) => (prev ? { ...prev, status: 'ended' } : prev))
+  }
+
+  if (loading || !session) return <div className="text-muted-foreground">Loading...</div>
+
+  return (
+    <div className="space-y-6 max-w-4xl">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-foreground">{session.name}</h1>
+          <p className="text-muted-foreground text-sm">
+            Template: {session.template_name} · Created: {new Date(session.created_at).toLocaleString()}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          {session.status !== 'ended' && (
+            <>
+              <Link to={`/sessions/${id}/connect`}>
+                <Button variant="outline">Connect</Button>
+              </Link>
+              <Button variant="destructive" onClick={handleEnd} data-testid="end-session-button">
+                End Session
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="flex gap-3 items-center">
+        <Badge variant={session.status === 'active' ? 'success' : session.status === 'waiting' ? 'warning' : 'secondary'}>
+          {session.status}
+        </Badge>
+        <span className="text-sm text-muted-foreground">
+          {session.client_count} / {session.total_roles} clients connected
+        </span>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Connected Clients</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {session.clients.length === 0 ? (
+            <p className="text-muted-foreground text-sm">No clients connected</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Client ID</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Connected Since</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {session.clients.map((client) => (
+                  <TableRow key={client.id}>
+                    <TableCell className="font-mono text-xs">{client.id}</TableCell>
+                    <TableCell>{client.role}</TableCell>
+                    <TableCell>
+                      <Badge variant={client.status === 'connected' ? 'success' : 'secondary'}>
+                        {client.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-xs">{new Date(client.connected_at).toLocaleString()}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Channel Bindings</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {session.channel_bindings.length === 0 ? (
+            <p className="text-muted-foreground text-sm">No channel bindings</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Source</TableHead>
+                  <TableHead>Target</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {session.channel_bindings.map((binding, i) => (
+                  <TableRow key={i}>
+                    <TableCell>{binding.from_role}:{binding.from_channel}</TableCell>
+                    <TableCell>{binding.to_role}:{binding.to_channel}</TableCell>
+                    <TableCell>
+                      <Badge variant={binding.active ? 'success' : 'secondary'}>
+                        {binding.active ? 'Active' : 'Inactive'}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
