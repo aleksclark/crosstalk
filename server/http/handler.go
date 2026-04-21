@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"net/http"
 	"time"
 
@@ -21,11 +22,31 @@ type Handler struct {
 	SessionTemplateService crosstalk.SessionTemplateService
 	SessionService         crosstalk.SessionService
 	Config                 crosstalk.Config
+
+	// WebFS is the filesystem used for serving the web UI in production mode.
+	// It should already have the "web/dist" prefix stripped (via fs.Sub).
+	WebFS fs.FS
+
+	// DevMode enables reverse-proxying to the Vite dev server instead of
+	// serving embedded assets.
+	DevMode bool
+
+	// DevProxyURL is the Vite dev server URL (e.g. "http://localhost:5173").
+	DevProxyURL string
 }
 
 // Router builds and returns the chi router with the full route tree.
 func (h *Handler) Router() *chi.Mux {
 	r := chi.NewRouter()
+
+	// Mount the web UI handler as a catch-all. API and WS routes are
+	// registered first and take precedence.
+	var webHandler http.Handler
+	if h.DevMode {
+		webHandler = DevProxyHandler(h.DevProxyURL)
+	} else if h.WebFS != nil {
+		webHandler = EmbedHandler(h.WebFS)
+	}
 
 	r.Route("/api", func(r chi.Router) {
 		// Public: login does not require auth.
@@ -71,6 +92,10 @@ func (h *Handler) Router() *chi.Mux {
 			r.Get("/openapi.json", h.handleOpenAPI)
 		})
 	})
+
+	if webHandler != nil {
+		r.NotFound(webHandler.ServeHTTP)
+	}
 
 	return r
 }
