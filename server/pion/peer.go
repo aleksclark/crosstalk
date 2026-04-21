@@ -6,8 +6,10 @@ import (
 
 	"github.com/oklog/ulid/v2"
 	"github.com/pion/webrtc/v4"
+	"google.golang.org/protobuf/proto"
 
 	crosstalk "github.com/anthropics/crosstalk/server"
+	crosstalkv1 "github.com/anthropics/crosstalk/proto/gen/go/crosstalk/v1"
 )
 
 // PeerManager creates and tracks WebRTC peer connections using the Pion library.
@@ -127,6 +129,16 @@ type PeerConn struct {
 
 	pc      *webrtc.PeerConnection
 	control *webrtc.DataChannel
+
+	// Client capabilities reported via Hello.
+	mu      sync.Mutex
+	Sources []*crosstalkv1.SourceInfo
+	Sinks   []*crosstalkv1.SinkInfo
+	Codecs  []*crosstalkv1.CodecInfo
+
+	// Session membership set by JoinSession.
+	SessionID string
+	Role      string
 }
 
 // OnICEConnectionStateChange registers a callback invoked when the ICE
@@ -163,6 +175,16 @@ func (c *PeerConn) AddICECandidate(candidate webrtc.ICECandidateInit) error {
 // is discovered. A nil candidate signals that gathering is complete.
 func (c *PeerConn) OnICECandidate(f func(*webrtc.ICECandidate)) {
 	c.pc.OnICECandidate(f)
+}
+
+// SendControlMessage marshals a protobuf ControlMessage and sends it on the
+// control data channel.
+func (c *PeerConn) SendControlMessage(msg *crosstalkv1.ControlMessage) error {
+	data, err := proto.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("pion: marshal control message: %w", err)
+	}
+	return c.control.Send(data)
 }
 
 // Close closes the underlying Pion PeerConnection and any associated data

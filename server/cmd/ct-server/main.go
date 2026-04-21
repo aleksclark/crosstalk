@@ -84,8 +84,10 @@ func run() error {
 	// Create WebRTC peer manager and WS signaling handler.
 	pm := ctpion.NewPeerManager(cfg.WebRTC)
 	sigHandler := ctws.SignalingHandler{
-		TokenService: tokenService,
-		PeerManager:  pm,
+		TokenService:   tokenService,
+		SessionService: sessionService,
+		PeerManager:    pm,
+		ServerVersion:  "0.1.0",
 	}
 
 	// Build embedded web FS (strip "web/dist" prefix).

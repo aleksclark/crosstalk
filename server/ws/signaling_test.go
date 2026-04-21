@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -61,8 +62,15 @@ func setupServer(t *testing.T) (*httptest.Server, *ctpion.PeerManager) {
 	t.Helper()
 	pm := testPeerManager(t)
 	handler := &ws.SignalingHandler{
-		TokenService: newMockTokenService(),
-		PeerManager:  pm,
+		TokenService:   newMockTokenService(),
+		SessionService: &mock.SessionService{
+			FindSessionByIDFn: func(id string) (*crosstalk.Session, error) { return nil, fmt.Errorf("not found") },
+			ListSessionsFn:    func() ([]crosstalk.Session, error) { return nil, nil },
+			CreateSessionFn:   func(s *crosstalk.Session) error { return nil },
+			EndSessionFn:      func(id string) error { return nil },
+		},
+		PeerManager:   pm,
+		ServerVersion: "test",
 	}
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
