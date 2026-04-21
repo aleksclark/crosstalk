@@ -62,8 +62,10 @@ func testServer(t *testing.T) (baseURL, seedToken string) {
 	api := webrtc.NewAPI(webrtc.WithSettingEngine(se))
 	pm := ctpion.NewPeerManagerWithAPI(crosstalk.WebRTCConfig{}, api)
 	sigHandler := ctws.SignalingHandler{
-		TokenService: tokenService,
-		PeerManager:  pm,
+		TokenService:   tokenService,
+		SessionService: sessionService,
+		PeerManager:    pm,
+		ServerVersion:  "test",
 	}
 
 	handler := &cthttp.Handler{

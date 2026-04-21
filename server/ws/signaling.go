@@ -31,8 +31,10 @@ type SignalMessage struct {
 // and implements the WebRTC signaling protocol. Clients authenticate via a
 // token query parameter, then exchange SDP offers/answers and ICE candidates.
 type SignalingHandler struct {
-	TokenService crosstalk.TokenService
-	PeerManager  *ctpion.PeerManager
+	TokenService   crosstalk.TokenService
+	SessionService crosstalk.SessionService
+	PeerManager    *ctpion.PeerManager
+	ServerVersion  string
 }
 
 // hashToken returns the hex-encoded SHA-256 hash of a plaintext token.
@@ -79,6 +81,14 @@ func (h *SignalingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer h.PeerManager.RemovePeer(peer.ID)
 
 	slog.Info("signaling session started", "peer", peer.ID, "token", apiToken.Name)
+
+	// 3b. Install protobuf control channel handler (replaces default echo).
+	ctrl := &ctpion.ControlHandler{
+		Peer:           peer,
+		SessionService: h.SessionService,
+		ServerVersion:  h.ServerVersion,
+	}
+	ctrl.Install()
 
 	// 4. Register ICE candidate callback → trickle candidates to client.
 	ctx := r.Context()

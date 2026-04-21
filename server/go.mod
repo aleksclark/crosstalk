@@ -3,6 +3,7 @@ module github.com/anthropics/crosstalk/server
 go 1.25.0
 
 require (
+	github.com/anthropics/crosstalk/proto/gen/go v0.0.0-00010101000000-000000000000
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/mattn/go-sqlite3 v1.14.42
 	github.com/oklog/ulid/v2 v2.1.1
@@ -11,6 +12,7 @@ require (
 	github.com/pressly/goose/v3 v3.27.0
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/crypto v0.48.0
+	google.golang.org/protobuf v1.36.11
 	nhooyr.io/websocket v1.8.17
 )
 
