@@ -30,7 +30,7 @@ func testAPI(t *testing.T) *webrtc.API {
 // testPeerManager returns a PeerManager wired to the test-only API.
 func testPeerManager(t *testing.T) *PeerManager {
 	t.Helper()
-	return newPeerManagerWithAPI(testWebRTCConfig(), testAPI(t))
+	return NewPeerManagerWithAPI(testWebRTCConfig(), testAPI(t))
 }
 
 // createClientPC creates a "client-side" PeerConnection using the same

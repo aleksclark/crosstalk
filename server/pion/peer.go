@@ -49,9 +49,9 @@ func NewPeerManager(cfg crosstalk.WebRTCConfig) *PeerManager {
 	}
 }
 
-// newPeerManagerWithAPI is like NewPeerManager but accepts a custom webrtc.API,
+// NewPeerManagerWithAPI is like NewPeerManager but accepts a custom webrtc.API,
 // which is useful for testing (e.g. disabling mDNS).
-func newPeerManagerWithAPI(cfg crosstalk.WebRTCConfig, api *webrtc.API) *PeerManager {
+func NewPeerManagerWithAPI(cfg crosstalk.WebRTCConfig, api *webrtc.API) *PeerManager {
 	pm := NewPeerManager(cfg)
 	pm.api = api
 	return pm
