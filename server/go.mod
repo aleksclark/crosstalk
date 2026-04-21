@@ -42,3 +42,5 @@ require (
 	golang.org/x/time v0.10.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/anthropics/crosstalk/proto/gen/go => ../proto/gen/go
