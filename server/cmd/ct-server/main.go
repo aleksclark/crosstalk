@@ -18,6 +18,8 @@ import (
 
 	crosstalk "github.com/anthropics/crosstalk/server"
 	cthttp "github.com/anthropics/crosstalk/server/http"
+	ctpion "github.com/anthropics/crosstalk/server/pion"
+	ctws "github.com/anthropics/crosstalk/server/ws"
 	"github.com/anthropics/crosstalk/server/sqlite"
 	"github.com/oklog/ulid/v2"
 )
@@ -79,6 +81,13 @@ func run() error {
 		return fmt.Errorf("seeding admin: %w", err)
 	}
 
+	// Create WebRTC peer manager and WS signaling handler.
+	pm := ctpion.NewPeerManager(cfg.WebRTC)
+	sigHandler := ctws.SignalingHandler{
+		TokenService: tokenService,
+		PeerManager:  pm,
+	}
+
 	// Build embedded web FS (strip "web/dist" prefix).
 	webFS, err := fs.Sub(crosstalk.WebDist, "web/dist")
 	if err != nil {
@@ -95,6 +104,7 @@ func run() error {
 		WebFS:                  webFS,
 		DevMode:                cfg.Web.DevMode,
 		DevProxyURL:            cfg.Web.DevProxyURL,
+		SignalingHandler:       &sigHandler,
 	}
 
 	// Build the HTTP server.

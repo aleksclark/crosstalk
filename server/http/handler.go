@@ -33,6 +33,10 @@ type Handler struct {
 
 	// DevProxyURL is the Vite dev server URL (e.g. "http://localhost:5173").
 	DevProxyURL string
+
+	// SignalingHandler is the WebSocket signaling handler for WebRTC.
+	// It handles its own authentication via query parameter tokens.
+	SignalingHandler http.Handler
 }
 
 // Router builds and returns the chi router with the full route tree.
@@ -46,6 +50,12 @@ func (h *Handler) Router() *chi.Mux {
 		webHandler = DevProxyHandler(h.DevProxyURL)
 	} else if h.WebFS != nil {
 		webHandler = EmbedHandler(h.WebFS)
+	}
+
+	// Mount WebSocket signaling endpoint BEFORE the API routes.
+	// This handler does its own token validation from query params.
+	if h.SignalingHandler != nil {
+		r.Handle("/ws/signaling", h.SignalingHandler)
 	}
 
 	r.Route("/api", func(r chi.Router) {
