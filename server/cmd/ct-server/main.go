@@ -3,18 +3,20 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log/slog"
 	"os"
+
+	crosstalk "github.com/anthropics/crosstalk/server"
 )
 
 func main() {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+	// Bootstrap a minimal logger for startup messages. This will be replaced
+	// once we know the configured log level.
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
-	}))
-	slog.SetDefault(logger)
-
-	slog.Info("starting ct-server")
+	})))
 
 	if err := run(); err != nil {
 		slog.Error("fatal error", "error", err)
@@ -23,7 +25,28 @@ func main() {
 }
 
 func run() error {
-	// TODO: Load config (JSON + JSON Schema validation).
+	// Resolve config path: --config flag > CROSSTALK_CONFIG env > default.
+	configPath := resolveConfigPath()
+
+	slog.Info("loading configuration", "path", configPath)
+
+	cfg, err := crosstalk.LoadConfig(configPath)
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+
+	// Reconfigure the global logger with the level from config.
+	logLevel := crosstalk.ParseLogLevel(cfg.LogLevel)
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: logLevel,
+	}))
+	slog.SetDefault(logger)
+
+	slog.Info("configuration loaded",
+		"listen", cfg.Listen,
+		"db_path", cfg.DBPath,
+		"log_level", cfg.LogLevel,
+	)
 
 	// TODO: Open SQLite database.
 	// db := sqlite.Open(cfg.DBPath)
@@ -43,4 +66,23 @@ func run() error {
 
 	fmt.Println("ct-server: not yet implemented")
 	return nil
+}
+
+// resolveConfigPath determines which config file to use.
+// Priority: --config flag > CROSSTALK_CONFIG env var > default "ct-server.json".
+func resolveConfigPath() string {
+	configFlag := flag.String("config", "", "path to configuration file")
+	flag.Parse()
+
+	// Flag takes highest priority.
+	if *configFlag != "" {
+		return *configFlag
+	}
+
+	// Then environment variable.
+	if env := os.Getenv("CROSSTALK_CONFIG"); env != "" {
+		return env
+	}
+
+	return crosstalk.DefaultConfigPath
 }
