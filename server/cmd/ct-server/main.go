@@ -3,12 +3,23 @@
 package main
 
 import (
+	"context"
+	"database/sql"
+	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"log/slog"
+	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	crosstalk "github.com/anthropics/crosstalk/server"
+	cthttp "github.com/anthropics/crosstalk/server/http"
+	"github.com/anthropics/crosstalk/server/sqlite"
+	"github.com/oklog/ulid/v2"
 )
 
 func main() {
@@ -48,23 +59,139 @@ func run() error {
 		"log_level", cfg.LogLevel,
 	)
 
-	// TODO: Open SQLite database.
-	// db := sqlite.Open(cfg.DBPath)
-	// defer db.Close()
+	// Open SQLite database (runs migrations automatically).
+	db, err := sqlite.Open(cfg.DBPath)
+	if err != nil {
+		return fmt.Errorf("opening database: %w", err)
+	}
+	defer db.Close()
 
-	// TODO: Wire domain service implementations.
-	// var userService crosstalk.UserService = &sqlite.UserService{DB: db}
-	// var templateService crosstalk.SessionTemplateService = &sqlite.SessionTemplateService{DB: db}
-	// var sessionService crosstalk.SessionService = &sqlite.SessionService{DB: db}
+	slog.Info("database opened", "path", cfg.DBPath)
 
-	// TODO: Create HTTP handler, inject services.
-	// var handler http.Handler
-	// handler.UserService = userService
-	// handler.SessionTemplateService = templateService
+	// Wire domain service implementations.
+	userService := &sqlite.UserService{DB: db.DB}
+	tokenService := &sqlite.TokenService{DB: db.DB}
+	templateService := &sqlite.SessionTemplateService{DB: db.DB}
+	sessionService := &sqlite.SessionService{DB: db.DB}
 
-	// TODO: Start HTTP server (serves REST API + embedded web UI).
+	// Seed admin user on first run.
+	if err := seedAdmin(userService, tokenService); err != nil {
+		return fmt.Errorf("seeding admin: %w", err)
+	}
 
-	fmt.Println("ct-server: not yet implemented")
+	// Build embedded web FS (strip "web/dist" prefix).
+	webFS, err := fs.Sub(crosstalk.WebDist, "web/dist")
+	if err != nil {
+		return fmt.Errorf("creating web sub-filesystem: %w", err)
+	}
+
+	// Create HTTP handler with all services injected.
+	handler := &cthttp.Handler{
+		UserService:            userService,
+		TokenService:           tokenService,
+		SessionTemplateService: templateService,
+		SessionService:         sessionService,
+		Config:                 cfg,
+		WebFS:                  webFS,
+		DevMode:                cfg.Web.DevMode,
+		DevProxyURL:            cfg.Web.DevProxyURL,
+	}
+
+	// Build the HTTP server.
+	srv := &http.Server{
+		Addr:    cfg.Listen,
+		Handler: handler.Router(),
+	}
+
+	// Listen for shutdown signals.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	// Start serving in a goroutine.
+	errCh := make(chan error, 1)
+	go func() {
+		slog.Info("listening", "addr", cfg.Listen)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errCh <- err
+		}
+		close(errCh)
+	}()
+
+	// Wait for signal or server error.
+	select {
+	case err := <-errCh:
+		if err != nil {
+			return fmt.Errorf("server error: %w", err)
+		}
+	case <-ctx.Done():
+		slog.Info("shutdown signal received, draining connections...")
+
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			return fmt.Errorf("server shutdown: %w", err)
+		}
+		slog.Info("server stopped gracefully")
+	}
+
+	return nil
+}
+
+// seedAdmin creates the initial admin user and API token if no admin user
+// exists. This is idempotent — if the admin already exists, it is a no-op.
+func seedAdmin(userService crosstalk.UserService, tokenService crosstalk.TokenService) error {
+	_, err := userService.FindUserByUsername("admin")
+	if err == nil {
+		slog.Debug("admin user already exists, skipping seed")
+		return nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("checking for admin user: %w", err)
+	}
+
+	// Generate a random password for the admin user.
+	password := cthttp.GenerateToken() // reuse token generator for a good random string
+
+	hash, err := cthttp.HashPassword(password)
+	if err != nil {
+		return fmt.Errorf("hashing admin password: %w", err)
+	}
+
+	now := time.Now().UTC()
+	adminUser := &crosstalk.User{
+		ID:           ulid.Make().String(),
+		Username:     "admin",
+		PasswordHash: hash,
+		CreatedAt:    now,
+	}
+	if err := userService.CreateUser(adminUser); err != nil {
+		return fmt.Errorf("creating admin user: %w", err)
+	}
+
+	slog.Info("admin user seeded",
+		"username", "admin",
+		"password", password,
+	)
+
+	// Create an initial API token for the admin.
+	plaintext := cthttp.GenerateToken()
+	apiToken := &crosstalk.APIToken{
+		ID:        ulid.Make().String(),
+		Name:      "seed",
+		TokenHash: cthttp.HashToken(plaintext),
+		UserID:    adminUser.ID,
+		CreatedAt: now,
+	}
+	if err := tokenService.CreateToken(apiToken); err != nil {
+		return fmt.Errorf("creating seed token: %w", err)
+	}
+
+	slog.Info("seed API token created",
+		"name", "seed",
+		"token", plaintext,
+	)
+
 	return nil
 }
 
