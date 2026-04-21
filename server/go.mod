@@ -3,10 +3,12 @@ module github.com/anthropics/crosstalk/server
 go 1.25.0
 
 require (
+	github.com/go-chi/chi/v5 v5.2.5
 	github.com/mattn/go-sqlite3 v1.14.42
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/pressly/goose/v3 v3.27.0
 	github.com/stretchr/testify v1.11.1
+	golang.org/x/crypto v0.48.0
 )
 
 require (

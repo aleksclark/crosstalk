@@ -37,6 +37,47 @@ func (s *UserService) FindUserByUsername(username string) (*crosstalk.User, erro
 	return scanUser(row)
 }
 
+func (s *UserService) ListUsers() ([]crosstalk.User, error) {
+	rows, err := s.DB.Query(`SELECT id, username, password_hash, created_at FROM users ORDER BY created_at`)
+	if err != nil {
+		return nil, fmt.Errorf("sqlite list users: %w", err)
+	}
+	defer rows.Close()
+	var users []crosstalk.User
+	for rows.Next() {
+		var u crosstalk.User
+		var createdAt string
+		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &createdAt); err != nil {
+			return nil, fmt.Errorf("sqlite scan user: %w", err)
+		}
+		t, err := parseTime(createdAt)
+		if err != nil {
+			return nil, fmt.Errorf("sqlite parse user created_at: %w", err)
+		}
+		u.CreatedAt = t
+		users = append(users, u)
+	}
+	return users, rows.Err()
+}
+
+func (s *UserService) UpdateUser(user *crosstalk.User) error {
+	result, err := s.DB.Exec(
+		`UPDATE users SET username = ? WHERE id = ?`,
+		user.Username, user.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("sqlite update user: %w", err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("sqlite update user rows affected: %w", err)
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func (s *UserService) DeleteUser(id string) error {
 	result, err := s.DB.Exec(`DELETE FROM users WHERE id = ?`, id)
 	if err != nil {

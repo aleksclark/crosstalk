@@ -93,7 +93,9 @@ const (
 type UserService interface {
 	FindUserByID(id string) (*User, error)
 	FindUserByUsername(username string) (*User, error)
+	ListUsers() ([]User, error)
 	CreateUser(user *User) error
+	UpdateUser(user *User) error
 	DeleteUser(id string) error
 }
 
