@@ -1,0 +1,13 @@
+# Application config — customize for your project
+[server]
+url = "http://<server-ip>:8080"
+
+[identity]
+# device_id = "..."
+# device_secret = "..."
+
+[audio]
+capture_device = "default"
+playback_device = "default"
+capture_gain = 1.0
+playback_gain = 1.0

@@ -1,0 +1,38 @@
+# Binaries
+bin/
+
+# Web build output
+web/dist/
+web/node_modules/
+
+# Generated code
+proto/gen/
+
+# Data
+data/
+
+# Dev environment
+dev/.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Large binary images
+k2b-board/image/*.img*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out

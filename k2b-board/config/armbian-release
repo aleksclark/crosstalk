@@ -1,0 +1,20 @@
+# Armbian release info from the running K2B device
+BOARD=kickpi-k2b-v2
+BOARD_NAME="KICKPI K2B V2"
+BOARDFAMILY=sun50iw9-bpi
+LINUXFAMILY=sunxi64
+ARCH=arm64
+IMAGE_TYPE=user-built
+BOARD_TYPE=csc
+INITRD_ARCH=arm64
+KERNEL_IMAGE_TYPE=Image
+KERNEL_TARGET=current
+KERNEL_TEST_TARGET=current
+FORCE_BOOTSCRIPT_UPDATE=yes
+OVERLAY_DIR="/boot/dtb/allwinner/overlay"
+VENDOR="Armbian-unofficial"
+BOOTSCRIPT_FORCE_UPDATE="yes"
+BOOTSCRIPT_DST="boot.cmd"
+VERSION=25.11.0-trunk
+REVISION=25.11.0-trunk
+BRANCH=current

@@ -1,0 +1,27 @@
+version: "3.8"
+
+networks:
+  crosstalk-dev:
+    driver: macvlan
+    driver_opts:
+      parent: ${MACVLAN_PARENT:?Set MACVLAN_PARENT in dev/.env to your host interface}
+    ipam:
+      config:
+        - subnet: 192.168.1.0/24
+
+services:
+  server:
+    build:
+      context: ..
+      dockerfile: dev/Dockerfile.server
+    volumes:
+      - ../server:/app/server
+      - server-data:/data
+    networks:
+      crosstalk-dev:
+        ipv4_address: 192.168.1.102
+    environment:
+      - CROSSTALK_CONFIG=/app/server/dev.json
+
+volumes:
+  server-data:

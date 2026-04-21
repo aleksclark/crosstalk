@@ -1,0 +1,20 @@
+[Unit]
+StartLimitIntervalSec=300
+StartLimitBurst=5
+Description=K2B Application Service
+After=network-online.target pipewire.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=app
+Group=audio
+ExecStart=/usr/local/bin/app
+Environment=APP_CONFIG=/etc/app/config.toml
+Environment=RUST_LOG=info
+Environment=XDG_RUNTIME_DIR=/run/user/999
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

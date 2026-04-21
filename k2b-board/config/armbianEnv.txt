@@ -1,0 +1,9 @@
+verbosity=1
+bootlogo=false
+console=both
+disp_mode=1920x1080p60
+overlay_prefix=sun50i-h616
+fdtfile=sun50i-h618-kickpi-k2b-v2.dtb
+rootdev=UUID=d32b5ff9-b9c1-4a4d-9221-8d332a5d2d02
+rootfstype=ext4
+usbstoragequirks=0x2537:0x1066:u,0x2537:0x1068:u

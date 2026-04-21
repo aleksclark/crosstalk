@@ -1,0 +1,14 @@
+{
+  "$schema": "./config.schema.json",
+  "listen": ":8080",
+  "db_path": "/data/crosstalk.db",
+  "recording_path": "/data/recordings",
+  "log_level": "debug",
+  "auth": {
+    "session_secret": "dev-secret-change-in-production"
+  },
+  "web": {
+    "dev_mode": true,
+    "dev_proxy_url": "http://192.168.1.100:5173"
+  }
+}

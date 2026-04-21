@@ -1,0 +1,87 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/anthropics/crosstalk/server/config.schema.json",
+  "title": "CrossTalk Server Configuration",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "listen": {
+      "type": "string",
+      "default": ":8080",
+      "description": "Address and port to listen on"
+    },
+    "db_path": {
+      "type": "string",
+      "default": "./data/crosstalk.db",
+      "description": "Path to SQLite database file"
+    },
+    "recording_path": {
+      "type": "string",
+      "default": "./data/recordings",
+      "description": "Directory for session recordings"
+    },
+    "log_level": {
+      "type": "string",
+      "enum": ["debug", "info", "warn", "error"],
+      "default": "info",
+      "description": "Minimum log level"
+    },
+    "webrtc": {
+      "type": "object",
+      "properties": {
+        "stun_servers": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["stun:stun.l.google.com:19302"],
+          "description": "STUN server URIs"
+        },
+        "turn": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "server": { "type": "string", "default": "" },
+            "username": { "type": "string", "default": "" },
+            "credential": { "type": "string", "default": "" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "auth": {
+      "type": "object",
+      "properties": {
+        "session_secret": {
+          "type": "string",
+          "description": "Secret for signing session cookies"
+        },
+        "webrtc_token_lifetime": {
+          "type": "string",
+          "default": "24h",
+          "description": "Lifetime of WebRTC connection tokens"
+        }
+      },
+      "required": ["session_secret"],
+      "additionalProperties": false
+    },
+    "web": {
+      "type": "object",
+      "properties": {
+        "dev_mode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable Vite dev server reverse proxy"
+        },
+        "dev_proxy_url": {
+          "type": "string",
+          "default": "http://localhost:5173",
+          "description": "Vite dev server URL for reverse proxy"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": true
+}
