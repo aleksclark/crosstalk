@@ -37,6 +37,7 @@ type Client struct {
 	onConnected    func()
 	onDisconnected func()
 	onWelcome      func(*crosstalkv1.Welcome)
+	onBindChannel  func(*BindChannelMsg)
 
 	// For testing: allow injecting auth client and connection factory
 	authClientFactory func(serverURL, token string) AuthClientInterface
@@ -58,6 +59,8 @@ type ConnectionInterface interface {
 	SendChannelStatus(channelID string, state crosstalkv1.ChannelState, errorMsg string, bytesTransferred uint64) error
 	SendControlMessage(msg *crosstalkv1.ControlMessage) error
 	SendControl(data []byte) error
+	AddTrack(channelID, trackID, localName string, dir Direction) (*BoundTrack, error)
+	RemoveTrack(channelID string) error
 	Close() error
 	ConnectionState() webrtc.ICEConnectionState
 }
@@ -83,6 +86,13 @@ func WithClientOnDisconnected(fn func()) ClientOption {
 func WithClientOnWelcome(fn func(*crosstalkv1.Welcome)) ClientOption {
 	return func(c *Client) {
 		c.onWelcome = fn
+	}
+}
+
+// WithOnBindChannelClient sets the callback for BindChannel messages on the Client.
+func WithOnBindChannelClient(fn func(*BindChannelMsg)) ClientOption {
+	return func(c *Client) {
+		c.onBindChannel = fn
 	}
 }
 
@@ -247,6 +257,8 @@ func (c *Client) connectOnce(ctx context.Context) error {
 	welcomeReceived := make(chan *crosstalkv1.Welcome, 1)
 	disconnected := make(chan struct{}, 1)
 
+	var conn ConnectionInterface
+
 	connOpts := []ConnectionOption{
 		WithOnControlOpen(func() {
 			controlOpened <- struct{}{}
@@ -259,6 +271,19 @@ func (c *Client) connectOnce(ctx context.Context) error {
 			}
 			if welcome := msg.GetWelcome(); welcome != nil {
 				welcomeReceived <- welcome
+			}
+			if bind := msg.GetBindChannel(); bind != nil {
+				c.handleBindChannel(conn, BindChannelFromProto(bind))
+			}
+			if unbind := msg.GetUnbindChannel(); unbind != nil {
+				c.handleUnbindChannel(conn, UnbindChannelFromProto(unbind))
+			}
+			if se := msg.GetSessionEvent(); se != nil {
+				slog.Info("session event",
+					"type", se.GetType().String(),
+					"session_id", se.GetSessionId(),
+					"message", se.GetMessage(),
+				)
 			}
 		}),
 		WithOnConnectionStateChange(func(state webrtc.ICEConnectionState) {
@@ -275,7 +300,6 @@ func (c *Client) connectOnce(ctx context.Context) error {
 		}),
 	}
 
-	var conn ConnectionInterface
 	if c.connFactory != nil {
 		conn = c.connFactory(c.config.ServerURL, wsToken, connOpts...)
 	} else {
@@ -386,6 +410,68 @@ func (c *Client) waitForDisconnection(ctx context.Context) {
 			}
 		}
 	}
+}
+
+// handleBindChannel processes a BindChannel message from the server.
+// For SOURCE direction, it adds an Opus audio track to the PeerConnection.
+// For SINK direction, it prepares to receive an incoming audio track.
+func (c *Client) handleBindChannel(conn ConnectionInterface, bind *BindChannelMsg) {
+	slog.Info("received BindChannel",
+		"channel_id", bind.ChannelID,
+		"local_name", bind.LocalName,
+		"direction", bind.Direction,
+		"track_id", bind.TrackID,
+	)
+
+	if c.onBindChannel != nil {
+		c.onBindChannel(bind)
+	}
+
+	switch bind.Direction {
+	case DirectionSource:
+		// TODO: Wire PipeWire source → Opus encoder → RTP → track.
+		// For now, add the track to the PeerConnection so the server
+		// can set up the forwarding pipeline. Actual audio capture from
+		// PipeWire will be wired in a later phase.
+		_, err := conn.AddTrack(bind.ChannelID, bind.TrackID, bind.LocalName, bind.Direction)
+		if err != nil {
+			slog.Error("failed to add source track",
+				"channel_id", bind.ChannelID,
+				"error", err,
+			)
+			conn.SendChannelStatus(bind.ChannelID, crosstalkv1.ChannelState_CHANNEL_ERROR, err.Error(), 0)
+			return
+		}
+		conn.SendChannelStatus(bind.ChannelID, crosstalkv1.ChannelState_CHANNEL_ACTIVE, "", 0)
+
+	case DirectionSink:
+		// TODO: Wire incoming RTP → Opus decoder → PipeWire sink.
+		// The server adds the track to this peer's connection; the
+		// OnTrack handler (to be wired in a later phase) will receive
+		// the remote track and route audio to the named PipeWire sink.
+		slog.Info("sink binding acknowledged, awaiting incoming track",
+			"channel_id", bind.ChannelID,
+			"local_name", bind.LocalName,
+		)
+		conn.SendChannelStatus(bind.ChannelID, crosstalkv1.ChannelState_CHANNEL_BINDING, "", 0)
+
+	default:
+		slog.Warn("unknown bind direction", "direction", bind.Direction)
+		conn.SendChannelStatus(bind.ChannelID, crosstalkv1.ChannelState_CHANNEL_ERROR, "unknown direction", 0)
+	}
+}
+
+// handleUnbindChannel processes an UnbindChannel message from the server.
+func (c *Client) handleUnbindChannel(conn ConnectionInterface, unbind *UnbindChannelMsg) {
+	slog.Info("received UnbindChannel", "channel_id", unbind.ChannelID)
+
+	if err := conn.RemoveTrack(unbind.ChannelID); err != nil {
+		slog.Warn("failed to remove track",
+			"channel_id", unbind.ChannelID,
+			"error", err,
+		)
+	}
+	conn.SendChannelStatus(unbind.ChannelID, crosstalkv1.ChannelState_CHANNEL_IDLE, "", 0)
 }
 
 func (c *Client) calculateBackoff(attempt int) time.Duration {

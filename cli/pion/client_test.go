@@ -174,7 +174,7 @@ func TestClient_ReconnectAfterFailure(t *testing.T) {
 		switch r.URL.Path {
 		case "/api/webrtc/token":
 			attemptCount.Add(1)
-			fmt.Fprintf(w, `{"token":"wrt-token"}`)
+			fmt.Fprintf(w, `{"token": "***"}`)
 		default:
 			http.NotFound(w, r)
 		}
@@ -272,9 +272,19 @@ func TestClient_ReconnectAfterFailure(t *testing.T) {
 
 // mockConn implements ConnectionInterface for testing.
 type mockConn struct {
-	connectFn func(ctx context.Context) error
-	mu        sync.Mutex
-	closed    bool
+	connectFn       func(ctx context.Context) error
+	addTrackFn      func(channelID, trackID, localName string, dir Direction) (*BoundTrack, error)
+	removeTrackFn   func(channelID string) error
+	mu              sync.Mutex
+	closed          bool
+	channelStatuses []mockChannelStatus
+}
+
+type mockChannelStatus struct {
+	ChannelID        string
+	State            crosstalkv1.ChannelState
+	ErrMsg           string
+	BytesTransferred uint64
 }
 
 func (m *mockConn) Connect(ctx context.Context) error {
@@ -301,6 +311,9 @@ func (m *mockConn) SendLogEntry(severity crosstalkv1.LogSeverity, source, messag
 }
 
 func (m *mockConn) SendChannelStatus(channelID string, state crosstalkv1.ChannelState, errorMsg string, bytesTransferred uint64) error {
+	m.mu.Lock()
+	m.channelStatuses = append(m.channelStatuses, mockChannelStatus{channelID, state, errorMsg, bytesTransferred})
+	m.mu.Unlock()
 	return nil
 }
 
@@ -309,6 +322,25 @@ func (m *mockConn) SendControlMessage(msg *crosstalkv1.ControlMessage) error {
 }
 
 func (m *mockConn) SendControl(data []byte) error {
+	return nil
+}
+
+func (m *mockConn) AddTrack(channelID, trackID, localName string, dir Direction) (*BoundTrack, error) {
+	if m.addTrackFn != nil {
+		return m.addTrackFn(channelID, trackID, localName, dir)
+	}
+	return &BoundTrack{
+		ChannelID: channelID,
+		TrackID:   trackID,
+		LocalName: localName,
+		Direction: dir,
+	}, nil
+}
+
+func (m *mockConn) RemoveTrack(channelID string) error {
+	if m.removeTrackFn != nil {
+		return m.removeTrackFn(channelID)
+	}
 	return nil
 }
 

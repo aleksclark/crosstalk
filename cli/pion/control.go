@@ -10,6 +10,62 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// Direction indicates whether a binding is for a source (send) or sink (receive).
+type Direction string
+
+const (
+	DirectionSource Direction = "SOURCE"
+	DirectionSink   Direction = "SINK"
+)
+
+// BindChannelMsg is a local convenience type for BindChannel handling.
+type BindChannelMsg struct {
+	ChannelID string
+	LocalName string
+	Direction Direction
+	TrackID   string
+}
+
+// UnbindChannelMsg is a local convenience type for UnbindChannel handling.
+type UnbindChannelMsg struct {
+	ChannelID string
+}
+
+// ProtoDirectionToLocal converts a protobuf Direction enum to the local Direction type.
+func ProtoDirectionToLocal(d crosstalkv1.Direction) Direction {
+	switch d {
+	case crosstalkv1.Direction_SOURCE:
+		return DirectionSource
+	case crosstalkv1.Direction_SINK:
+		return DirectionSink
+	default:
+		return DirectionSource
+	}
+}
+
+// BindChannelFromProto converts a protobuf BindChannel to the local BindChannelMsg.
+func BindChannelFromProto(pb *crosstalkv1.BindChannel) *BindChannelMsg {
+	if pb == nil {
+		return nil
+	}
+	return &BindChannelMsg{
+		ChannelID: pb.GetChannelId(),
+		LocalName: pb.GetLocalName(),
+		Direction: ProtoDirectionToLocal(pb.GetDirection()),
+		TrackID:   pb.GetTrackId(),
+	}
+}
+
+// UnbindChannelFromProto converts a protobuf UnbindChannel to the local UnbindChannelMsg.
+func UnbindChannelFromProto(pb *crosstalkv1.UnbindChannel) *UnbindChannelMsg {
+	if pb == nil {
+		return nil
+	}
+	return &UnbindChannelMsg{
+		ChannelID: pb.GetChannelId(),
+	}
+}
+
 // SendHello sends a Hello message on the control data channel with the client's capabilities.
 func (c *Connection) SendHello(sources []crosstalk.Source, sinks []crosstalk.Sink, codecs []crosstalk.Codec) error {
 	hello := &crosstalkv1.Hello{

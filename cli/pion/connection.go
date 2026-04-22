@@ -23,15 +23,33 @@ type Connection struct {
 	peerConn *webrtc.PeerConnection
 	controlDC *webrtc.DataChannel
 
+	// Track bindings: channel_id → bound track info
+	boundTracks map[string]*BoundTrack
+
 	// onControlOpen is called when the control data channel opens.
 	onControlOpen func()
 	// onControlMessage is called when a message is received on the control channel.
 	onControlMessage func([]byte)
 	// onConnectionStateChange is called on ICE connection state changes.
 	onConnectionStateChange func(webrtc.ICEConnectionState)
+	// onBindChannel is called when a BindChannel message is received.
+	onBindChannel func(*BindChannelMsg)
+	// onUnbindChannel is called when an UnbindChannel message is received.
+	onUnbindChannel func(*UnbindChannelMsg)
 
 	ctx    context.Context
 	cancel context.CancelFunc
+}
+
+// BoundTrack represents an active track binding for a channel.
+type BoundTrack struct {
+	ChannelID string
+	TrackID   string
+	LocalName string
+	Direction Direction
+	Track     *webrtc.TrackLocalStaticRTP
+	Sender    *webrtc.RTPSender
+	stopFn    func()
 }
 
 // ConnectionOption configures a Connection.
@@ -58,6 +76,20 @@ func WithOnConnectionStateChange(fn func(webrtc.ICEConnectionState)) ConnectionO
 	}
 }
 
+// WithOnBindChannel sets the callback for BindChannel messages.
+func WithOnBindChannel(fn func(*BindChannelMsg)) ConnectionOption {
+	return func(c *Connection) {
+		c.onBindChannel = fn
+	}
+}
+
+// WithOnUnbindChannel sets the callback for UnbindChannel messages.
+func WithOnUnbindChannel(fn func(*UnbindChannelMsg)) ConnectionOption {
+	return func(c *Connection) {
+		c.onUnbindChannel = fn
+	}
+}
+
 // NewConnection creates a new Connection.
 func NewConnection(serverURL, webrtcToken string, opts ...ConnectionOption) *Connection {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -66,6 +98,7 @@ func NewConnection(serverURL, webrtcToken string, opts ...ConnectionOption) *Con
 		webrtcToken: webrtcToken,
 		ctx:         ctx,
 		cancel:      cancel,
+		boundTracks: make(map[string]*BoundTrack),
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -213,6 +246,106 @@ func (c *Connection) SendControl(data []byte) error {
 	return dc.Send(data)
 }
 
+// AddTrack creates an Opus audio track on the PeerConnection and returns
+// a BoundTrack that can be used for writing RTP data. The caller is
+// responsible for feeding audio data into the track.
+func (c *Connection) AddTrack(channelID, trackID, localName string, dir Direction) (*BoundTrack, error) {
+	c.mu.Lock()
+	pc := c.peerConn
+	c.mu.Unlock()
+
+	if pc == nil {
+		return nil, fmt.Errorf("peer connection not established")
+	}
+
+	track, err := webrtc.NewTrackLocalStaticRTP(
+		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus},
+		trackID,
+		trackID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating audio track: %w", err)
+	}
+
+	sender, err := pc.AddTrack(track)
+	if err != nil {
+		return nil, fmt.Errorf("adding track to peer connection: %w", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		buf := make([]byte, 1500)
+		for {
+			select {
+			case <-done:
+				return
+			default:
+			}
+			if _, _, err := sender.Read(buf); err != nil {
+				return
+			}
+		}
+	}()
+
+	bt := &BoundTrack{
+		ChannelID: channelID,
+		TrackID:   trackID,
+		LocalName: localName,
+		Direction: dir,
+		Track:     track,
+		Sender:    sender,
+		stopFn: func() {
+			close(done)
+			pc.RemoveTrack(sender)
+		},
+	}
+
+	c.mu.Lock()
+	c.boundTracks[channelID] = bt
+	c.mu.Unlock()
+
+	slog.Info("audio track added",
+		"channel_id", channelID,
+		"track_id", trackID,
+		"local_name", localName,
+		"direction", dir,
+	)
+
+	return bt, nil
+}
+
+// RemoveTrack removes a bound track by channel ID.
+func (c *Connection) RemoveTrack(channelID string) error {
+	c.mu.Lock()
+	bt, ok := c.boundTracks[channelID]
+	if ok {
+		delete(c.boundTracks, channelID)
+	}
+	c.mu.Unlock()
+
+	if !ok {
+		return fmt.Errorf("no bound track for channel %s", channelID)
+	}
+
+	if bt.stopFn != nil {
+		bt.stopFn()
+	}
+
+	slog.Info("audio track removed", "channel_id", channelID)
+	return nil
+}
+
+// BoundTracks returns a snapshot of currently bound tracks.
+func (c *Connection) BoundTracks() map[string]*BoundTrack {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	result := make(map[string]*BoundTrack, len(c.boundTracks))
+	for k, v := range c.boundTracks {
+		result[k] = v
+	}
+	return result
+}
+
 // Close cleanly shuts down the connection.
 func (c *Connection) Close() error {
 	c.cancel()
@@ -220,6 +353,12 @@ func (c *Connection) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	for id, bt := range c.boundTracks {
+		if bt.stopFn != nil {
+			bt.stopFn()
+		}
+		delete(c.boundTracks, id)
+	}
 	if c.controlDC != nil {
 		c.controlDC.Close()
 	}

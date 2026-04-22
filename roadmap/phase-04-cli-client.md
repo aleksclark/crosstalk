@@ -2,7 +2,7 @@
 
 [← Roadmap](index.md)
 
-**Status**: `PARTIAL — 3/5 tasks complete, 2 have gaps`  
+**Status**: `COMPLETE — all gaps addressed`  
 **Depends on**: Phase 3 (server must handle Hello/Welcome and JoinSession)
 
 The CLI client authenticates, connects via WebSocket, establishes WebRTC, reports capabilities via the control channel, and discovers PipeWire sources/sinks.
