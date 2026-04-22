@@ -1,9 +1,7 @@
 package http
 
 import (
-	"crypto/rand"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -213,22 +211,16 @@ func (h *Handler) handleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleWebRTCToken(w http.ResponseWriter, r *http.Request) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to generate token")
+	apiToken := TokenFromContext(r.Context())
+	if apiToken == nil {
+		writeError(w, http.StatusUnauthorized, "missing authentication")
 		return
 	}
-	token := "wrtc_" + hex.EncodeToString(b)
 
-	lifetime, err := time.ParseDuration(h.Config.Auth.WebRTCTokenLifetime)
-	if err != nil {
-		lifetime = 24 * time.Hour
-	}
-	expiresAt := time.Now().UTC().Add(lifetime)
-
-	writeJSON(w, http.StatusOK, map[string]string{
-		"token":      token,
-		"expires_at": expiresAt.Format(time.RFC3339),
+	writeJSON(w, http.StatusOK, map[string]any{
+		"token":   "use_api_token",
+		"note":    "WebRTC signaling uses your API token directly. Connect to /ws/signaling?token=<your_api_token>.",
+		"user_id": apiToken.UserID,
 	})
 }
 
@@ -700,15 +692,396 @@ func (h *Handler) handleGetClient(w http.ResponseWriter, _ *http.Request) {
 // --- OpenAPI handler ---
 
 func (h *Handler) handleOpenAPI(w http.ResponseWriter, _ *http.Request) {
-	spec := map[string]any{
-		"openapi": "3.1.0",
-		"info": map[string]any{
-			"title":   "CrossTalk API",
-			"version": "0.1.0",
+	writeJSON(w, http.StatusOK, openapiSpec)
+}
+
+var openapiSpec = map[string]any{
+	"openapi": "3.1.0",
+	"info": map[string]any{
+		"title":   "CrossTalk API",
+		"version": "0.1.0",
+	},
+	"components": map[string]any{
+		"securitySchemes": map[string]any{
+			"bearerAuth": map[string]any{
+				"type":         "http",
+				"scheme":       "bearer",
+				"description":  "API token (ct_ prefixed)",
+			},
 		},
-		"paths": map[string]any{},
-	}
-	writeJSON(w, http.StatusOK, spec)
+		"schemas": map[string]any{
+			"Error": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"error": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"status":  map[string]any{"type": "integer"},
+							"message": map[string]any{"type": "string"},
+						},
+					},
+				},
+			},
+			"User": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id":         map[string]any{"type": "string"},
+					"username":   map[string]any{"type": "string"},
+					"created_at": map[string]any{"type": "string", "format": "date-time"},
+				},
+			},
+			"Token": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id":         map[string]any{"type": "string"},
+					"name":       map[string]any{"type": "string"},
+					"user_id":    map[string]any{"type": "string"},
+					"created_at": map[string]any{"type": "string", "format": "date-time"},
+				},
+			},
+			"SessionTemplate": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id":         map[string]any{"type": "string"},
+					"name":       map[string]any{"type": "string"},
+					"is_default": map[string]any{"type": "boolean"},
+					"roles":      map[string]any{"type": "array", "items": map[string]any{"$ref": "#/components/schemas/Role"}},
+					"mappings":   map[string]any{"type": "array", "items": map[string]any{"$ref": "#/components/schemas/Mapping"}},
+					"created_at": map[string]any{"type": "string", "format": "date-time"},
+					"updated_at": map[string]any{"type": "string", "format": "date-time"},
+				},
+			},
+			"Role": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name":         map[string]any{"type": "string"},
+					"multi_client": map[string]any{"type": "boolean"},
+				},
+			},
+			"Mapping": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"source": map[string]any{"type": "string"},
+					"sink":   map[string]any{"type": "string"},
+				},
+			},
+			"Session": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id":          map[string]any{"type": "string"},
+					"template_id": map[string]any{"type": "string"},
+					"name":        map[string]any{"type": "string"},
+					"status":      map[string]any{"type": "string", "enum": []string{"waiting", "active", "ended"}},
+					"created_at":  map[string]any{"type": "string", "format": "date-time"},
+					"ended_at":    map[string]any{"type": "string", "format": "date-time", "nullable": true},
+				},
+			},
+			"SessionClient": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id":              map[string]any{"type": "string"},
+					"session_id":      map[string]any{"type": "string"},
+					"role":            map[string]any{"type": "string"},
+					"client_id":       map[string]any{"type": "string"},
+					"status":          map[string]any{"type": "string", "enum": []string{"connected", "disconnected"}},
+					"connected_at":    map[string]any{"type": "string", "format": "date-time"},
+					"disconnected_at": map[string]any{"type": "string", "format": "date-time", "nullable": true},
+				},
+			},
+		},
+	},
+	"paths": map[string]any{
+		"/api/auth/login": map[string]any{
+			"post": map[string]any{
+				"summary":     "Authenticate with username and password",
+				"operationId": "login",
+				"tags":        []string{"auth"},
+				"requestBody": map[string]any{
+					"required": true,
+					"content": map[string]any{
+						"application/json": map[string]any{
+							"schema": map[string]any{
+								"type": "object",
+								"properties": map[string]any{
+									"username": map[string]any{"type": "string"},
+									"password": map[string]any{"type": "string"},
+								},
+								"required": []string{"username", "password"},
+							},
+						},
+					},
+				},
+				"responses": map[string]any{
+					"200": map[string]any{"description": "Login successful, returns API token"},
+					"401": map[string]any{"description": "Invalid credentials"},
+				},
+			},
+		},
+		"/api/auth/logout": map[string]any{
+			"post": map[string]any{
+				"summary":     "Revoke the current API token",
+				"operationId": "logout",
+				"tags":        []string{"auth"},
+				"security":    []map[string]any{{"bearerAuth": []string{}}},
+				"responses": map[string]any{
+					"204": map[string]any{"description": "Logged out"},
+					"401": map[string]any{"description": "Unauthorized"},
+				},
+			},
+		},
+		"/api/webrtc/token": map[string]any{
+			"post": map[string]any{
+				"summary":     "Get WebRTC signaling connection info (use API token directly for WS auth)",
+				"operationId": "getWebRTCToken",
+				"tags":        []string{"auth"},
+				"security":    []map[string]any{{"bearerAuth": []string{}}},
+				"responses": map[string]any{
+					"200": map[string]any{"description": "Returns signaling connection info"},
+				},
+			},
+		},
+		"/api/users": map[string]any{
+			"get": map[string]any{
+				"summary":     "List all users",
+				"operationId": "listUsers",
+				"tags":        []string{"users"},
+				"security":    []map[string]any{{"bearerAuth": []string{}}},
+				"responses": map[string]any{
+					"200": map[string]any{"description": "Array of users"},
+				},
+			},
+			"post": map[string]any{
+				"summary":     "Create a new user",
+				"operationId": "createUser",
+				"tags":        []string{"users"},
+				"security":    []map[string]any{{"bearerAuth": []string{}}},
+				"requestBody": map[string]any{
+					"required": true,
+					"content": map[string]any{
+						"application/json": map[string]any{
+							"schema": map[string]any{
+								"type": "object",
+								"properties": map[string]any{
+									"username": map[string]any{"type": "string"},
+									"password": map[string]any{"type": "string"},
+								},
+								"required": []string{"username", "password"},
+							},
+						},
+					},
+				},
+				"responses": map[string]any{
+					"201": map[string]any{"description": "User created"},
+					"409": map[string]any{"description": "Username already taken"},
+				},
+			},
+		},
+		"/api/users/{id}": map[string]any{
+			"patch": map[string]any{
+				"summary":     "Update a user",
+				"operationId": "updateUser",
+				"tags":        []string{"users"},
+				"security":    []map[string]any{{"bearerAuth": []string{}}},
+				"parameters":  []map[string]any{{"name": "id", "in": "path", "required": true, "schema": map[string]any{"type": "string"}}},
+				"responses": map[string]any{
+					"200": map[string]any{"description": "User updated"},
+					"404": map[string]any{"description": "User not found"},
+				},
+			},
+			"delete": map[string]any{
+				"summary":     "Delete a user",
+				"operationId": "deleteUser",
+				"tags":        []string{"users"},
+				"security":    []map[string]any{{"bearerAuth": []string{}}},
+				"parameters":  []map[string]any{{"name": "id", "in": "path", "required": true, "schema": map[string]any{"type": "string"}}},
+				"responses": map[string]any{
+					"204": map[string]any{"description": "User deleted"},
+					"404": map[string]any{"description": "User not found"},
+				},
+			},
+		},
+		"/api/tokens": map[string]any{
+			"get": map[string]any{
+				"summary":     "List all API tokens",
+				"operationId": "listTokens",
+				"tags":        []string{"tokens"},
+				"security":    []map[string]any{{"bearerAuth": []string{}}},
+				"responses": map[string]any{
+					"200": map[string]any{"description": "Array of tokens"},
+				},
+			},
+			"post": map[string]any{
+				"summary":     "Create a new API token",
+				"operationId": "createToken",
+				"tags":        []string{"tokens"},
+				"security":    []map[string]any{{"bearerAuth": []string{}}},
+				"requestBody": map[string]any{
+					"required": true,
+					"content": map[string]any{
+						"application/json": map[string]any{
+							"schema": map[string]any{
+								"type": "object",
+								"properties": map[string]any{
+									"name": map[string]any{"type": "string"},
+								},
+								"required": []string{"name"},
+							},
+						},
+					},
+				},
+				"responses": map[string]any{
+					"201": map[string]any{"description": "Token created, plaintext returned once"},
+				},
+			},
+		},
+		"/api/tokens/{id}": map[string]any{
+			"delete": map[string]any{
+				"summary":     "Revoke an API token",
+				"operationId": "deleteToken",
+				"tags":        []string{"tokens"},
+				"security":    []map[string]any{{"bearerAuth": []string{}}},
+				"parameters":  []map[string]any{{"name": "id", "in": "path", "required": true, "schema": map[string]any{"type": "string"}}},
+				"responses": map[string]any{
+					"204": map[string]any{"description": "Token revoked"},
+					"404": map[string]any{"description": "Token not found"},
+				},
+			},
+		},
+		"/api/templates": map[string]any{
+			"get": map[string]any{
+				"summary":     "List all session templates",
+				"operationId": "listTemplates",
+				"tags":        []string{"templates"},
+				"security":    []map[string]any{{"bearerAuth": []string{}}},
+				"responses": map[string]any{
+					"200": map[string]any{"description": "Array of session templates"},
+				},
+			},
+			"post": map[string]any{
+				"summary":     "Create a session template",
+				"operationId": "createTemplate",
+				"tags":        []string{"templates"},
+				"security":    []map[string]any{{"bearerAuth": []string{}}},
+				"responses": map[string]any{
+					"201": map[string]any{"description": "Template created"},
+				},
+			},
+		},
+		"/api/templates/{id}": map[string]any{
+			"get": map[string]any{
+				"summary":     "Get a session template by ID",
+				"operationId": "getTemplate",
+				"tags":        []string{"templates"},
+				"security":    []map[string]any{{"bearerAuth": []string{}}},
+				"parameters":  []map[string]any{{"name": "id", "in": "path", "required": true, "schema": map[string]any{"type": "string"}}},
+				"responses": map[string]any{
+					"200": map[string]any{"description": "Session template detail"},
+					"404": map[string]any{"description": "Template not found"},
+				},
+			},
+			"put": map[string]any{
+				"summary":     "Update a session template",
+				"operationId": "updateTemplate",
+				"tags":        []string{"templates"},
+				"security":    []map[string]any{{"bearerAuth": []string{}}},
+				"parameters":  []map[string]any{{"name": "id", "in": "path", "required": true, "schema": map[string]any{"type": "string"}}},
+				"responses": map[string]any{
+					"200": map[string]any{"description": "Template updated"},
+					"404": map[string]any{"description": "Template not found"},
+				},
+			},
+			"delete": map[string]any{
+				"summary":     "Delete a session template",
+				"operationId": "deleteTemplate",
+				"tags":        []string{"templates"},
+				"security":    []map[string]any{{"bearerAuth": []string{}}},
+				"parameters":  []map[string]any{{"name": "id", "in": "path", "required": true, "schema": map[string]any{"type": "string"}}},
+				"responses": map[string]any{
+					"204": map[string]any{"description": "Template deleted"},
+					"404": map[string]any{"description": "Template not found"},
+				},
+			},
+		},
+		"/api/sessions": map[string]any{
+			"get": map[string]any{
+				"summary":     "List all sessions",
+				"operationId": "listSessions",
+				"tags":        []string{"sessions"},
+				"security":    []map[string]any{{"bearerAuth": []string{}}},
+				"responses": map[string]any{
+					"200": map[string]any{"description": "Array of sessions"},
+				},
+			},
+			"post": map[string]any{
+				"summary":     "Create a new session",
+				"operationId": "createSession",
+				"tags":        []string{"sessions"},
+				"security":    []map[string]any{{"bearerAuth": []string{}}},
+				"responses": map[string]any{
+					"201": map[string]any{"description": "Session created"},
+				},
+			},
+		},
+		"/api/sessions/{id}": map[string]any{
+			"get": map[string]any{
+				"summary":     "Get session detail",
+				"operationId": "getSession",
+				"tags":        []string{"sessions"},
+				"security":    []map[string]any{{"bearerAuth": []string{}}},
+				"parameters":  []map[string]any{{"name": "id", "in": "path", "required": true, "schema": map[string]any{"type": "string"}}},
+				"responses": map[string]any{
+					"200": map[string]any{"description": "Session detail"},
+					"404": map[string]any{"description": "Session not found"},
+				},
+			},
+			"delete": map[string]any{
+				"summary":     "End a session",
+				"operationId": "endSession",
+				"tags":        []string{"sessions"},
+				"security":    []map[string]any{{"bearerAuth": []string{}}},
+				"parameters":  []map[string]any{{"name": "id", "in": "path", "required": true, "schema": map[string]any{"type": "string"}}},
+				"responses": map[string]any{
+					"204": map[string]any{"description": "Session ended"},
+					"404": map[string]any{"description": "Session not found"},
+				},
+			},
+		},
+		"/api/clients": map[string]any{
+			"get": map[string]any{
+				"summary":     "List all connected clients",
+				"operationId": "listClients",
+				"tags":        []string{"clients"},
+				"security":    []map[string]any{{"bearerAuth": []string{}}},
+				"responses": map[string]any{
+					"200": map[string]any{"description": "Array of session clients"},
+				},
+			},
+		},
+		"/api/clients/{id}": map[string]any{
+			"get": map[string]any{
+				"summary":     "Get client detail",
+				"operationId": "getClient",
+				"tags":        []string{"clients"},
+				"security":    []map[string]any{{"bearerAuth": []string{}}},
+				"parameters":  []map[string]any{{"name": "id", "in": "path", "required": true, "schema": map[string]any{"type": "string"}}},
+				"responses": map[string]any{
+					"200": map[string]any{"description": "Client detail"},
+					"404": map[string]any{"description": "Client not found"},
+				},
+			},
+		},
+		"/api/openapi.json": map[string]any{
+			"get": map[string]any{
+				"summary":     "Get the OpenAPI specification",
+				"operationId": "getOpenAPISpec",
+				"tags":        []string{"meta"},
+				"security":    []map[string]any{{"bearerAuth": []string{}}},
+				"responses": map[string]any{
+					"200": map[string]any{"description": "OpenAPI 3.1.0 specification"},
+				},
+			},
+		},
+	},
 }
 
 // --- Test-only handlers ---
