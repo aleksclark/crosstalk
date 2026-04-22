@@ -106,7 +106,7 @@ Capture audio from `→ record` mappings to OGG/Opus files on disk.
 
 ---
 
-### [Phase 7: Admin Web UI](phase-07-admin-web.md) `⬅ CURRENT`
+### [Phase 7: Admin Web UI](phase-07-admin-web.md) ✅
 
 Login, dashboard, template/session management, session connect view with audio, VU meters, WebRTC debug panel, quick-test button.
 
@@ -114,7 +114,7 @@ Login, dashboard, template/session management, session connect view with audio, 
 
 ---
 
-### [Phase 8: Integration Tests](phase-08-integration-tests.md)
+### [Phase 8: Integration Tests](phase-08-integration-tests.md) `⬅ CURRENT`
 
 Docker Compose test environment, full-stack tests with real SQLite/Pion/HTTP, Playwright for web UI.
 
