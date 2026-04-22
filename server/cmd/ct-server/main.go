@@ -81,12 +81,19 @@ func run() error {
 		return fmt.Errorf("seeding admin: %w", err)
 	}
 
+	// Create Orchestrator for session/channel management and audio forwarding.
+	orch := ctpion.NewOrchestrator(sessionService, templateService)
+	if cfg.RecordingPath != "" {
+		orch.RecordingPath = cfg.RecordingPath
+	}
+
 	// Create WebRTC peer manager and WS signaling handler.
 	pm := ctpion.NewPeerManager(cfg.WebRTC)
 	sigHandler := ctws.SignalingHandler{
 		TokenService:   tokenService,
 		SessionService: sessionService,
 		PeerManager:    pm,
+		Orchestrator:   orch,
 		ServerVersion:  "0.1.0",
 	}
 
