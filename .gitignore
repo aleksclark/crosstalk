@@ -36,3 +36,4 @@ k2b-board/image/*.img*
 *.dylib
 *.test
 *.out
+server/ct-server

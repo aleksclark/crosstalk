@@ -3,18 +3,33 @@
 package main
 
 import (
+	"context"
+	"database/sql"
+	"errors"
+	"flag"
 	"fmt"
+	"io/fs"
 	"log/slog"
+	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	crosstalk "github.com/anthropics/crosstalk/server"
+	cthttp "github.com/anthropics/crosstalk/server/http"
+	ctpion "github.com/anthropics/crosstalk/server/pion"
+	ctws "github.com/anthropics/crosstalk/server/ws"
+	"github.com/anthropics/crosstalk/server/sqlite"
+	"github.com/oklog/ulid/v2"
 )
 
 func main() {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+	// Bootstrap a minimal logger for startup messages. This will be replaced
+	// once we know the configured log level.
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
-	}))
-	slog.SetDefault(logger)
-
-	slog.Info("starting ct-server")
+	})))
 
 	if err := run(); err != nil {
 		slog.Error("fatal error", "error", err)
@@ -23,24 +38,197 @@ func main() {
 }
 
 func run() error {
-	// TODO: Load config (JSON + JSON Schema validation).
+	// Resolve config path: --config flag > CROSSTALK_CONFIG env > default.
+	configPath := resolveConfigPath()
 
-	// TODO: Open SQLite database.
-	// db := sqlite.Open(cfg.DBPath)
-	// defer db.Close()
+	slog.Info("loading configuration", "path", configPath)
 
-	// TODO: Wire domain service implementations.
-	// var userService crosstalk.UserService = &sqlite.UserService{DB: db}
-	// var templateService crosstalk.SessionTemplateService = &sqlite.SessionTemplateService{DB: db}
-	// var sessionService crosstalk.SessionService = &sqlite.SessionService{DB: db}
+	cfg, err := crosstalk.LoadConfig(configPath)
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
 
-	// TODO: Create HTTP handler, inject services.
-	// var handler http.Handler
-	// handler.UserService = userService
-	// handler.SessionTemplateService = templateService
+	// Reconfigure the global logger with the level from config.
+	logLevel := crosstalk.ParseLogLevel(cfg.LogLevel)
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: logLevel,
+	}))
+	slog.SetDefault(logger)
 
-	// TODO: Start HTTP server (serves REST API + embedded web UI).
+	slog.Info("configuration loaded",
+		"listen", cfg.Listen,
+		"db_path", cfg.DBPath,
+		"log_level", cfg.LogLevel,
+	)
 
-	fmt.Println("ct-server: not yet implemented")
+	// Open SQLite database (runs migrations automatically).
+	db, err := sqlite.Open(cfg.DBPath)
+	if err != nil {
+		return fmt.Errorf("opening database: %w", err)
+	}
+	defer db.Close()
+
+	slog.Info("database opened", "path", cfg.DBPath)
+
+	// Wire domain service implementations.
+	userService := &sqlite.UserService{DB: db.DB}
+	tokenService := &sqlite.TokenService{DB: db.DB}
+	templateService := &sqlite.SessionTemplateService{DB: db.DB}
+	sessionService := &sqlite.SessionService{DB: db.DB}
+
+	// Seed admin user on first run.
+	if err := seedAdmin(userService, tokenService); err != nil {
+		return fmt.Errorf("seeding admin: %w", err)
+	}
+
+	// Create Orchestrator for session/channel management and audio forwarding.
+	orch := ctpion.NewOrchestrator(sessionService, templateService)
+	if cfg.RecordingPath != "" {
+		orch.RecordingPath = cfg.RecordingPath
+	}
+
+	// Create WebRTC peer manager and WS signaling handler.
+	pm := ctpion.NewPeerManager(cfg.WebRTC)
+	sigHandler := ctws.SignalingHandler{
+		TokenService:   tokenService,
+		SessionService: sessionService,
+		PeerManager:    pm,
+		Orchestrator:   orch,
+		ServerVersion:  "0.1.0",
+	}
+
+	// Build embedded web FS (strip "web/dist" prefix).
+	webFS, err := fs.Sub(crosstalk.WebDist, "web/dist")
+	if err != nil {
+		return fmt.Errorf("creating web sub-filesystem: %w", err)
+	}
+
+	// Create HTTP handler with all services injected.
+	handler := &cthttp.Handler{
+		UserService:            userService,
+		TokenService:           tokenService,
+		SessionTemplateService: templateService,
+		SessionService:         sessionService,
+		Config:                 cfg,
+		WebFS:                  webFS,
+		DevMode:                cfg.Web.DevMode,
+		DevProxyURL:            cfg.Web.DevProxyURL,
+		SignalingHandler:       &sigHandler,
+	}
+
+	// Build the HTTP server.
+	srv := &http.Server{
+		Addr:    cfg.Listen,
+		Handler: handler.Router(),
+	}
+
+	// Listen for shutdown signals.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	// Start serving in a goroutine.
+	errCh := make(chan error, 1)
+	go func() {
+		slog.Info("listening", "addr", cfg.Listen)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errCh <- err
+		}
+		close(errCh)
+	}()
+
+	// Wait for signal or server error.
+	select {
+	case err := <-errCh:
+		if err != nil {
+			return fmt.Errorf("server error: %w", err)
+		}
+	case <-ctx.Done():
+		slog.Info("shutdown signal received, draining connections...")
+
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			return fmt.Errorf("server shutdown: %w", err)
+		}
+		slog.Info("server stopped gracefully")
+	}
+
 	return nil
+}
+
+// seedAdmin creates the initial admin user and API token if no admin user
+// exists. This is idempotent — if the admin already exists, it is a no-op.
+func seedAdmin(userService crosstalk.UserService, tokenService crosstalk.TokenService) error {
+	_, err := userService.FindUserByUsername("admin")
+	if err == nil {
+		slog.Debug("admin user already exists, skipping seed")
+		return nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("checking for admin user: %w", err)
+	}
+
+	// Generate a random password for the admin user.
+	password := cthttp.GenerateToken() // reuse token generator for a good random string
+
+	hash, err := cthttp.HashPassword(password)
+	if err != nil {
+		return fmt.Errorf("hashing admin password: %w", err)
+	}
+
+	now := time.Now().UTC()
+	adminUser := &crosstalk.User{
+		ID:           ulid.Make().String(),
+		Username:     "admin",
+		PasswordHash: hash,
+		CreatedAt:    now,
+	}
+	if err := userService.CreateUser(adminUser); err != nil {
+		return fmt.Errorf("creating admin user: %w", err)
+	}
+
+	slog.Info("admin user seeded",
+		"username", "admin",
+		"password", password,
+	)
+
+	// Create an initial API token for the admin.
+	plaintext := cthttp.GenerateToken()
+	apiToken := &crosstalk.APIToken{
+		ID:        ulid.Make().String(),
+		Name:      "seed",
+		TokenHash: cthttp.HashToken(plaintext),
+		UserID:    adminUser.ID,
+		CreatedAt: now,
+	}
+	if err := tokenService.CreateToken(apiToken); err != nil {
+		return fmt.Errorf("creating seed token: %w", err)
+	}
+
+	slog.Info("seed API token created",
+		"name", "seed",
+		"token", plaintext,
+	)
+
+	return nil
+}
+
+// resolveConfigPath determines which config file to use.
+// Priority: --config flag > CROSSTALK_CONFIG env var > default "ct-server.json".
+func resolveConfigPath() string {
+	configFlag := flag.String("config", "", "path to configuration file")
+	flag.Parse()
+
+	// Flag takes highest priority.
+	if *configFlag != "" {
+		return *configFlag
+	}
+
+	// Then environment variable.
+	if env := os.Getenv("CROSSTALK_CONFIG"); env != "" {
+		return env
+	}
+
+	return crosstalk.DefaultConfigPath
 }

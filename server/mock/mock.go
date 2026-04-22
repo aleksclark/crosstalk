@@ -15,8 +15,14 @@ type UserService struct {
 	FindUserByUsernameFn      func(username string) (*crosstalk.User, error)
 	FindUserByUsernameInvoked bool
 
+	ListUsersFn      func() ([]crosstalk.User, error)
+	ListUsersInvoked bool
+
 	CreateUserFn      func(user *crosstalk.User) error
 	CreateUserInvoked bool
+
+	UpdateUserFn      func(user *crosstalk.User) error
+	UpdateUserInvoked bool
 
 	DeleteUserFn      func(id string) error
 	DeleteUserInvoked bool
@@ -32,9 +38,19 @@ func (s *UserService) FindUserByUsername(username string) (*crosstalk.User, erro
 	return s.FindUserByUsernameFn(username)
 }
 
+func (s *UserService) ListUsers() ([]crosstalk.User, error) {
+	s.ListUsersInvoked = true
+	return s.ListUsersFn()
+}
+
 func (s *UserService) CreateUser(user *crosstalk.User) error {
 	s.CreateUserInvoked = true
 	return s.CreateUserFn(user)
+}
+
+func (s *UserService) UpdateUser(user *crosstalk.User) error {
+	s.UpdateUserInvoked = true
+	return s.UpdateUserFn(user)
 }
 
 func (s *UserService) DeleteUser(id string) error {
