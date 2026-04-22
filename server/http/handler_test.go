@@ -225,6 +225,24 @@ func TestLoginDoesNotRequireAuth(t *testing.T) {
 	assert.Equal(t, "invalid credentials", errObj["message"])
 }
 
+func TestWebRTCToken_ReturnsAPITokenInfo(t *testing.T) {
+	h, _, ts, _, _ := newTestHandler(t)
+	token := authToken(t, ts)
+
+	req := httptest.NewRequest("POST", "/api/webrtc/token", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	h.Router().ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
+	assert.Equal(t, "use_api_token", resp["token"])
+	assert.Contains(t, resp["note"], "API token directly")
+	assert.Equal(t, "user-1", resp["user_id"])
+}
+
 func TestOpenAPI(t *testing.T) {
 	h, _, ts, _, _ := newTestHandler(t)
 	token := authToken(t, ts)
@@ -239,6 +257,16 @@ func TestOpenAPI(t *testing.T) {
 	var resp map[string]any
 	require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
 	assert.Equal(t, "3.1.0", resp["openapi"])
+
+	paths, ok := resp["paths"].(map[string]any)
+	require.True(t, ok, "paths should be an object")
+	assert.NotEmpty(t, paths, "paths should not be empty")
+	assert.Contains(t, paths, "/api/auth/login")
+	assert.Contains(t, paths, "/api/users")
+	assert.Contains(t, paths, "/api/tokens")
+	assert.Contains(t, paths, "/api/templates")
+	assert.Contains(t, paths, "/api/sessions")
+	assert.Contains(t, paths, "/api/clients")
 }
 
 func TestListClients_ReturnsEmptyArray(t *testing.T) {

@@ -80,13 +80,28 @@ func DefaultConfig() Config {
 
 // LoadConfig reads a JSON config file from path, applies defaults for missing
 // fields, and validates the result. Unknown top-level and nested keys produce
-// warnings via slog. Missing required fields (auth.session_secret) return an
-// error.
+// warnings via slog. Type mismatches for known fields log warnings and keep
+// defaults. Missing required fields (auth.session_secret) return an error.
 func LoadConfig(path string) (Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return Config{}, fmt.Errorf("reading config file: %w", err)
 	}
+
+	// Validate JSON syntax first.
+	var syntaxCheck map[string]json.RawMessage
+	if err := json.Unmarshal(data, &syntaxCheck); err != nil {
+		return Config{}, fmt.Errorf("parsing config JSON: %w", err)
+	}
+
+	// Check for unknown fields.
+	if err := warnUnknownFields(data); err != nil {
+		return Config{}, fmt.Errorf("checking unknown fields: %w", err)
+	}
+
+	// Detect type mismatches, log warnings, and strip mismatched fields
+	// so they don't silently zero out defaults.
+	data = warnTypeMismatches(data)
 
 	// Start from defaults so any field absent from the file keeps its default.
 	cfg := DefaultConfig()
@@ -94,11 +109,6 @@ func LoadConfig(path string) (Config, error) {
 	// Decode into the typed struct (applies values over defaults).
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return Config{}, fmt.Errorf("parsing config JSON: %w", err)
-	}
-
-	// Check for unknown fields by decoding again into a generic map.
-	if err := warnUnknownFields(data); err != nil {
-		return Config{}, fmt.Errorf("checking unknown fields: %w", err)
 	}
 
 	// Validate required fields and enum values.
@@ -180,6 +190,138 @@ func warnUnknownKeys(prefix string, raw map[string]json.RawMessage, known []stri
 			slog.Warn("unknown config field", "key", fullKey)
 		}
 	}
+}
+
+type jsonType string
+
+const (
+	jsonString jsonType = "string"
+	jsonBool   jsonType = "bool"
+	jsonObject jsonType = "object"
+	jsonArray  jsonType = "array"
+)
+
+var fieldTypes = map[string]jsonType{
+	"listen":                        jsonString,
+	"db_path":                       jsonString,
+	"recording_path":                jsonString,
+	"log_level":                     jsonString,
+	"webrtc":                        jsonObject,
+	"auth":                          jsonObject,
+	"web":                           jsonObject,
+	"webrtc.stun_servers":           jsonArray,
+	"webrtc.turn":                   jsonObject,
+	"webrtc.turn.enabled":           jsonBool,
+	"webrtc.turn.server":            jsonString,
+	"webrtc.turn.username":          jsonString,
+	"webrtc.turn.credential":        jsonString,
+	"auth.session_secret":           jsonString,
+	"auth.webrtc_token_lifetime":    jsonString,
+	"web.dev_mode":                  jsonBool,
+	"web.dev_proxy_url":             jsonString,
+}
+
+func detectJSONType(raw json.RawMessage) jsonType {
+	raw = []byte(strings.TrimSpace(string(raw)))
+	if len(raw) == 0 {
+		return ""
+	}
+	switch raw[0] {
+	case '"':
+		return jsonString
+	case 't', 'f':
+		return jsonBool
+	case '{':
+		return jsonObject
+	case '[':
+		return jsonArray
+	default:
+		return "number"
+	}
+}
+
+func warnTypeMismatches(data []byte) []byte {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return data
+	}
+
+	changed := false
+	checkAndRemove := func(prefix string, m map[string]json.RawMessage) {
+		for key, val := range m {
+			fullKey := key
+			if prefix != "" {
+				fullKey = prefix + "." + key
+			}
+			expected, ok := fieldTypes[fullKey]
+			if !ok {
+				continue
+			}
+			actual := detectJSONType(val)
+			if actual != "" && actual != expected {
+				slog.Warn("config field type mismatch, using default",
+					"key", fullKey,
+					"expected", string(expected),
+					"got", string(actual))
+				delete(m, key)
+				changed = true
+			}
+		}
+	}
+
+	checkAndRemove("", raw)
+
+	if webrtcRaw, ok := raw["webrtc"]; ok {
+		var webrtc map[string]json.RawMessage
+		if err := json.Unmarshal(webrtcRaw, &webrtc); err == nil {
+			checkAndRemove("webrtc", webrtc)
+			if turnRaw, ok := webrtc["turn"]; ok {
+				var turn map[string]json.RawMessage
+				if err := json.Unmarshal(turnRaw, &turn); err == nil {
+					checkAndRemove("webrtc.turn", turn)
+					if changed {
+						if b, err := json.Marshal(turn); err == nil {
+							webrtc["turn"] = b
+						}
+					}
+				}
+			}
+			if changed {
+				if b, err := json.Marshal(webrtc); err == nil {
+					raw["webrtc"] = b
+				}
+			}
+		}
+	}
+	if authRaw, ok := raw["auth"]; ok {
+		var auth map[string]json.RawMessage
+		if err := json.Unmarshal(authRaw, &auth); err == nil {
+			checkAndRemove("auth", auth)
+			if changed {
+				if b, err := json.Marshal(auth); err == nil {
+					raw["auth"] = b
+				}
+			}
+		}
+	}
+	if webRaw, ok := raw["web"]; ok {
+		var web map[string]json.RawMessage
+		if err := json.Unmarshal(webRaw, &web); err == nil {
+			checkAndRemove("web", web)
+			if changed {
+				if b, err := json.Marshal(web); err == nil {
+					raw["web"] = b
+				}
+			}
+		}
+	}
+
+	if changed {
+		if b, err := json.Marshal(raw); err == nil {
+			return b
+		}
+	}
+	return data
 }
 
 // validLogLevels enumerates the accepted values for log_level.
