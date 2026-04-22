@@ -13,6 +13,12 @@ import (
 // track to the sink peer via a TrackLocalStaticRTP. It returns a stop function
 // that terminates the forwarding goroutine.
 //
+// Track manipulation (AddTrack/RemoveTrack) is performed directly on the raw
+// Pion PeerConnection rather than through a PeerConn-level API. This is
+// intentional: the SFU forwarding logic needs fine-grained control over track
+// senders and receivers, and an abstraction layer would add indirection without
+// meaningful safety benefits. All track lifecycle management is co-located here.
+//
 // The implementation:
 //  1. Creates a TrackLocalStaticRTP on the sink side for Opus audio.
 //  2. Adds the local track to the sink's PeerConnection.

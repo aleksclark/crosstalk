@@ -225,6 +225,52 @@ func TestPeerConnection_DataChannelEcho(t *testing.T) {
 	}
 }
 
+func TestPeerConnection_ICEStateHandler(t *testing.T) {
+	pm := testPeerManager(t)
+	server, err := pm.CreatePeerConnection()
+	require.NoError(t, err)
+
+	client := createClientPC(t)
+
+	_, err = client.CreateDataChannel("init", nil)
+	require.NoError(t, err)
+
+	// Wait for ICE connected on the client side as a synchronization point.
+	connected := make(chan struct{})
+	client.OnICEConnectionStateChange(func(state webrtc.ICEConnectionState) {
+		if state == webrtc.ICEConnectionStateConnected {
+			close(connected)
+		}
+	})
+
+	signalPair(t, client, server)
+
+	select {
+	case <-connected:
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for ICE connected state")
+	}
+
+	// Peer should be in the registry after connecting.
+	require.Equal(t, 1, pm.Count())
+
+	// Close the client PC to trigger ICE failed/closed on the server side.
+	require.NoError(t, client.Close())
+
+	// The server's ICE state handler should remove the peer from the registry
+	// when it reaches failed or closed state. Poll until removed or timeout.
+	deadline := time.After(10 * time.Second)
+	for pm.Count() > 0 {
+		select {
+		case <-deadline:
+			t.Fatal("timed out waiting for peer to be removed from registry after ICE failure")
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+
+	assert.Equal(t, 0, pm.Count())
+}
+
 func TestPeerManager_Registry(t *testing.T) {
 	pm := testPeerManager(t)
 
