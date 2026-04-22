@@ -79,6 +79,7 @@ export function SessionConnectPage() {
     if (!selectedDevice || muted) {
       if (micStream) {
         micStream.getTracks().forEach((t) => t.stop())
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional cleanup when device/muted changes
         setMicStreamState(null)
         webrtc.setMicStream(null)
       }

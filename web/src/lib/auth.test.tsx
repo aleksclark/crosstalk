@@ -6,9 +6,10 @@ import { useAuth } from './use-auth'
 
 // Mock API client
 vi.mock('@/lib/api/client', () => ({
-  login: vi.fn().mockResolvedValue({ user: { id: '1', username: 'admin', created_at: '' } }),
+  login: vi.fn().mockResolvedValue({ token: 'test-token', user: { id: '1', username: 'admin', created_at: '' } }),
   logout: vi.fn().mockResolvedValue(undefined),
   setOnUnauthorized: vi.fn(),
+  setAuthToken: vi.fn(),
 }))
 
 function TestComponent() {

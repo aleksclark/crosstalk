@@ -1,15 +1,7 @@
-import { createContext, useState, useEffect, useCallback, type ReactNode } from 'react'
+import { useState, useEffect, useCallback, type ReactNode } from 'react'
 import { login as apiLogin, logout as apiLogout, setOnUnauthorized, setAuthToken } from '@/lib/api/client'
+import { AuthContext } from '@/lib/auth-context'
 import type { User } from '@/lib/api/types'
-
-interface AuthContextType {
-  user: User | null
-  isAuthenticated: boolean
-  login: (username: string, password: string) => Promise<void>
-  logout: () => Promise<void>
-}
-
-export const AuthContext = createContext<AuthContextType | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => {

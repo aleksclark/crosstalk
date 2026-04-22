@@ -2,7 +2,7 @@
 
 [← Roadmap](index.md)
 
-**Status**: `PARTIAL — 4/7 tasks done`  
+**Status**: `COMPLETE`  
 **Depends on**: Phase 1 (REST API must work). Can proceed in parallel with Phases 2-6 for non-WebRTC pages.
 
 React dashboard for managing the system and connecting to sessions as a browser-based client.
