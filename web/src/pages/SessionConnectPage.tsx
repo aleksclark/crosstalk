@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import { getSession, endSession } from '@/lib/api/client'
 import { useWebRTC } from '@/lib/use-webrtc'
-import type { SessionDetail } from '@/lib/api/types'
+import type { Session } from '@/lib/api/types'
 import type { LogEntryMessage } from '@/lib/webrtc-types'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
@@ -15,7 +15,7 @@ export function SessionConnectPage() {
   const navigate = useNavigate()
   const role = searchParams.get('role') ?? ''
 
-  const [session, setSession] = useState<SessionDetail | null>(null)
+  const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
 
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])

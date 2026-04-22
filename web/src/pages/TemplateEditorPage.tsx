@@ -8,24 +8,58 @@ import { Label } from '@/components/ui/label'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Select } from '@/components/ui/select'
 
-function emptyMapping(): Mapping {
-  return { from_role: '', from_channel: '', to_role: '', to_channel: '', to_type: 'role' }
+interface MappingFormState {
+  sourceRole: string
+  sourceChannel: string
+  sinkType: 'role' | 'record' | 'broadcast'
+  sinkRole: string
+  sinkChannel: string
 }
 
-function validateTemplate(roles: Role[], mappings: Mapping[]): string[] {
+function emptyMappingForm(): MappingFormState {
+  return { sourceRole: '', sourceChannel: '', sinkType: 'role', sinkRole: '', sinkChannel: '' }
+}
+
+function mappingToForm(m: Mapping): MappingFormState {
+  const [sourceRole = '', sourceChannel = ''] = (m.source ?? '').split(':')
+  const sink = m.sink ?? ''
+  if (sink === 'record') {
+    return { sourceRole, sourceChannel, sinkType: 'record', sinkRole: '', sinkChannel: '' }
+  }
+  if (sink === 'broadcast') {
+    return { sourceRole, sourceChannel, sinkType: 'broadcast', sinkRole: '', sinkChannel: '' }
+  }
+  const [sinkRole = '', sinkChannel = ''] = sink.split(':')
+  return { sourceRole, sourceChannel, sinkType: 'role', sinkRole, sinkChannel }
+}
+
+function formToMapping(f: MappingFormState): Mapping {
+  const source = f.sourceRole && f.sourceChannel ? `${f.sourceRole}:${f.sourceChannel}` : ''
+  let sink = ''
+  if (f.sinkType === 'record') {
+    sink = 'record'
+  } else if (f.sinkType === 'broadcast') {
+    sink = 'broadcast'
+  } else if (f.sinkRole && f.sinkChannel) {
+    sink = `${f.sinkRole}:${f.sinkChannel}`
+  }
+  return { source, sink }
+}
+
+function validateTemplate(roles: Role[], mappingForms: MappingFormState[]): string[] {
   const errors: string[] = []
   const roleNames = new Set(roles.map((r) => r.name))
   const multiClientRoles = new Set(roles.filter((r) => r.multi_client).map((r) => r.name))
 
-  for (const m of mappings) {
-    if (m.from_role && !roleNames.has(m.from_role)) {
-      errors.push(`Mapping source role "${m.from_role}" does not exist`)
+  for (const f of mappingForms) {
+    if (f.sourceRole && !roleNames.has(f.sourceRole)) {
+      errors.push(`Mapping source role "${f.sourceRole}" does not exist`)
     }
-    if (m.to_type === 'role' && m.to_role && !roleNames.has(m.to_role)) {
-      errors.push(`Mapping target role "${m.to_role}" does not exist`)
+    if (f.sinkType === 'role' && f.sinkRole && !roleNames.has(f.sinkRole)) {
+      errors.push(`Mapping target role "${f.sinkRole}" does not exist`)
     }
-    if (m.from_role && multiClientRoles.has(m.from_role)) {
-      errors.push(`Multi-client role "${m.from_role}" cannot be a mapping source`)
+    if (f.sourceRole && multiClientRoles.has(f.sourceRole)) {
+      errors.push(`Multi-client role "${f.sourceRole}" cannot be a mapping source`)
     }
   }
 
@@ -40,7 +74,7 @@ export function TemplateEditorPage() {
   const [name, setName] = useState('')
   const [isDefault, setIsDefault] = useState(false)
   const [roles, setRoles] = useState<Role[]>([{ name: '', multi_client: false }])
-  const [mappings, setMappings] = useState<Mapping[]>([emptyMapping()])
+  const [mappingForms, setMappingForms] = useState<MappingFormState[]>([emptyMappingForm()])
   const [errors, setErrors] = useState<string[]>([])
   const [loading, setLoading] = useState(!isNew)
   const [saving, setSaving] = useState(false)
@@ -52,7 +86,8 @@ export function TemplateEditorPage() {
           setName(t.name)
           setIsDefault(t.is_default)
           setRoles(t.roles.length > 0 ? t.roles : [{ name: '', multi_client: false }])
-          setMappings(t.mappings.length > 0 ? t.mappings : [emptyMapping()])
+          const forms = (t.mappings ?? []).map(mappingToForm)
+          setMappingForms(forms.length > 0 ? forms : [emptyMappingForm()])
         })
         .catch(() => navigate('/templates'))
         .finally(() => setLoading(false))
@@ -65,16 +100,16 @@ export function TemplateEditorPage() {
     setRoles(roles.map((r, i) => (i === index ? { ...r, [field]: value } : r)))
   }
 
-  const handleAddMapping = () => setMappings([...mappings, emptyMapping()])
-  const handleRemoveMapping = (index: number) => setMappings(mappings.filter((_, i) => i !== index))
-  const handleMappingChange = (index: number, field: keyof Mapping, value: string) => {
-    setMappings(mappings.map((m, i) => (i === index ? { ...m, [field]: value } : m)))
+  const handleAddMapping = () => setMappingForms([...mappingForms, emptyMappingForm()])
+  const handleRemoveMapping = (index: number) => setMappingForms(mappingForms.filter((_, i) => i !== index))
+  const handleMappingChange = (index: number, field: keyof MappingFormState, value: string) => {
+    setMappingForms(mappingForms.map((m, i) => (i === index ? { ...m, [field]: value } : m)))
   }
 
   const handleSave = async () => {
-    const validRoles = roles.filter((r) => r.name.trim())
-    const validMappings = mappings.filter((m) => m.from_role && m.from_channel)
-    const validationErrors = validateTemplate(validRoles, validMappings)
+    const validRoles = roles.filter((r) => r.name?.trim())
+    const validForms = mappingForms.filter((f) => f.sourceRole && f.sourceChannel)
+    const validationErrors = validateTemplate(validRoles, validForms)
 
     if (validationErrors.length > 0) {
       setErrors(validationErrors)
@@ -88,7 +123,7 @@ export function TemplateEditorPage() {
       name,
       is_default: isDefault,
       roles: validRoles,
-      mappings: validMappings,
+      mappings: validForms.map(formToMapping),
     }
 
     try {
@@ -107,7 +142,7 @@ export function TemplateEditorPage() {
 
   if (loading) return <div className="text-muted-foreground">Loading...</div>
 
-  const roleNames = roles.filter((r) => r.name.trim()).map((r) => r.name)
+  const roleNames = roles.filter((r) => r.name?.trim()).map((r) => r.name!)
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -201,11 +236,11 @@ export function TemplateEditorPage() {
           <CardTitle>Mappings</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {mappings.map((mapping, i) => (
+          {mappingForms.map((mapping, i) => (
             <div key={i} className="flex items-center gap-2 flex-wrap" data-testid="mapping-row">
               <Select
-                value={mapping.from_role}
-                onChange={(e) => handleMappingChange(i, 'from_role', e.target.value)}
+                value={mapping.sourceRole}
+                onChange={(e) => handleMappingChange(i, 'sourceRole', e.target.value)}
                 className="w-32"
                 data-testid="mapping-from-role"
               >
@@ -216,16 +251,16 @@ export function TemplateEditorPage() {
               </Select>
               <span className="text-muted-foreground">:</span>
               <Input
-                value={mapping.from_channel}
-                onChange={(e) => handleMappingChange(i, 'from_channel', e.target.value)}
+                value={mapping.sourceChannel}
+                onChange={(e) => handleMappingChange(i, 'sourceChannel', e.target.value)}
                 placeholder="channel"
                 className="w-28"
                 data-testid="mapping-from-channel"
               />
               <span className="text-muted-foreground">→</span>
               <Select
-                value={mapping.to_type}
-                onChange={(e) => handleMappingChange(i, 'to_type', e.target.value)}
+                value={mapping.sinkType}
+                onChange={(e) => handleMappingChange(i, 'sinkType', e.target.value)}
                 className="w-32"
                 data-testid="mapping-to-type"
               >
@@ -233,11 +268,11 @@ export function TemplateEditorPage() {
                 <option value="record">Record</option>
                 <option value="broadcast">Broadcast</option>
               </Select>
-              {mapping.to_type === 'role' && (
+              {mapping.sinkType === 'role' && (
                 <>
                   <Select
-                    value={mapping.to_role}
-                    onChange={(e) => handleMappingChange(i, 'to_role', e.target.value)}
+                    value={mapping.sinkRole}
+                    onChange={(e) => handleMappingChange(i, 'sinkRole', e.target.value)}
                     className="w-32"
                     data-testid="mapping-to-role"
                   >
@@ -248,15 +283,15 @@ export function TemplateEditorPage() {
                   </Select>
                   <span className="text-muted-foreground">:</span>
                   <Input
-                    value={mapping.to_channel}
-                    onChange={(e) => handleMappingChange(i, 'to_channel', e.target.value)}
+                    value={mapping.sinkChannel}
+                    onChange={(e) => handleMappingChange(i, 'sinkChannel', e.target.value)}
                     placeholder="channel"
                     className="w-28"
                     data-testid="mapping-to-channel"
                   />
                 </>
               )}
-              <Button variant="ghost" size="sm" onClick={() => handleRemoveMapping(i)} disabled={mappings.length <= 1}>
+              <Button variant="ghost" size="sm" onClick={() => handleRemoveMapping(i)} disabled={mappingForms.length <= 1}>
                 Remove
               </Button>
             </div>
