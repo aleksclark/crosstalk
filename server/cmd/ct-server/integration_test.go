@@ -96,6 +96,7 @@ func testServerFull(t *testing.T, opts testServerOpts) (baseURL, seedToken strin
 		Config:                 crosstalk.DefaultConfig(),
 		WebFS:                  webFS,
 		SignalingHandler:       &sigHandler,
+		Orchestrator:           orch,
 		TestMode:               true,
 		DB:                     db.DB,
 	}
@@ -299,6 +300,59 @@ func readAnswer(t *testing.T, ctx context.Context, conn *websocket.Conn) string 
 		default:
 		}
 	}
+}
+
+// startRenegotiationHandler starts a background goroutine that reads WebSocket
+// messages and handles server-initiated SDP offers by creating and sending an
+// answer. This is needed when the server adds tracks to the client's peer
+// connection (e.g. SFU forwarding).
+func (tc *testClient) startRenegotiationHandler() {
+	go func() {
+		for {
+			readCtx, readCancel := context.WithTimeout(tc.ctx, 30*time.Second)
+			_, data, err := tc.wsConn.Read(readCtx)
+			readCancel()
+			if err != nil {
+				return
+			}
+
+			var msg struct {
+				Type      string                   `json:"type"`
+				SDP       string                   `json:"sdp,omitempty"`
+				Candidate *webrtc.ICECandidateInit `json:"candidate,omitempty"`
+			}
+			if json.Unmarshal(data, &msg) != nil {
+				continue
+			}
+
+			switch msg.Type {
+			case "offer":
+				offer := webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: msg.SDP}
+				if err := tc.pc.SetRemoteDescription(offer); err != nil {
+					tc.t.Logf("renegotiation: set remote desc: %v", err)
+					continue
+				}
+				answer, err := tc.pc.CreateAnswer(nil)
+				if err != nil {
+					tc.t.Logf("renegotiation: create answer: %v", err)
+					continue
+				}
+				if err := tc.pc.SetLocalDescription(answer); err != nil {
+					tc.t.Logf("renegotiation: set local desc: %v", err)
+					continue
+				}
+				resp, _ := json.Marshal(map[string]string{
+					"type": "answer",
+					"sdp":  tc.pc.LocalDescription().SDP,
+				})
+				tc.wsConn.Write(tc.ctx, websocket.MessageText, resp) //nolint:errcheck
+			case "ice":
+				if msg.Candidate != nil {
+					tc.pc.AddICECandidate(*msg.Candidate) //nolint:errcheck
+				}
+			}
+		}
+	}()
 }
 
 // sendProto sends a protobuf ControlMessage on the control data channel.
@@ -552,6 +606,7 @@ func TestIntegration_SessionWithAudioForwarding(t *testing.T) {
 
 	// --- Client B (studio) ---
 	clientB := newTestClient(t, baseURL, token)
+	clientB.startRenegotiationHandler()
 	clientB.sendHello()
 	clientB.expectWelcome(5 * time.Second)
 	clientB.sendJoinSession(sessionID, "studio")
@@ -632,19 +687,16 @@ func TestIntegration_SessionWithAudioForwarding(t *testing.T) {
 		time.Sleep(20 * time.Millisecond) // ~50 packets/sec like real Opus
 	}
 
-	// Client B should eventually receive a track via the SFU forwarding path.
-	// The orchestrator's ForwardTrack adds a track to the server-side PC for
-	// client B, which triggers renegotiation that B may observe as an OnTrack.
-	// In test environment the OnTrack may fire. Let's give it a generous timeout.
+	// Client B should receive a track via the SFU forwarding path. The server
+	// adds a track to client B's PeerConnection and triggers renegotiation via
+	// a server-initiated offer. The renegotiation handler completes the exchange,
+	// and the client's OnTrack fires.
 	select {
 	case track := <-clientB.onTrackCh:
 		t.Logf("Client B received forwarded track: codec=%s", track.Codec().MimeType)
 		assert.Contains(t, strings.ToLower(track.Codec().MimeType), "opus")
-	case <-time.After(10 * time.Second):
-		// Track forwarding through SFU in a test environment may not trigger
-		// OnTrack on the client side if renegotiation doesn't propagate through
-		// WebSocket signaling. This is acceptable — the orchestrator wires it.
-		t.Log("Timed out waiting for track on Client B (SFU renegotiation may not propagate in test) — verifying orchestrator state instead")
+	case <-time.After(15 * time.Second):
+		t.Fatal("timed out waiting for forwarded track on Client B")
 	}
 
 	// Verify the orchestrator has an active live session with both clients.
@@ -927,4 +979,100 @@ func TestIntegration_TestResetEndpoint(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode,
 		"old token should be invalid after reset")
 	resp.Body.Close()
+}
+
+// ---------------------------------------------------------------------------
+// Test 6: REST DELETE sends SessionEnded to connected clients
+// ---------------------------------------------------------------------------
+
+func TestIntegration_DeleteSessionNotifiesClients(t *testing.T) {
+	baseURL, token, _ := testServerFull(t, testServerOpts{})
+
+	tmplBody := map[string]any{
+		"name": "notify-test",
+		"roles": []map[string]any{
+			{"name": "host", "multi_client": false},
+		},
+		"mappings": []map[string]string{
+			{"source": "host:mic", "sink": "record"},
+		},
+	}
+	resp := apiDo(t, "POST", baseURL+"/api/templates", token, tmplBody)
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	tmpl := apiJSON[map[string]any](t, resp)
+	tmplID := tmpl["id"].(string)
+
+	resp = apiDo(t, "POST", baseURL+"/api/sessions", token, map[string]string{
+		"template_id": tmplID,
+		"name":        "notify-session",
+	})
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	session := apiJSON[map[string]any](t, resp)
+	sessionID := session["id"].(string)
+
+	client := newTestClient(t, baseURL, token)
+	client.sendHello()
+	client.expectWelcome(5 * time.Second)
+	client.sendJoinSession(sessionID, "host")
+	client.expectSessionEvent(5 * time.Second)
+
+	time.Sleep(200 * time.Millisecond)
+
+	resp = apiDo(t, "DELETE", baseURL+"/api/sessions/"+sessionID, token, nil)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	resp.Body.Close()
+
+	ev := client.drainUntilSessionEvent(crosstalkv1.SessionEventType_SESSION_ENDED, 5*time.Second)
+	require.NotNil(t, ev)
+	assert.Equal(t, crosstalkv1.SessionEventType_SESSION_ENDED, ev.GetType())
+	assert.Equal(t, sessionID, ev.GetSessionId())
+
+	resp = apiDo(t, "GET", baseURL+"/api/sessions/"+sessionID, token, nil)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	ended := apiJSON[map[string]any](t, resp)
+	assert.Equal(t, "ended", ended["status"])
+}
+
+// ---------------------------------------------------------------------------
+// Test 7: Session transitions waiting → active when binding activates
+// ---------------------------------------------------------------------------
+
+func TestIntegration_SessionActiveTransition(t *testing.T) {
+	baseURL, token, _ := testServerFull(t, testServerOpts{})
+
+	tmplBody := map[string]any{
+		"name": "active-test",
+		"roles": []map[string]any{
+			{"name": "host", "multi_client": false},
+		},
+		"mappings": []map[string]string{
+			{"source": "host:mic", "sink": "record"},
+		},
+	}
+	resp := apiDo(t, "POST", baseURL+"/api/templates", token, tmplBody)
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	tmpl := apiJSON[map[string]any](t, resp)
+	tmplID := tmpl["id"].(string)
+
+	resp = apiDo(t, "POST", baseURL+"/api/sessions", token, map[string]string{
+		"template_id": tmplID,
+		"name":        "active-transition-session",
+	})
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	session := apiJSON[map[string]any](t, resp)
+	sessionID := session["id"].(string)
+	assert.Equal(t, "waiting", session["status"])
+
+	client := newTestClient(t, baseURL, token)
+	client.sendHello()
+	client.expectWelcome(5 * time.Second)
+	client.sendJoinSession(sessionID, "host")
+	client.expectSessionEvent(5 * time.Second)
+
+	time.Sleep(200 * time.Millisecond)
+
+	resp = apiDo(t, "GET", baseURL+"/api/sessions/"+sessionID, token, nil)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	updated := apiJSON[map[string]any](t, resp)
+	assert.Equal(t, "active", updated["status"])
 }
