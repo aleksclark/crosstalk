@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
+import { createContext, useState, useEffect, useCallback, type ReactNode } from 'react'
 import { login as apiLogin, logout as apiLogout, setOnUnauthorized, setAuthToken } from '@/lib/api/client'
 import type { User } from '@/lib/api/types'
 
@@ -9,7 +9,7 @@ interface AuthContextType {
   logout: () => Promise<void>
 }
 
-const AuthContext = createContext<AuthContextType | null>(null)
+export const AuthContext = createContext<AuthContextType | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => {
@@ -57,10 +57,3 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 }
 
-export function useAuth(): AuthContextType {
-  const ctx = useContext(AuthContext)
-  if (!ctx) {
-    throw new Error('useAuth must be used within an AuthProvider')
-  }
-  return ctx
-}

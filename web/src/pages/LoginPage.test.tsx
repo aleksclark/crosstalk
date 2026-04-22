@@ -7,14 +7,13 @@ import { LoginPage } from './LoginPage'
 const mockLogin = vi.fn()
 const mockNavigate = vi.fn()
 
-vi.mock('@/lib/auth', () => ({
+vi.mock('@/lib/use-auth', () => ({
   useAuth: () => ({
     login: mockLogin,
     isAuthenticated: false,
     user: null,
     logout: vi.fn(),
   }),
-  AuthProvider: ({ children }: { children: React.ReactNode }) => children,
 }))
 
 vi.mock('react-router-dom', async () => {

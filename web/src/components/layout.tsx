@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { useAuth } from '@/lib/auth'
+import { useAuth } from '@/lib/use-auth'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 

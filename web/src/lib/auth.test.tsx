@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
-import { AuthProvider, useAuth } from './auth'
+import { AuthProvider } from './auth'
+import { useAuth } from './use-auth'
 
 // Mock API client
 vi.mock('@/lib/api/client', () => ({

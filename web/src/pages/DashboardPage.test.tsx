@@ -52,17 +52,17 @@ vi.mock('@/lib/api/client', () => ({
   getClients: () => Promise.resolve(mockClients),
   getSessions: () => Promise.resolve(mockSessions),
   getTemplates: () => Promise.resolve(mockTemplates),
+  getServerStatus: () => Promise.resolve({ uptime: 3661, active_sessions: 1, connected_clients: 1, version: 'v0.1.0' }),
   createSession: vi.fn().mockResolvedValue({ id: 'new-session', name: 'Quick Test' }),
 }))
 
-vi.mock('@/lib/auth', () => ({
+vi.mock('@/lib/use-auth', () => ({
   useAuth: () => ({
     user: { id: '1', username: 'admin', created_at: '' },
     isAuthenticated: true,
     login: vi.fn(),
     logout: vi.fn(),
   }),
-  AuthProvider: ({ children }: { children: React.ReactNode }) => children,
 }))
 
 vi.mock('react-router-dom', async () => {

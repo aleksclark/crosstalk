@@ -52,14 +52,13 @@ vi.mock('@/lib/api/client', () => ({
   endSession: (...args: unknown[]) => mockEndSession(...args),
 }))
 
-vi.mock('@/lib/auth', () => ({
+vi.mock('@/lib/use-auth', () => ({
   useAuth: () => ({
     user: { id: '1', username: 'admin', created_at: '' },
     isAuthenticated: true,
     login: vi.fn(),
     logout: vi.fn(),
   }),
-  AuthProvider: ({ children }: { children: React.ReactNode }) => children,
 }))
 
 vi.mock('react-router-dom', async () => {
