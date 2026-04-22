@@ -9,7 +9,7 @@ import { defineConfig, devices } from "@playwright/test";
  */
 export default defineConfig({
   testDir: "./specs",
-  timeout: 30_000,
+  timeout: 60_000,
   retries: 0,
   workers: 1,
   reporter: "list",
@@ -28,6 +28,13 @@ export default defineConfig({
           args: [
             "--use-fake-ui-for-media-stream",
             "--use-fake-device-for-media-stream",
+            // When CT_FAKE_AUDIO_FILE is set, Chromium uses that file as
+            // the fake microphone input (for golden audio tests).
+            ...(process.env.CT_FAKE_AUDIO_FILE
+              ? [
+                  `--use-file-for-fake-audio-capture=${process.env.CT_FAKE_AUDIO_FILE}`,
+                ]
+              : []),
           ],
         },
       },

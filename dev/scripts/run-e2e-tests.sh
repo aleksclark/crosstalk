@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # run-e2e-tests.sh — End-to-end golden tests for CrossTalk (Phases 9.3–9.5).
 #
-# Proves that the CrossTalk E2E pipeline works: ct-server (x86_64 host) ↔
-# ct-client (arm64 K2B board with PipeWire + ALSA loopback).
+# Proves that the CrossTalk E2E pipeline works through the FULL WebRTC path:
+#   Browser ↔ WebRTC ↔ ct-server SFU ↔ WebRTC ↔ ct-client (K2B) ↔ PipeWire
 #
 # Tests:
-#   9.3  Host → K2B audio path (via ALSA loopback verification)
-#   9.4  K2B → Host audio path (via ALSA loopback verification)
+#   9.3  Browser → K2B audio path (Playwright sends, K2B captures)
+#   9.4  K2B → Browser audio path (K2B plays, Playwright captures)
 #   9.5  Full infrastructure: build, deploy, connect, audio compare
 #
 # Usage:
@@ -16,10 +16,10 @@
 #   K2B_HOST      Board IP          (default 192.168.0.109)
 #   K2B_USER      PipeWire user     (default streamlate)
 #   HOST_IP       Host IP reachable from K2B (auto-detected)
-#   E2E_THRESHOLD Cross-corr pass   (default 0.60)
+#   E2E_THRESHOLD Cross-corr pass   (default 0.90)
 #   E2E_KEEP_TMP  Set to 1 to keep temp dir
 #
-# Dependencies: Go 1.22+, ffmpeg, python3, ssh, jq, curl
+# Dependencies: Go 1.22+, ffmpeg, python3, ssh, jq, curl, npx (playwright)
 set -euo pipefail
 
 # ── Colours ──────────────────────────────────────────────────────────────────
@@ -34,12 +34,16 @@ die()   { fail "$*"; exit 1; }
 K2B_HOST="${K2B_HOST:-192.168.0.109}"
 K2B_USER="${K2B_USER:-streamlate}"
 K2B_UID=999
-THRESHOLD="${E2E_THRESHOLD:-0.60}"
+THRESHOLD="${E2E_THRESHOLD:-0.90}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 COMPARE="$SCRIPT_DIR/compare-audio.sh"
 FIXTURES="$PROJECT_ROOT/test/fixtures"
 REF_TONE="$FIXTURES/test-tone-1khz-5s.wav"
+
+# Playwright paths
+PW_CONFIG="$PROJECT_ROOT/test/playwright/playwright.config.ts"
+PW_SPEC="$PROJECT_ROOT/test/playwright/specs/golden-audio.spec.ts"
 
 # K2B PipeWire / ALSA names
 K2B_SOURCE="alsa_input.platform-snd_aloop.0.analog-stereo"
@@ -99,12 +103,13 @@ fail_test() { ((TESTS_FAILED++)) || true; ((TESTS_RUN++)) || true; fail "$1"; }
 # ══════════════════════════════════════════════════════════════════════════════
 info "Checking prerequisites..."
 
-for cmd in go ffmpeg python3 ssh scp jq curl; do
+for cmd in go ffmpeg python3 ssh scp jq curl npx; do
     command -v "$cmd" >/dev/null 2>&1 || die "$cmd not found"
 done
 
 [[ -f "$REF_TONE" ]]  || die "Reference tone not found: $REF_TONE"
 [[ -f "$COMPARE" ]]   || die "compare-audio.sh not found: $COMPARE"
+[[ -f "$PW_SPEC" ]]   || die "Playwright golden-audio spec not found: $PW_SPEC"
 
 info "Pinging K2B at ${K2B_HOST}..."
 ssh -o ConnectTimeout=5 "root@${K2B_HOST}" "echo K2B_OK" >/dev/null 2>&1 \
@@ -160,7 +165,7 @@ CLEANUP_PIDS+=("$SERVER_PID")
 SEED_TOKEN=""
 for _ in $(seq 1 30); do
     if [[ -f "$SERVER_LOG" ]]; then
-        SEED_TOKEN="$(grep -o '"token":"[^"]*"' "$SERVER_LOG" | head -1 | cut -d'"' -f4 || true)"
+        SEED_TOKEN="$(grep -oP '(?<="token": ")[^"]*' "$SERVER_LOG" | head -1 || true)"
         [[ -n "$SEED_TOKEN" ]] && break
     fi
     sleep 0.3
@@ -228,12 +233,14 @@ ssh "root@${K2B_HOST}" "chmod +x /usr/local/bin/ct-client"
 scp "$REF_TONE" "root@${K2B_HOST}:/tmp/test-tone.wav" >/dev/null
 ok "Deployed ct-client and test tone to K2B"
 
-# Write client config
+# Write client config — connect to session as "studio" role
 K2B_CFG="/tmp/ct-client-e2e.json"
 ssh "root@${K2B_HOST}" "cat > ${K2B_CFG}" <<EOCFG
 {
   "server_url": "http://${HOST_IP}:${SERVER_PORT}",
   "token": "${K2B_TOKEN}",
+  "session_id": "${SESSION_ID}",
+  "role": "studio",
   "source_name": "${K2B_SOURCE}",
   "sink_name": "${K2B_SINK}",
   "log_level": "debug"
@@ -241,7 +248,7 @@ ssh "root@${K2B_HOST}" "cat > ${K2B_CFG}" <<EOCFG
 EOCFG
 ok "K2B client config written"
 
-# Start ct-client on K2B
+# Start ct-client on K2B — joins the session as "studio" role
 K2B_CLIENT_LOG="/tmp/ct-client-e2e.log"
 ssh "root@${K2B_HOST}" "su - ${K2B_USER} -c 'XDG_RUNTIME_DIR=/run/user/${K2B_UID} nohup /usr/local/bin/ct-client --config ${K2B_CFG} > ${K2B_CLIENT_LOG} 2>&1 &'"
 info "Waiting for K2B client to connect..."
@@ -298,7 +305,6 @@ fi
 if $K2B_CONNECTED; then
     pass_test "9.5d ct-client on K2B connected to ct-server"
 else
-    # Check if at least websocket connected
     WS_OK=$(ssh "root@${K2B_HOST}" "grep -c 'control channel\|connected\|WebRTC' ${K2B_CLIENT_LOG} 2>/dev/null" || echo 0)
     if [[ "$WS_OK" -gt 0 ]]; then
         pass_test "9.5d ct-client on K2B shows connection activity"
@@ -316,40 +322,45 @@ else
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TEST 9.3: Host → K2B audio path (ALSA loopback round-trip on K2B)
+# TEST 9.3: Browser → K2B audio path (full WebRTC pipeline)
 # ══════════════════════════════════════════════════════════════════════════════
 echo ""
 info "═══════════════════════════════════════════"
-info "  TEST 9.3: Audio Path — Host → K2B"
+info "  TEST 9.3: Audio Path — Browser → K2B"
 info "═══════════════════════════════════════════"
 info ""
-info "This test injects a 1kHz tone into K2B's ALSA loopback input,"
-info "captures from the loopback output, and verifies audio integrity."
-info "This proves the K2B audio plumbing works for receiving audio."
-
-# ALSA Loopback wiring:
-#   Write to plughw:Loopback,1,1 → appears at plughw:Loopback,0,1 (capture)
-#     (The ct-client PipeWire source wraps Loopback,0 capture)
-#   Write to plughw:Loopback,0,0 → appears at plughw:Loopback,1,0 (capture)
-#     (The ct-client PipeWire sink wraps Loopback,0 playback)
-#
-# For THIS test, we test the sink side (audio arriving at K2B):
-#   Inject via plughw:Loopback,0,0 (playback) → capture from plughw:Loopback,1,0
+info "Full path: Playwright browser (fake mic = test tone)"
+info "  → WebRTC → ct-server SFU → WebRTC → ct-client → PipeWire → capture"
 
 K2B_CAPTURE_93="/tmp/k2b-capture-93.wav"
 ssh "root@${K2B_HOST}" "rm -f ${K2B_CAPTURE_93}"
 
-# Start capture on K2B (record from Loopback,1,0 — the capture side of device 0 playback)
-info "Starting audio capture on K2B..."
-ssh "root@${K2B_HOST}" "nohup su - ${K2B_USER} -c 'XDG_RUNTIME_DIR=/run/user/${K2B_UID} ffmpeg -y -loglevel warning -f alsa -i plughw:Loopback,1,0 -t 6 -ar 48000 -ac 1 ${K2B_CAPTURE_93}' > /tmp/ffmpeg-cap-93.log 2>&1 &"
+# Start PipeWire capture on K2B — records from the ALSA loopback sink
+# (this is where ct-client outputs audio received via WebRTC)
+info "Starting audio capture on K2B PipeWire sink..."
+ssh "root@${K2B_HOST}" "nohup su - ${K2B_USER} -c 'XDG_RUNTIME_DIR=/run/user/${K2B_UID} ffmpeg -y -loglevel warning -f pulse -i ${K2B_SINK}.monitor -t 8 -ar 48000 -ac 1 ${K2B_CAPTURE_93}' > /tmp/ffmpeg-cap-93.log 2>&1 &"
 sleep 1
 
-# Inject tone into Loopback,0,0 (playback side — simulates audio arriving for K2B)
-info "Injecting test tone into ALSA loopback (simulating incoming audio)..."
-ssh "root@${K2B_HOST}" "su - ${K2B_USER} -c 'XDG_RUNTIME_DIR=/run/user/${K2B_UID} ffmpeg -re -i /tmp/test-tone.wav -t 5 -f alsa plughw:Loopback,0,0 -loglevel warning' > /tmp/ffmpeg-play-93.log 2>&1" || true
-sleep 2
+# Run Playwright test — connects as "translator" role with fake audio capture.
+# The --use-file-for-fake-audio-capture flag makes Chromium play the test tone
+# as the microphone input, which flows through WebRTC to the server and then
+# to ct-client on K2B.
+info "Launching Playwright (Browser→K2B)..."
+CT_SERVER_URL="${SERVER_URL}" \
+CT_SESSION_ID="${SESSION_ID}" \
+CT_ROLE="translator" \
+CT_TEST_MODE="browser-to-k2b" \
+CT_AUDIO_DURATION_MS="7000" \
+CT_FAKE_AUDIO_FILE="${REF_TONE}" \
+npx playwright test \
+    --config "$PW_CONFIG" \
+    --grep "Browser→K2B" \
+    --project chromium \
+    2>&1 | tee "$TMPDIR/pw-93.log" || true
 
-# Wait for capture to finish
+# Wait for K2B capture to complete
+info "Waiting for K2B capture to complete..."
+sleep 3
 ssh "root@${K2B_HOST}" "pkill -x ffmpeg 2>/dev/null || true"
 sleep 1
 
@@ -363,119 +374,82 @@ if [[ "$K2B_CAP_SIZE" -gt 5000 ]]; then
     info "Cross-correlation score: $SCORE_93 (threshold: $THRESHOLD)"
 
     if python3 -c "import sys; sys.exit(0 if float('$SCORE_93') > float('$THRESHOLD') else 1)" 2>/dev/null; then
-        pass_test "9.3 Host→K2B audio path verified (corr: $SCORE_93)"
+        pass_test "9.3 Browser→K2B audio path verified (corr: $SCORE_93 > $THRESHOLD)"
     else
-        fail_test "9.3 Host→K2B audio correlation too low: $SCORE_93 < $THRESHOLD"
+        fail_test "9.3 Browser→K2B audio correlation too low: $SCORE_93 < $THRESHOLD"
     fi
 else
-    # Try alternate subdevice pairing
-    warn "Primary loopback pairing produced no audio. Trying alternate..."
-    ssh "root@${K2B_HOST}" "rm -f /tmp/k2b-capture-93b.wav"
-    ssh "root@${K2B_HOST}" "nohup su - ${K2B_USER} -c 'XDG_RUNTIME_DIR=/run/user/${K2B_UID} ffmpeg -y -loglevel warning -f alsa -i plughw:Loopback,0,1 -t 6 -ar 48000 -ac 1 /tmp/k2b-capture-93b.wav' > /dev/null 2>&1 &"
-    sleep 1
-    ssh "root@${K2B_HOST}" "su - ${K2B_USER} -c 'XDG_RUNTIME_DIR=/run/user/${K2B_UID} ffmpeg -re -i /tmp/test-tone.wav -t 5 -f alsa plughw:Loopback,1,1 -loglevel warning'" 2>/dev/null || true
-    sleep 2
-    ssh "root@${K2B_HOST}" "pkill -x ffmpeg 2>/dev/null || true"
-    sleep 1
-
-    ALT_SIZE=$(ssh "root@${K2B_HOST}" "stat -c%s /tmp/k2b-capture-93b.wav 2>/dev/null || echo 0")
-    if [[ "$ALT_SIZE" -gt 5000 ]]; then
-        scp "root@${K2B_HOST}:/tmp/k2b-capture-93b.wav" "$TMPDIR/k2b-capture-93b.wav" >/dev/null
-        SCORE_93=$("$COMPARE" "$REF_TONE" "$TMPDIR/k2b-capture-93b.wav" "$THRESHOLD" 2>&1 | tail -1 || echo "0.0")
-        info "Alternate pairing correlation: $SCORE_93"
-        if python3 -c "import sys; sys.exit(0 if float('$SCORE_93') > float('$THRESHOLD') else 1)" 2>/dev/null; then
-            pass_test "9.3 Host→K2B audio path verified via alt pairing (corr: $SCORE_93)"
-        else
-            fail_test "9.3 Host→K2B loopback audio correlation too low: $SCORE_93"
-        fi
-    else
-        fail_test "9.3 Host→K2B ALSA loopback capture failed (0 bytes from both pairings)"
-    fi
+    fail_test "9.3 Browser→K2B capture failed (${K2B_CAP_SIZE} bytes — no audio arrived at K2B)"
+    info "Check: K2B ffmpeg log: ssh root@${K2B_HOST} cat /tmp/ffmpeg-cap-93.log"
+    info "Check: Playwright log: cat $TMPDIR/pw-93.log"
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TEST 9.4: K2B → Host audio path (ALSA loopback mic side on K2B)
+# TEST 9.4: K2B → Browser audio path (full WebRTC pipeline)
 # ══════════════════════════════════════════════════════════════════════════════
 echo ""
 info "═══════════════════════════════════════════"
-info "  TEST 9.4: Audio Path — K2B → Host"
+info "  TEST 9.4: Audio Path — K2B → Browser"
 info "═══════════════════════════════════════════"
 info ""
-info "This test injects a tone into K2B's ALSA loopback capture side"
-info "(simulating mic input), captures from the playback side, and"
-info "verifies audio integrity. This proves K2B mic audio plumbing works."
+info "Full path: K2B PipeWire (test tone) → ct-client"
+info "  → WebRTC → ct-server SFU → WebRTC → Playwright browser → capture"
 
-# For the mic side:
-#   ct-client reads from alsa_input (Loopback,0 capture)
-#   We inject via plughw:Loopback,1,1 (playback) → appears at Loopback,0,1 (capture)
-#   OR we inject via the paired subdevice
-#
-# We verify the loopback in the reverse direction from 9.3
+BROWSER_CAPTURE="$TMPDIR/browser-captured-audio.webm"
+BROWSER_CAPTURE_WAV="$TMPDIR/browser-captured-audio.wav"
 
-K2B_CAPTURE_94="/tmp/k2b-capture-94.wav"
-ssh "root@${K2B_HOST}" "rm -f ${K2B_CAPTURE_94}"
+# Play test tone into K2B PipeWire loopback source (simulates mic input on K2B).
+# ct-client picks this up and sends via WebRTC to the server.
+info "Playing test tone into K2B PipeWire source..."
+ssh "root@${K2B_HOST}" "nohup su - ${K2B_USER} -c 'XDG_RUNTIME_DIR=/run/user/${K2B_UID} ffmpeg -re -i /tmp/test-tone.wav -t 6 -f pulse default' > /tmp/ffmpeg-play-94.log 2>&1 &"
+sleep 0.5
 
-# Capture from one side while injecting on the other
-info "Testing K2B mic loopback path..."
-ssh "root@${K2B_HOST}" "nohup su - ${K2B_USER} -c 'XDG_RUNTIME_DIR=/run/user/${K2B_UID} ffmpeg -y -loglevel warning -f alsa -i plughw:Loopback,0,0 -t 6 -ar 48000 -ac 1 ${K2B_CAPTURE_94}' > /tmp/ffmpeg-cap-94.log 2>&1 &"
-sleep 1
+# Run Playwright test — connects as "translator", captures received audio
+# from the WebRTC stream using Web Audio API + MediaRecorder.
+info "Launching Playwright (K2B→Browser)..."
+CT_SERVER_URL="${SERVER_URL}" \
+CT_SESSION_ID="${SESSION_ID}" \
+CT_ROLE="translator" \
+CT_TEST_MODE="k2b-to-browser" \
+CT_CAPTURE_PATH="${BROWSER_CAPTURE}" \
+CT_AUDIO_DURATION_MS="7000" \
+npx playwright test \
+    --config "$PW_CONFIG" \
+    --grep "K2B→Browser" \
+    --project chromium \
+    2>&1 | tee "$TMPDIR/pw-94.log" || true
 
-info "Injecting test tone into mic loopback..."
-ssh "root@${K2B_HOST}" "su - ${K2B_USER} -c 'XDG_RUNTIME_DIR=/run/user/${K2B_UID} ffmpeg -re -i /tmp/test-tone.wav -t 5 -f alsa plughw:Loopback,1,0 -loglevel warning'" 2>/dev/null || true
-sleep 2
-
+# Wait for K2B playback to finish
 ssh "root@${K2B_HOST}" "pkill -x ffmpeg 2>/dev/null || true"
 sleep 1
 
-K2B_CAP94_SIZE=$(ssh "root@${K2B_HOST}" "stat -c%s ${K2B_CAPTURE_94} 2>/dev/null || echo 0")
-info "Captured ${K2B_CAP94_SIZE} bytes on K2B"
+if [[ -f "$BROWSER_CAPTURE" ]] && [[ "$(stat -c%s "$BROWSER_CAPTURE" 2>/dev/null || echo 0)" -gt 1000 ]]; then
+    # Convert webm to wav for comparison
+    ffmpeg -y -hide_banner -loglevel error -i "$BROWSER_CAPTURE" -ar 48000 -ac 1 "$BROWSER_CAPTURE_WAV"
 
-if [[ "$K2B_CAP94_SIZE" -gt 5000 ]]; then
-    scp "root@${K2B_HOST}:${K2B_CAPTURE_94}" "$TMPDIR/k2b-capture-94.wav" >/dev/null
-
-    SCORE_94=$("$COMPARE" "$REF_TONE" "$TMPDIR/k2b-capture-94.wav" "$THRESHOLD" 2>&1 | tail -1 || echo "0.0")
+    SCORE_94=$("$COMPARE" "$REF_TONE" "$BROWSER_CAPTURE_WAV" "$THRESHOLD" 2>&1 | tail -1 || echo "0.0")
     info "Cross-correlation score: $SCORE_94 (threshold: $THRESHOLD)"
 
     if python3 -c "import sys; sys.exit(0 if float('$SCORE_94') > float('$THRESHOLD') else 1)" 2>/dev/null; then
-        pass_test "9.4 K2B→Host mic audio path verified (corr: $SCORE_94)"
+        pass_test "9.4 K2B→Browser audio path verified (corr: $SCORE_94 > $THRESHOLD)"
     else
-        fail_test "9.4 K2B→Host mic audio correlation too low: $SCORE_94 < $THRESHOLD"
+        fail_test "9.4 K2B→Browser audio correlation too low: $SCORE_94 < $THRESHOLD"
     fi
 else
-    # Try alternate subdevice
-    warn "Primary mic loopback produced no audio. Trying alternate..."
-    ssh "root@${K2B_HOST}" "rm -f /tmp/k2b-capture-94b.wav"
-    ssh "root@${K2B_HOST}" "nohup su - ${K2B_USER} -c 'XDG_RUNTIME_DIR=/run/user/${K2B_UID} ffmpeg -y -loglevel warning -f alsa -i plughw:Loopback,1,1 -t 6 -ar 48000 -ac 1 /tmp/k2b-capture-94b.wav' > /dev/null 2>&1 &"
-    sleep 1
-    ssh "root@${K2B_HOST}" "su - ${K2B_USER} -c 'XDG_RUNTIME_DIR=/run/user/${K2B_UID} ffmpeg -re -i /tmp/test-tone.wav -t 5 -f alsa plughw:Loopback,0,1 -loglevel warning'" 2>/dev/null || true
-    sleep 2
-    ssh "root@${K2B_HOST}" "pkill -x ffmpeg 2>/dev/null || true"
-    sleep 1
-
-    ALT94_SIZE=$(ssh "root@${K2B_HOST}" "stat -c%s /tmp/k2b-capture-94b.wav 2>/dev/null || echo 0")
-    if [[ "$ALT94_SIZE" -gt 5000 ]]; then
-        scp "root@${K2B_HOST}:/tmp/k2b-capture-94b.wav" "$TMPDIR/k2b-capture-94b.wav" >/dev/null
-        SCORE_94=$("$COMPARE" "$REF_TONE" "$TMPDIR/k2b-capture-94b.wav" "$THRESHOLD" 2>&1 | tail -1 || echo "0.0")
-        info "Alternate mic pairing correlation: $SCORE_94"
-        if python3 -c "import sys; sys.exit(0 if float('$SCORE_94') > float('$THRESHOLD') else 1)" 2>/dev/null; then
-            pass_test "9.4 K2B→Host mic path verified via alt pairing (corr: $SCORE_94)"
-        else
-            fail_test "9.4 K2B→Host mic loopback correlation too low: $SCORE_94"
-        fi
-    else
-        fail_test "9.4 K2B→Host ALSA loopback mic capture failed (both pairings)"
-    fi
+    fail_test "9.4 K2B→Browser capture failed (no audio captured in browser)"
+    info "Check: Playwright log: cat $TMPDIR/pw-94.log"
+    info "Check: K2B playback log: ssh root@${K2B_HOST} cat /tmp/ffmpeg-play-94.log"
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TEST 9.5 (continued): WebRTC connectivity check
+# TEST 9.5f: WebRTC Signaling Verification
 # ══════════════════════════════════════════════════════════════════════════════
 echo ""
 info "═══════════════════════════════════════════"
 info "  TEST 9.5f: WebRTC Signaling Verification"
 info "═══════════════════════════════════════════"
 
-# Check the server log for evidence of the K2B client WebSocket + WebRTC handshake
+# Check the server log for evidence of WebRTC handshake
 WS_UPGRADE=$(grep -c "upgrade\|websocket\|signaling" "$SERVER_LOG" 2>/dev/null || echo "0"); WS_UPGRADE="${WS_UPGRADE%%$'\n'*}"
 SDP_EXCHANGE=$(grep -c "offer\|answer\|SDP\|sdp" "$SERVER_LOG" 2>/dev/null || echo "0"); SDP_EXCHANGE="${SDP_EXCHANGE%%$'\n'*}"
 HELLO_RECV=$(grep -c "Hello\|hello\|capabilities" "$SERVER_LOG" 2>/dev/null || echo "0"); HELLO_RECV="${HELLO_RECV%%$'\n'*}"
@@ -508,6 +482,8 @@ echo ""
 info "Artifacts:"
 info "  Server log:  $SERVER_LOG"
 info "  K2B log:     ssh root@${K2B_HOST} cat ${K2B_CLIENT_LOG}"
+info "  PW 9.3 log:  $TMPDIR/pw-93.log"
+info "  PW 9.4 log:  $TMPDIR/pw-94.log"
 info "  Temp dir:    $TMPDIR"
 echo ""
 
