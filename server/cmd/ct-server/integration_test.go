@@ -830,16 +830,8 @@ func TestIntegration_SessionWithRecording(t *testing.T) {
 	// Check that recording files exist.
 	sessionDir := filepath.Join(recordDir, sessionID)
 
-	// The OGG file may or may not exist depending on whether the OnTrack handler
-	// fired on the server-side PC. The recording binding sets up OnTrack to
-	// write RTP → OGG. In a real scenario it fires; in test it depends on
-	// renegotiation.
 	files, err := os.ReadDir(sessionDir)
-	if err != nil {
-		t.Logf("Recording directory does not exist — recording binding may not have activated in test environment: %v", err)
-		t.Logf("This is expected when the client's added track doesn't trigger OnTrack on the server PC without full renegotiation")
-		return
-	}
+	require.NoError(t, err, "recording directory not created — recording did not work")
 
 	t.Logf("Recording directory contents (%d files):", len(files))
 	var oggFile string
@@ -850,33 +842,36 @@ func TestIntegration_SessionWithRecording(t *testing.T) {
 		}
 	}
 
-	// Check for session-meta.json.
+	// Hard-assert: OGG file must exist.
+	require.NotEmpty(t, oggFile, "expected at least one OGG file in recording directory")
+
+	// Hard-assert: session-meta.json must exist and be valid.
 	metaPath := filepath.Join(sessionDir, "session-meta.json")
-	if _, err := os.Stat(metaPath); err == nil {
-		meta, err := ctpion.ReadSessionMeta(sessionDir)
-		require.NoError(t, err)
-		assert.Equal(t, sessionID, meta.SessionID)
-		assert.Equal(t, "record-test", meta.TemplateName)
-		t.Logf("Session meta: %d recording files", len(meta.Files))
-	}
+	_, err = os.Stat(metaPath)
+	require.NoError(t, err, "session-meta.json should exist")
 
-	// If OGG file exists and ffprobe is available, validate it.
-	if oggFile != "" {
-		info, _ := os.Stat(oggFile)
-		assert.Greater(t, info.Size(), int64(0), "OGG file should not be empty")
+	meta, err := ctpion.ReadSessionMeta(sessionDir)
+	require.NoError(t, err)
+	assert.Equal(t, sessionID, meta.SessionID)
+	assert.Equal(t, "record-test", meta.TemplateName)
+	assert.NotEmpty(t, meta.Files, "session-meta.json should list recording files")
 
-		if _, err := exec.LookPath("ffprobe"); err == nil {
-			cmd := exec.Command("ffprobe", "-v", "error", "-show_format", "-of", "json", oggFile)
-			out, err := cmd.Output()
-			if err == nil {
-				t.Logf("ffprobe output: %s", string(out))
-				assert.Contains(t, string(out), "ogg")
-			} else {
-				t.Logf("ffprobe failed (non-fatal): %v", err)
-			}
+	// Validate OGG file is non-empty.
+	info, err := os.Stat(oggFile)
+	require.NoError(t, err)
+	assert.Greater(t, info.Size(), int64(0), "OGG file should not be empty")
+
+	if _, err := exec.LookPath("ffprobe"); err == nil {
+		cmd := exec.Command("ffprobe", "-v", "error", "-show_format", "-of", "json", oggFile)
+		out, err := cmd.Output()
+		if err == nil {
+			t.Logf("ffprobe output: %s", string(out))
+			assert.Contains(t, string(out), "ogg")
 		} else {
-			t.Log("ffprobe not available, skipping OGG validation")
+			t.Logf("ffprobe failed (non-fatal): %v", err)
 		}
+	} else {
+		t.Log("ffprobe not available, skipping OGG validation")
 	}
 }
 

@@ -223,9 +223,14 @@ func (o *Orchestrator) EndSession(sessionID string) {
 	// Write session-meta.json if any recordings were made.
 	if len(recordingFiles) > 0 && o.RecordingPath != "" {
 		dir := filepath.Join(o.RecordingPath, sessionID)
+		participants := make(map[string]string, len(ls.Clients))
+		for peerID, c := range ls.Clients {
+			participants[c.Role] = peerID
+		}
 		meta := &SessionMeta{
 			SessionID:    sessionID,
 			TemplateName: ls.Template.Name,
+			Participants: participants,
 			StartedAt:    ls.StartedAt,
 			EndedAt:      time.Now(),
 			Files:        recordingFiles,
@@ -382,6 +387,8 @@ func (o *Orchestrator) deactivateBinding(ls *LiveSession, channelID string, lb *
 			slog.Error("orchestrator: close recorder failed",
 				"channel", channelID, "err", err)
 		}
+		sendSessionEvent(lb.SourcePeer, crosstalkv1.SessionEventType_SESSION_RECORDING_STOPPED,
+			ls.Session.ID, "recording stopped for "+lb.Binding.SourceRole+":"+lb.Binding.SourceChannel)
 	}
 
 	// Send UnbindChannel to source.
@@ -472,6 +479,10 @@ func (o *Orchestrator) startRecording(ls *LiveSession, lb *LiveBinding) {
 
 	slog.Info("orchestrator: started recording",
 		"channel", lb.ChannelID, "path", filePath)
+
+	// Emit recording started event to the source peer.
+	sendSessionEvent(lb.SourcePeer, crosstalkv1.SessionEventType_SESSION_RECORDING_STARTED,
+		ls.Session.ID, "recording started for "+lb.Binding.SourceRole+":"+lb.Binding.SourceChannel)
 }
 
 // GetLiveSession returns the live session for the given session ID, or nil.
@@ -480,6 +491,31 @@ func (o *Orchestrator) GetLiveSession(sessionID string) *LiveSession {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	return o.sessions[sessionID]
+}
+
+// RecordingStatus returns the current recording state for the given session.
+// Returns nil if the session is not live or has no recording bindings.
+func (o *Orchestrator) RecordingStatus(sessionID string) *crosstalk.RecordingInfo {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	ls := o.sessions[sessionID]
+	if ls == nil {
+		return nil
+	}
+
+	info := &crosstalk.RecordingInfo{}
+	for _, lb := range ls.Bindings {
+		if lb.Recorder != nil {
+			info.Active = true
+			info.FileCount++
+			fi, err := os.Stat(lb.Recorder.Path())
+			if err == nil {
+				info.TotalBytes += fi.Size()
+			}
+		}
+	}
+	return info
 }
 
 // sendBindChannel sends a BindChannel control message to a peer.

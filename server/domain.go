@@ -129,10 +129,18 @@ type SessionService interface {
 	EndSession(id string) error
 }
 
+// RecordingInfo describes the current recording state for a session.
+type RecordingInfo struct {
+	Active     bool  `json:"active"`
+	FileCount  int   `json:"file_count"`
+	TotalBytes int64 `json:"total_bytes"`
+}
+
 // SessionOrchestrator defines the subset of orchestrator operations needed by
 // the HTTP layer. The full implementation lives in pion.Orchestrator.
 type SessionOrchestrator interface {
 	EndSession(sessionID string)
+	RecordingStatus(sessionID string) *RecordingInfo
 }
 
 // Validate checks that a SessionTemplate's mappings are consistent with its roles.

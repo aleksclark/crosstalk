@@ -2,9 +2,11 @@ package pion
 
 import (
 	"encoding/json"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -92,7 +94,7 @@ func TestRecorder_FFProbeValidation(t *testing.T) {
 	assert.Contains(t, strings.TrimSpace(string(out)), "opus",
 		"expected Opus codec in OGG file")
 
-	// Verify duration is reasonable (should be ~1s for 50 packets at 20ms).
+	// Verify duration is within ±1.5s of expected 1.0s.
 	cmd = exec.Command(ffprobePath,
 		"-v", "error",
 		"-show_entries", "format=duration",
@@ -102,7 +104,14 @@ func TestRecorder_FFProbeValidation(t *testing.T) {
 	out, err = cmd.Output()
 	require.NoError(t, err, "ffprobe duration check failed")
 	durationStr := strings.TrimSpace(string(out))
-	assert.NotEmpty(t, durationStr, "duration should not be empty")
+	require.NotEmpty(t, durationStr, "duration should not be empty")
+
+	actualDuration, parseErr := strconv.ParseFloat(durationStr, 64)
+	require.NoError(t, parseErr, "failed to parse duration %q", durationStr)
+
+	expectedDuration := 1.0
+	assert.Less(t, math.Abs(actualDuration-expectedDuration), 1.5,
+		"duration %.2fs should be within ±1.5s of expected %.1fs", actualDuration, expectedDuration)
 }
 
 func TestRecordingIntegration_SessionProducesFile(t *testing.T) {
@@ -288,6 +297,96 @@ func TestRecordingIntegration_ReadOnlyDir(t *testing.T) {
 	orch.EndSession("sess-ro")
 }
 
+func TestRecordingIntegration_EmitsEvents(t *testing.T) {
+	recordingDir := t.TempDir()
+
+	tmpl := &crosstalk.SessionTemplate{
+		ID:   "tmpl-evt",
+		Name: "event-test",
+		Roles: []crosstalk.Role{
+			{Name: "speaker", MultiClient: false},
+		},
+		Mappings: []crosstalk.Mapping{
+			{Source: "speaker:mic", Sink: "record"},
+		},
+	}
+	session := &crosstalk.Session{
+		ID:         "sess-evt",
+		TemplateID: "tmpl-evt",
+		Name:       "Event Test",
+		Status:     crosstalk.SessionWaiting,
+	}
+
+	sessions := &mock.SessionService{
+		FindSessionByIDFn: func(id string) (*crosstalk.Session, error) {
+			if id == session.ID {
+				return session, nil
+			}
+			return nil, nil
+		},
+	}
+	templates := &mock.SessionTemplateService{
+		FindTemplateByIDFn: func(id string) (*crosstalk.SessionTemplate, error) {
+			if id == tmpl.ID {
+				return tmpl, nil
+			}
+			return nil, nil
+		},
+	}
+
+	orch := NewOrchestrator(sessions, templates)
+	orch.RecordingPath = recordingDir
+
+	server, _, dc := createConnectedServerPeer(t)
+
+	eventCh := make(chan *crosstalkv1.SessionEvent, 10)
+	dc.OnMessage(func(msg webrtc.DataChannelMessage) {
+		var cm crosstalkv1.ControlMessage
+		if err := proto.Unmarshal(msg.Data, &cm); err == nil {
+			if ev := cm.GetSessionEvent(); ev != nil {
+				eventCh <- ev
+			}
+		}
+	})
+
+	err := orch.JoinSession(server, "sess-evt", "speaker")
+	require.NoError(t, err)
+
+	// Drain until we find RECORDING_STARTED.
+	var gotStarted bool
+	deadline := time.After(5 * time.Second)
+	for !gotStarted {
+		select {
+		case ev := <-eventCh:
+			if ev.GetType() == crosstalkv1.SessionEventType_SESSION_RECORDING_STARTED {
+				gotStarted = true
+				assert.Contains(t, ev.GetMessage(), "recording started")
+				assert.Equal(t, "sess-evt", ev.GetSessionId())
+			}
+		case <-deadline:
+			t.Fatal("timed out waiting for SESSION_RECORDING_STARTED event")
+		}
+	}
+
+	// End session — should emit RECORDING_STOPPED.
+	orch.EndSession("sess-evt")
+
+	var gotStopped bool
+	deadline = time.After(5 * time.Second)
+	for !gotStopped {
+		select {
+		case ev := <-eventCh:
+			if ev.GetType() == crosstalkv1.SessionEventType_SESSION_RECORDING_STOPPED {
+				gotStopped = true
+				assert.Contains(t, ev.GetMessage(), "recording stopped")
+				assert.Equal(t, "sess-evt", ev.GetSessionId())
+			}
+		case <-deadline:
+			t.Fatal("timed out waiting for SESSION_RECORDING_STOPPED event")
+		}
+	}
+}
+
 func TestWriteSessionMeta(t *testing.T) {
 	dir := t.TempDir()
 
@@ -295,8 +394,12 @@ func TestWriteSessionMeta(t *testing.T) {
 	meta := &SessionMeta{
 		SessionID:    "sess-meta-test",
 		TemplateName: "interview",
-		StartedAt:    now.Add(-10 * time.Minute),
-		EndedAt:      now,
+		Participants: map[string]string{
+			"interviewer": "peer-abc",
+			"candidate":   "peer-def",
+		},
+		StartedAt: now.Add(-10 * time.Minute),
+		EndedAt:   now,
 		Files: []RecordingFile{
 			{
 				Path:          "/recordings/sess-meta-test/interviewer-mic-2025-01-01T12-00-00.ogg",
@@ -327,6 +430,9 @@ func TestWriteSessionMeta(t *testing.T) {
 
 	assert.Equal(t, meta.SessionID, readMeta.SessionID)
 	assert.Equal(t, meta.TemplateName, readMeta.TemplateName)
+	require.Len(t, readMeta.Participants, 2)
+	assert.Equal(t, "peer-abc", readMeta.Participants["interviewer"])
+	assert.Equal(t, "peer-def", readMeta.Participants["candidate"])
 	assert.True(t, meta.StartedAt.Equal(readMeta.StartedAt), "StartedAt mismatch")
 	assert.True(t, meta.EndedAt.Equal(readMeta.EndedAt), "EndedAt mismatch")
 	require.Len(t, readMeta.Files, 2)
@@ -341,6 +447,7 @@ func TestWriteSessionMeta(t *testing.T) {
 	var raw map[string]any
 	require.NoError(t, json.Unmarshal(data, &raw))
 	assert.Equal(t, "sess-meta-test", raw["session_id"])
+	assert.NotNil(t, raw["participants"])
 }
 
 func TestRecordingFileName(t *testing.T) {

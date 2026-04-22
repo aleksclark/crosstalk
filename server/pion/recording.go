@@ -71,11 +71,12 @@ func RecordingFileName(role, channel string, startedAt time.Time) string {
 
 // SessionMeta contains metadata written alongside recording files.
 type SessionMeta struct {
-	SessionID    string          `json:"session_id"`
-	TemplateName string          `json:"template_name"`
-	StartedAt    time.Time       `json:"started_at"`
-	EndedAt      time.Time       `json:"ended_at"`
-	Files        []RecordingFile `json:"files"`
+	SessionID    string            `json:"session_id"`
+	TemplateName string            `json:"template_name"`
+	Participants map[string]string `json:"participants"`
+	StartedAt    time.Time         `json:"started_at"`
+	EndedAt      time.Time         `json:"ended_at"`
+	Files        []RecordingFile   `json:"files"`
 }
 
 // RecordingFile describes a single recording file within a session.

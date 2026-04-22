@@ -163,6 +163,76 @@ func TestGetSession(t *testing.T) {
 	assert.Equal(t, "My Session", resp["name"])
 }
 
+// mockOrchestrator implements crosstalk.SessionOrchestrator for handler tests.
+type mockOrchestrator struct {
+	endSessionFn      func(string)
+	recordingStatusFn func(string) *crosstalk.RecordingInfo
+}
+
+func (m *mockOrchestrator) EndSession(sessionID string) {
+	if m.endSessionFn != nil {
+		m.endSessionFn(sessionID)
+	}
+}
+
+func (m *mockOrchestrator) RecordingStatus(sessionID string) *crosstalk.RecordingInfo {
+	if m.recordingStatusFn != nil {
+		return m.recordingStatusFn(sessionID)
+	}
+	return nil
+}
+
+func TestGetSession_WithRecordingStatus(t *testing.T) {
+	h, _, ts, _, sessSvc := newTestHandler(t)
+	token := authToken(t, ts)
+
+	orch := &mockOrchestrator{
+		recordingStatusFn: func(id string) *crosstalk.RecordingInfo {
+			if id == "sess-rec" {
+				return &crosstalk.RecordingInfo{
+					Active:     true,
+					FileCount:  2,
+					TotalBytes: 4096,
+				}
+			}
+			return nil
+		},
+	}
+	h.Orchestrator = orch
+
+	now := time.Now().UTC()
+	sessSvc.FindSessionByIDFn = func(id string) (*crosstalk.Session, error) {
+		if id == "sess-rec" {
+			return &crosstalk.Session{
+				ID:         "sess-rec",
+				TemplateID: "tmpl-1",
+				Name:       "Recording Session",
+				Status:     crosstalk.SessionActive,
+				CreatedAt:  now,
+			}, nil
+		}
+		return nil, sql.ErrNoRows
+	}
+
+	req := httptest.NewRequest("GET", "/api/sessions/sess-rec", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	h.Router().ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
+	assert.Equal(t, "sess-rec", resp["id"])
+
+	recording, ok := resp["recording"].(map[string]any)
+	require.True(t, ok, "response should include recording info")
+	assert.Equal(t, true, recording["active"])
+	assert.Equal(t, float64(2), recording["file_count"])
+	assert.Equal(t, float64(4096), recording["total_bytes"])
+}
+
 func TestAuthRequired_NoHeader(t *testing.T) {
 	h, _, ts, _, _ := newTestHandler(t)
 	// Set up FindTokenByHashFn so it doesn't panic if called.

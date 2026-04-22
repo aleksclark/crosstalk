@@ -585,6 +585,7 @@ type sessionResponse struct {
 	Status     crosstalk.SessionStatus `json:"status"`
 	CreatedAt  time.Time               `json:"created_at"`
 	EndedAt    *time.Time              `json:"ended_at,omitempty"`
+	Recording  *crosstalk.RecordingInfo `json:"recording,omitempty"`
 }
 
 func toSessionResponse(s *crosstalk.Session) sessionResponse {
@@ -670,7 +671,11 @@ func (h *Handler) handleGetSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to find session")
 		return
 	}
-	writeJSON(w, http.StatusOK, toSessionResponse(session))
+	resp := toSessionResponse(session)
+	if h.Orchestrator != nil {
+		resp.Recording = h.Orchestrator.RecordingStatus(id)
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (h *Handler) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
