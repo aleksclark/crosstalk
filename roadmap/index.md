@@ -114,7 +114,7 @@ Login, dashboard, template/session management, session connect view with audio, 
 
 ---
 
-### [Phase 8: Integration Tests](phase-08-integration-tests.md) `⬅ CURRENT`
+### [Phase 8: Integration Tests](phase-08-integration-tests.md) ✅
 
 Docker Compose test environment, full-stack tests with real SQLite/Pion/HTTP, Playwright for web UI.
 
@@ -122,7 +122,7 @@ Docker Compose test environment, full-stack tests with real SQLite/Pion/HTTP, Pl
 
 ---
 
-### [Phase 9: E2E Golden Audio Tests](phase-09-e2e-golden.md)
+### [Phase 9: E2E Golden Audio Tests](phase-09-e2e-golden.md) `⬅ CURRENT`
 
 Real audio through real hardware. Admin web → K2B device and K2B device → admin web, with waveform comparison.
 
