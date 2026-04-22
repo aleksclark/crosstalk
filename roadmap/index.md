@@ -98,7 +98,7 @@ Create sessions from templates, join clients to roles, resolve channel bindings,
 
 ---
 
-### [Phase 6: Server-Side Recording](phase-06-recording.md) `⬅ CURRENT`
+### [Phase 6: Server-Side Recording](phase-06-recording.md) ✅
 
 Capture audio from `→ record` mappings to OGG/Opus files on disk.
 
@@ -106,7 +106,7 @@ Capture audio from `→ record` mappings to OGG/Opus files on disk.
 
 ---
 
-### [Phase 7: Admin Web UI](phase-07-admin-web.md)
+### [Phase 7: Admin Web UI](phase-07-admin-web.md) `⬅ CURRENT`
 
 Login, dashboard, template/session management, session connect view with audio, VU meters, WebRTC debug panel, quick-test button.
 
