@@ -66,3 +66,35 @@ Full-stack tests with real services in Docker. No mocks. Playwright for browser 
   > Reasonable — orchestrator wiring confirmed by integration tests (join, forward, record, cardinality)
 - 4.1-4.4 Admin Web → 7
   > Playwright validates login, template CRUD, session creation, connect view, and quick-test flow.
+
+## Fix Review — 2025-04-22
+
+**Reviewer**: Hermes Agent  
+**Commit**: 382461d  
+**Verdict**: APPROVED
+
+### Gap-by-gap verification
+
+| Gap | Description | Status | Notes |
+|-----|-------------|--------|-------|
+| G1 | Missing test/Dockerfile.test | FIXED | Multi-stage Dockerfile: Stage 1 (golang:1.25-bookworm) builds Go test binary with `go test -c`, Stage 2 (node:20-bookworm) installs Playwright + Chromium, copies Go binary and entrypoint. Proper layer caching with go.mod first. |
+| G2 | Playwright login tests unvalidated | FIXED | `login.spec.ts` has 3 real tests: page loads with form elements visible (#username, #password, button[type=submit]), valid login redirects to /dashboard, invalid creds show role=alert error and stay on /login. All use real assertions via `expect`. |
+| G3 | Playwright template CRUD — empty stubs | FIXED | `templates.spec.ts` has 3 complete tests: create (fill name + role, save, verify in list), edit (change name, save, verify old gone + new visible), delete (confirm dialog, verify "No templates defined"). Uses data-testid selectors throughout. |
+| G4 | Playwright session tests — empty stubs | FIXED | `sessions.spec.ts` has 2 tests: create session from template (verify "waiting" badge), connect view (verify mic-section, mic-device-select, mic-vu-meter, webrtc-debug elements). Uses API helper to seed templates. |
+| G5 | Quick-test flow test missing | FIXED | `quick-test.spec.ts` creates default template via API, clicks quick-test-button on dashboard, verifies redirect to /sessions/:id/connect pattern, confirms mic-section visible. |
+| G6 | task test:integration doesn't use Docker | FIXED | Taskfile.yml `test:integration` now: (1) runs Go integration tests in-process, (2) builds Docker via `docker compose -f test/docker-compose.integration.yml build`, (3) starts with `--wait`, (4) runs Playwright via test-runner container, (5) uses `defer:` for `docker compose down -v` cleanup. |
+
+### Supporting infrastructure verified
+
+- `test/docker-compose.integration.yml`: 2 services (server + test-runner) on bridge network, server has healthcheck, test-runner depends_on service_healthy, CROSSTALK_TEST_MODE=1 set
+- `test/Dockerfile.server`: multi-stage build, copies embedded web UI, runs with test config
+- `test/test-config.json`: dev_mode=false, debug logging, test session secret
+- `test/run-tests.sh`: waits up to 60s for server health, runs Playwright with list reporter
+- `test/playwright/playwright.config.ts`: Chromium with fake media streams, workers=1, CT_SERVER_URL from env
+- `test/playwright/helpers.ts`: resetServer (POST /api/test/reset), loginViaUI, createTemplateViaAPI, createSessionViaAPI — all with real assertions
+- `server/http/handler.go` handleTestReset: truncates all tables in correct FK order, re-seeds admin with known password "admin-password", creates seed API token, returns token in response
+- `server/cmd/ct-server/main.go`: reads CROSSTALK_TEST_MODE=1 env var, passes TestMode + DB to Handler
+
+### Go tests
+
+All server Go tests pass: `go test ./... -count=1` — 7 packages OK (0 failures).
