@@ -77,6 +77,9 @@ func applyEnvOverrides(cfg *crosstalk.Config) {
 }
 
 // validateConfig checks that required configuration fields are set and valid.
+// Note: cli/config.schema.json provides JSON Schema for editor/IDE support
+// (autocompletion, hover docs, red-squiggle validation in VS Code, etc.) but
+// is not loaded at runtime. Runtime validation is handled here.
 func validateConfig(cfg *crosstalk.Config) error {
 	if cfg.ServerURL == "" {
 		return &crosstalk.ValidationError{Field: "server_url", Message: "required"}
