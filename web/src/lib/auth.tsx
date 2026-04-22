@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
-import { login as apiLogin, logout as apiLogout, setOnUnauthorized } from '@/lib/api/client'
+import { login as apiLogin, logout as apiLogout, setOnUnauthorized, setAuthToken } from '@/lib/api/client'
 import type { User } from '@/lib/api/types'
 
 interface AuthContextType {
@@ -25,17 +25,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setUser(null)
     sessionStorage.removeItem('ct-user')
+    setAuthToken(null)
   }, [])
 
   useEffect(() => {
     setOnUnauthorized(() => {
       setUser(null)
       sessionStorage.removeItem('ct-user')
+      setAuthToken(null)
     })
   }, [])
 
   const handleLogin = useCallback(async (username: string, password: string) => {
     const result = await apiLogin({ username, password })
+    setAuthToken(result.token)
     setUser(result.user)
     sessionStorage.setItem('ct-user', JSON.stringify(result.user))
   }, [])

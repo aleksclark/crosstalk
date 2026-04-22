@@ -12,8 +12,8 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/pion/webrtc/v4"
 
-	crosstalk "github.com/anthropics/crosstalk/server"
-	crosstalkv1 "github.com/anthropics/crosstalk/proto/gen/go/crosstalk/v1"
+	crosstalk "github.com/aleksclark/crosstalk/server"
+	crosstalkv1 "github.com/aleksclark/crosstalk/proto/gen/go/crosstalk/v1"
 )
 
 // Orchestrator manages live session state and coordinates channel bindings

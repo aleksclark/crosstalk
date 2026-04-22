@@ -16,7 +16,7 @@ echo "=== Provisioning K2B at ${BOARD_IP} ==="
 echo "Creating app user..."
 $SSH "
 id app &>/dev/null || {
-    useradd -r -u 999 -g systemd-journal -G audio -m -s /bin/bash app
+    useradd -r -g systemd-journal -G audio -m -s /bin/bash app
     loginctl enable-linger app
 }
 "
@@ -39,8 +39,9 @@ dpkg -s pipewire &>/dev/null || {
 # 4. Enable PipeWire user services
 echo "Enabling PipeWire for app user..."
 $SSH "
-sudo -u app XDG_RUNTIME_DIR=/run/user/999 systemctl --user enable pipewire pipewire-pulse wireplumber
-sudo -u app XDG_RUNTIME_DIR=/run/user/999 systemctl --user start pipewire pipewire-pulse wireplumber
+APP_UID=\$(id -u app)
+sudo -u app XDG_RUNTIME_DIR=/run/user/\${APP_UID} systemctl --user enable pipewire pipewire-pulse wireplumber
+sudo -u app XDG_RUNTIME_DIR=/run/user/\${APP_UID} systemctl --user start pipewire pipewire-pulse wireplumber
 "
 
 # 5. Deploy config

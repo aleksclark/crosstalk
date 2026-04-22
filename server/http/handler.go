@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"time"
 
-	crosstalk "github.com/anthropics/crosstalk/server"
+	crosstalk "github.com/aleksclark/crosstalk/server"
 	"github.com/go-chi/chi/v5"
 	"github.com/oklog/ulid/v2"
 )
@@ -196,7 +196,10 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"token": plaintext})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"token": plaintext,
+		"user":  toUserResponse(user),
+	})
 }
 
 func (h *Handler) handleLogout(w http.ResponseWriter, r *http.Request) {

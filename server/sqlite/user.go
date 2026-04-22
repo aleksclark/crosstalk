@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	crosstalk "github.com/anthropics/crosstalk/server"
+	crosstalk "github.com/aleksclark/crosstalk/server"
 )
 
 // UserService implements crosstalk.UserService backed by SQLite.

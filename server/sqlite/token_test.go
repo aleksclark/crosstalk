@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	crosstalk "github.com/anthropics/crosstalk/server"
-	"github.com/anthropics/crosstalk/server/sqlite"
+	crosstalk "github.com/aleksclark/crosstalk/server"
+	"github.com/aleksclark/crosstalk/server/sqlite"
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

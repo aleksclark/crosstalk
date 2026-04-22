@@ -1291,7 +1291,7 @@ const file_crosstalk_v1_control_proto_rawDesc = "" +
 	"\tLOG_DEBUG\x10\x00\x12\f\n" +
 	"\bLOG_INFO\x10\x01\x12\f\n" +
 	"\bLOG_WARN\x10\x02\x12\r\n" +
-	"\tLOG_ERROR\x10\x03BGZEgithub.com/anthropics/crosstalk/proto/gen/go/crosstalk/v1;crosstalkv1b\x06proto3"
+	"\tLOG_ERROR\x10\x03BGZEgithub.com/aleksclark/crosstalk/proto/gen/go/crosstalk/v1;crosstalkv1b\x06proto3"
 
 var (
 	file_crosstalk_v1_control_proto_rawDescOnce sync.Once

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	cthttp "github.com/anthropics/crosstalk/server/http"
+	cthttp "github.com/aleksclark/crosstalk/server/http"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

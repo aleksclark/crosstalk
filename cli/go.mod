@@ -1,6 +1,6 @@
-module github.com/anthropics/crosstalk/cli
+module github.com/aleksclark/crosstalk/cli
 
-go 1.24.3
+go 1.25.5
 
 require (
 	github.com/pion/webrtc/v4 v4.2.11

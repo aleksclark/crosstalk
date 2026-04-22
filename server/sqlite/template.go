@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	crosstalk "github.com/anthropics/crosstalk/server"
+	crosstalk "github.com/aleksclark/crosstalk/server"
 )
 
 // SessionTemplateService implements crosstalk.SessionTemplateService backed by SQLite.

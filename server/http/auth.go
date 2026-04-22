@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	crosstalk "github.com/anthropics/crosstalk/server"
+	crosstalk "github.com/aleksclark/crosstalk/server"
 	"golang.org/x/crypto/bcrypt"
 )
 

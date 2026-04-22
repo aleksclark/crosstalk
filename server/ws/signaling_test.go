@@ -16,10 +16,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"nhooyr.io/websocket"
 
-	crosstalk "github.com/anthropics/crosstalk/server"
-	"github.com/anthropics/crosstalk/server/mock"
-	ctpion "github.com/anthropics/crosstalk/server/pion"
-	"github.com/anthropics/crosstalk/server/ws"
+	crosstalk "github.com/aleksclark/crosstalk/server"
+	"github.com/aleksclark/crosstalk/server/mock"
+	ctpion "github.com/aleksclark/crosstalk/server/pion"
+	"github.com/aleksclark/crosstalk/server/ws"
 )
 
 const validToken = "ct_test_token_abc123"

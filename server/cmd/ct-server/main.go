@@ -16,11 +16,11 @@ import (
 	"syscall"
 	"time"
 
-	crosstalk "github.com/anthropics/crosstalk/server"
-	cthttp "github.com/anthropics/crosstalk/server/http"
-	ctpion "github.com/anthropics/crosstalk/server/pion"
-	ctws "github.com/anthropics/crosstalk/server/ws"
-	"github.com/anthropics/crosstalk/server/sqlite"
+	crosstalk "github.com/aleksclark/crosstalk/server"
+	cthttp "github.com/aleksclark/crosstalk/server/http"
+	ctpion "github.com/aleksclark/crosstalk/server/pion"
+	ctws "github.com/aleksclark/crosstalk/server/ws"
+	"github.com/aleksclark/crosstalk/server/sqlite"
 	"github.com/oklog/ulid/v2"
 )
 

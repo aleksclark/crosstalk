@@ -7,8 +7,8 @@ import (
 	"github.com/pion/webrtc/v4"
 	"google.golang.org/protobuf/proto"
 
-	crosstalk "github.com/anthropics/crosstalk/server"
-	crosstalkv1 "github.com/anthropics/crosstalk/proto/gen/go/crosstalk/v1"
+	crosstalk "github.com/aleksclark/crosstalk/server"
+	crosstalkv1 "github.com/aleksclark/crosstalk/proto/gen/go/crosstalk/v1"
 )
 
 // ControlHandler processes protobuf messages on the control data channel.

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	crosstalk "github.com/anthropics/crosstalk/server"
+	crosstalk "github.com/aleksclark/crosstalk/server"
 )
 
 // SessionService implements crosstalk.SessionService backed by SQLite.

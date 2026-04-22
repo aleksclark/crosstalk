@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	crosstalk "github.com/anthropics/crosstalk/server"
+	crosstalk "github.com/aleksclark/crosstalk/server"
 )
 
 // TokenService implements crosstalk.TokenService backed by SQLite.

@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	crosstalk "github.com/anthropics/crosstalk/cli"
-	climock "github.com/anthropics/crosstalk/cli/mock"
+	crosstalk "github.com/aleksclark/crosstalk/cli"
+	climock "github.com/aleksclark/crosstalk/cli/mock"
 	"github.com/pion/webrtc/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

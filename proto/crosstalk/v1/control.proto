@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package crosstalk.v1;
 
-option go_package = "github.com/anthropics/crosstalk/proto/gen/go/crosstalk/v1;crosstalkv1";
+option go_package = "github.com/aleksclark/crosstalk/proto/gen/go/crosstalk/v1;crosstalkv1";
 
 // ControlMessage wraps all messages sent on the WebRTC control data channel.
 message ControlMessage {

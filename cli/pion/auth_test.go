@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	crosstalk "github.com/anthropics/crosstalk/cli"
+	crosstalk "github.com/aleksclark/crosstalk/cli"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

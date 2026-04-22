@@ -8,7 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	crosstalk "github.com/anthropics/crosstalk/cli"
+	crosstalk "github.com/aleksclark/crosstalk/cli"
 )
 
 // AuthClient handles REST authentication with the CrossTalk server.

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	crosstalk "github.com/anthropics/crosstalk/cli"
+	crosstalk "github.com/aleksclark/crosstalk/cli"
 )
 
 // ControlMessageType identifies the type of control channel message.

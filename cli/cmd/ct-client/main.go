@@ -9,8 +9,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/anthropics/crosstalk/cli/pion"
-	"github.com/anthropics/crosstalk/cli/pipewire"
+	"github.com/aleksclark/crosstalk/cli/pion"
+	"github.com/aleksclark/crosstalk/cli/pipewire"
 )
 
 func main() {

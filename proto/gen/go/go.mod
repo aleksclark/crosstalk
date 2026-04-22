@@ -1,5 +1,5 @@
-module github.com/anthropics/crosstalk/proto/gen/go
+module github.com/aleksclark/crosstalk/proto/gen/go
 
-go 1.25.0
+go 1.25.5
 
 require google.golang.org/protobuf v1.36.6

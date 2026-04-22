@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	crosstalk "github.com/anthropics/crosstalk/cli"
+	crosstalk "github.com/aleksclark/crosstalk/cli"
 )
 
 var configPath string

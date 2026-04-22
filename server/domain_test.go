@@ -3,7 +3,7 @@ package crosstalk_test
 import (
 	"testing"
 
-	crosstalk "github.com/anthropics/crosstalk/server"
+	crosstalk "github.com/aleksclark/crosstalk/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -47,8 +47,8 @@ import (
     "testing"
     "net/http/httptest"
 
-    "github.com/anthropics/crosstalk/server/mock"
-    crosstalkhttp "github.com/anthropics/crosstalk/server/http"
+    "github.com/aleksclark/crosstalk/server/mock"
+    crosstalkhttp "github.com/aleksclark/crosstalk/server/http"
 )
 
 func TestGetUser(t *testing.T) {

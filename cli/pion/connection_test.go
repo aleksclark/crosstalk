@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	crosstalk "github.com/anthropics/crosstalk/cli"
+	crosstalk "github.com/aleksclark/crosstalk/cli"
 	"github.com/pion/webrtc/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

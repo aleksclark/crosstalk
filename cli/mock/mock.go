@@ -4,7 +4,7 @@
 package mock
 
 import (
-	crosstalk "github.com/anthropics/crosstalk/cli"
+	crosstalk "github.com/aleksclark/crosstalk/cli"
 )
 
 // PipeWireService is a mock implementation of crosstalk.PipeWireService.

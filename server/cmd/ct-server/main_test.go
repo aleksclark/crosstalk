@@ -14,11 +14,11 @@ import (
 	"testing"
 	"time"
 
-	crosstalk "github.com/anthropics/crosstalk/server"
-	cthttp "github.com/anthropics/crosstalk/server/http"
-	ctpion "github.com/anthropics/crosstalk/server/pion"
-	ctws "github.com/anthropics/crosstalk/server/ws"
-	"github.com/anthropics/crosstalk/server/sqlite"
+	crosstalk "github.com/aleksclark/crosstalk/server"
+	cthttp "github.com/aleksclark/crosstalk/server/http"
+	ctpion "github.com/aleksclark/crosstalk/server/pion"
+	ctws "github.com/aleksclark/crosstalk/server/ws"
+	"github.com/aleksclark/crosstalk/server/sqlite"
 	"github.com/pion/ice/v4"
 	"github.com/pion/webrtc/v4"
 	"github.com/stretchr/testify/assert"
@@ -172,10 +172,11 @@ func TestServerIntegration_LoginWithSeedUser(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
-	var result map[string]string
+	var result map[string]any
 	err = json.NewDecoder(resp.Body).Decode(&result)
 	require.NoError(t, err)
 	assert.NotEmpty(t, result["token"], "login should return a token")
+	assert.NotNil(t, result["user"], "login should return user object")
 }
 
 func TestSeedAdmin_Idempotent(t *testing.T) {

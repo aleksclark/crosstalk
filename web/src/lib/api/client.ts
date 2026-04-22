@@ -30,12 +30,31 @@ export function setOnUnauthorized(cb: OnUnauthorized) {
   onUnauthorizedCallback = cb
 }
 
+export function setAuthToken(token: string | null) {
+  if (token) {
+    sessionStorage.setItem('ct-token', token)
+  } else {
+    sessionStorage.removeItem('ct-token')
+  }
+}
+
+function getAuthToken(): string | null {
+  return sessionStorage.getItem('ct-token')
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  const token = getAuthToken()
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
   const res = await fetch(path, {
     ...options,
     headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
+      ...headers,
+      ...options.headers as Record<string, string>,
     },
   })
 

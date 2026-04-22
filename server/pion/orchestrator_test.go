@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	crosstalk "github.com/anthropics/crosstalk/server"
-	"github.com/anthropics/crosstalk/server/mock"
+	crosstalk "github.com/aleksclark/crosstalk/server"
+	"github.com/aleksclark/crosstalk/server/mock"
 
-	crosstalkv1 "github.com/anthropics/crosstalk/proto/gen/go/crosstalk/v1"
+	crosstalkv1 "github.com/aleksclark/crosstalk/proto/gen/go/crosstalk/v1"
 )
 
 // orchestratorTestEnv bundles mock services and a connected client+server pair

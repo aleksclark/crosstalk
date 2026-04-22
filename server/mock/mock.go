@@ -4,7 +4,7 @@
 package mock
 
 import (
-	crosstalk "github.com/anthropics/crosstalk/server"
+	crosstalk "github.com/aleksclark/crosstalk/server"
 )
 
 // UserService is a mock implementation of crosstalk.UserService.

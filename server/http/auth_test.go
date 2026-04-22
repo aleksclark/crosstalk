@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	crosstalk "github.com/anthropics/crosstalk/server"
-	cthttp "github.com/anthropics/crosstalk/server/http"
-	"github.com/anthropics/crosstalk/server/mock"
+	crosstalk "github.com/aleksclark/crosstalk/server"
+	cthttp "github.com/aleksclark/crosstalk/server/http"
+	"github.com/aleksclark/crosstalk/server/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -186,9 +186,10 @@ func TestLogin_CorrectPassword(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 
-	var resp map[string]string
+	var resp map[string]any
 	require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
 	assert.Contains(t, resp["token"], "ct_")
+	assert.NotNil(t, resp["user"])
 }
 
 func TestLogin_WrongPassword(t *testing.T) {

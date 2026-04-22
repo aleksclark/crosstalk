@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	crosstalk "github.com/anthropics/crosstalk/server"
-	cthttp "github.com/anthropics/crosstalk/server/http"
-	"github.com/anthropics/crosstalk/server/mock"
+	crosstalk "github.com/aleksclark/crosstalk/server"
+	cthttp "github.com/aleksclark/crosstalk/server/http"
+	"github.com/aleksclark/crosstalk/server/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

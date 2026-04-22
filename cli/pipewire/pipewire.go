@@ -12,7 +12,7 @@ import (
 	"os/exec"
 	"strings"
 
-	crosstalk "github.com/anthropics/crosstalk/cli"
+	crosstalk "github.com/aleksclark/crosstalk/cli"
 )
 
 // Service implements crosstalk.PipeWireService using pw-cli.

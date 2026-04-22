@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"sync"
 
-	crosstalk "github.com/anthropics/crosstalk/cli"
+	crosstalk "github.com/aleksclark/crosstalk/cli"
 	"github.com/pion/webrtc/v4"
 	"nhooyr.io/websocket"
 )

@@ -13,8 +13,8 @@ import (
 	"github.com/pion/webrtc/v4"
 	"nhooyr.io/websocket"
 
-	crosstalk "github.com/anthropics/crosstalk/server"
-	ctpion "github.com/anthropics/crosstalk/server/pion"
+	crosstalk "github.com/aleksclark/crosstalk/server"
+	ctpion "github.com/aleksclark/crosstalk/server/pion"
 )
 
 // readTimeout is the maximum duration to wait for a single WebSocket message.

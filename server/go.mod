@@ -1,9 +1,9 @@
-module github.com/anthropics/crosstalk/server
+module github.com/aleksclark/crosstalk/server
 
-go 1.25.0
+go 1.25.5
 
 require (
-	github.com/anthropics/crosstalk/proto/gen/go v0.0.0-00010101000000-000000000000
+	github.com/aleksclark/crosstalk/proto/gen/go v0.0.0-00010101000000-000000000000
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/mattn/go-sqlite3 v1.14.42
 	github.com/oklog/ulid/v2 v2.1.1
@@ -45,4 +45,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/anthropics/crosstalk/proto/gen/go => ../proto/gen/go
+replace github.com/aleksclark/crosstalk/proto/gen/go => ../proto/gen/go

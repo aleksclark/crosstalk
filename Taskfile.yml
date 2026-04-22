@@ -1,4 +1,4 @@
-version: '3'
+version: "3"
 
 vars:
   K2B_HOST: '{{.K2B_HOST | default "192.168.0.109"}}'
@@ -6,7 +6,7 @@ vars:
   CLI_BIN: bin/ct-client
   CLI_BIN_ARM64: bin/ct-client-arm64
 
-dotenv: ['dev/.env']
+dotenv: ["dev/.env"]
 
 tasks:
   # ── Development ──────────────────────────────────────────
@@ -24,7 +24,7 @@ tasks:
   dev:server:
     desc: Start server container via Docker Compose
     cmds:
-      - docker compose -f dev/docker-compose.yml up --build
+      - docker compose -f dev/docker-compose.yml up -d
 
   dev:down:
     desc: Stop dev environment
@@ -61,10 +61,10 @@ tasks:
     cmds:
       - go build -o ../{{.SERVER_BIN}} ./cmd/ct-server
     sources:
-      - '**/*.go'
+      - "**/*.go"
       - ../web/dist/**/*
     generates:
-      - '../{{.SERVER_BIN}}'
+      - "../{{.SERVER_BIN}}"
 
   build:cli:
     desc: Build CLI client binary
