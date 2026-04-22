@@ -87,6 +87,29 @@ This proves real audio flows through the full system: browser → WebRTC → ser
 - 3.2 PipeWire Integration → 5 (infrastructure verified, full path untested without hardware)
 - 3.3 Channel Lifecycle → 5 (infrastructure verified, full path untested without hardware)
 
+## Fix Review (2025-04-22)
+
+**Reviewer**: Hermes Agent (code-only review — no K2B hardware)  
+**Commit**: `d195bae` on `fix-p9`  
+**Verdict**: **APPROVED** ✅
+
+### Gap Assessment
+
+| Gap | Issue | Status | Evidence |
+|-----|-------|--------|----------|
+| G1 | Speech fixture was .wav instead of .mp3 | ✅ FIXED | `test-speech-5s.wav` deleted, `test-speech-5s.mp3` added (40557 bytes, MPEG ADTS layer III, 64kbps 48kHz mono) |
+| G2 | No standalone compare-audio tests | ✅ FIXED | `dev/scripts/test-compare-audio.sh` (105 lines): self-corr=1.000000, silence=0.000000, opus-roundtrip=0.999980 — all 3/3 pass |
+| G3 | run-e2e-tests.sh tested ALSA loopback, not full WebRTC path | ✅ FIXED | Rewritten (496 lines): builds + deploys server & client, creates template/session/token via REST API, ct-client on K2B as "studio", Playwright as "translator", full Browser→WebRTC→SFU→WebRTC→K2B path and reverse. No ALSA loopback patterns remain. |
+| G4 | Threshold 0.60 instead of 0.90 | ✅ FIXED | `E2E_THRESHOLD` defaults to `0.90` (line 37). `compare-audio.sh` also defaults to 0.9. No 0.60 values anywhere in codebase. |
+| G5 | Spec scores unrealistic | ✅ FIXED | Spec scores now conservative: E2E/Golden→4, PipeWire→5, Channel Lifecycle→5 — all note "untested without hardware". |
+
+### Additional Observations
+
+- `playwright.config.ts` correctly wires Chromium flags for fake audio (`--use-fake-ui-for-media-stream`, `--use-fake-device-for-media-stream`, conditional `--use-file-for-fake-audio-capture`)
+- `golden-audio.spec.ts` properly handles both directions: Browser→K2B (fake mic, wait for flow) and K2B→Browser (MediaRecorder capture from remote stream, base64 extraction)
+- Cleanup in `run-e2e-tests.sh` is thorough (local PIDs, remote pkill, temp dir)
+- Tests are gated by `CT_SESSION_ID` env var — skipped gracefully outside full E2E context
+
 ## What's Next
 
 After this phase, the core audio pipeline is proven. Remaining work:
