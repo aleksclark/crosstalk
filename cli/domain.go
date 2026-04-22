@@ -3,6 +3,8 @@
 // subpackages grouped by dependency (pipewire/, pion/).
 package crosstalk
 
+import "encoding/json"
+
 // Config holds the CLI client configuration.
 type Config struct {
 	ServerURL  string `json:"server_url"`
@@ -38,9 +40,9 @@ type PipeWireService interface {
 
 // SignalingMessage is a WebSocket signaling message for WebRTC negotiation.
 type SignalingMessage struct {
-	Type      string `json:"type"`                // "offer", "answer", "ice"
-	SDP       string `json:"sdp,omitempty"`       // SDP payload for offer/answer
-	Candidate string `json:"candidate,omitempty"` // ICE candidate string
+	Type      string          `json:"type"`                // "offer", "answer", "ice"
+	SDP       string          `json:"sdp,omitempty"`       // SDP payload for offer/answer
+	Candidate json.RawMessage `json:"candidate,omitempty"` // ICE candidate (object from server or string)
 }
 
 // WebRTCTokenResponse is the response from POST /api/webrtc/token.

@@ -127,9 +127,15 @@ func (c *Connection) Connect(ctx context.Context) error {
 		if candidate == nil {
 			return
 		}
+		candidateJSON := candidate.ToJSON()
+		candidateBytes, err := json.Marshal(candidateJSON)
+		if err != nil {
+			slog.Error("failed to marshal ICE candidate", "error", err)
+			return
+		}
 		msg := crosstalk.SignalingMessage{
 			Type:      "ice",
-			Candidate: candidate.ToJSON().Candidate,
+			Candidate: json.RawMessage(candidateBytes),
 		}
 		if err := c.sendSignaling(ctx, msg); err != nil {
 			slog.Error("failed to send ICE candidate", "error", err)
@@ -294,13 +300,22 @@ func (c *Connection) readSignalingLoop(ctx context.Context) error {
 			answerReceived = true
 
 		case "ice":
-			if msg.Candidate == "" {
+			if len(msg.Candidate) == 0 || string(msg.Candidate) == "null" {
 				continue
 			}
 			slog.Debug("received ICE candidate")
-			if err := pc.AddICECandidate(webrtc.ICECandidateInit{
-				Candidate: msg.Candidate,
-			}); err != nil {
+			// Parse candidate: server sends ICECandidateInit object
+			var candidateInit webrtc.ICECandidateInit
+			if err := json.Unmarshal(msg.Candidate, &candidateInit); err != nil {
+				// Fallback: try as plain string
+				var candidateStr string
+				if err2 := json.Unmarshal(msg.Candidate, &candidateStr); err2 != nil {
+					slog.Warn("failed to parse ICE candidate", "error", err)
+					continue
+				}
+				candidateInit = webrtc.ICECandidateInit{Candidate: candidateStr}
+			}
+			if err := pc.AddICECandidate(candidateInit); err != nil {
 				slog.Warn("failed to add ICE candidate", "error", err)
 			}
 

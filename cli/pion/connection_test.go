@@ -117,9 +117,11 @@ func (s *mockServerState) handleSignaling(t *testing.T, w http.ResponseWriter, r
 		if candidate == nil {
 			return
 		}
+		candidateJSON := candidate.ToJSON()
+		candidateBytes, _ := json.Marshal(candidateJSON)
 		msg := crosstalk.SignalingMessage{
 			Type:      "ice",
-			Candidate: candidate.ToJSON().Candidate,
+			Candidate: json.RawMessage(candidateBytes),
 		}
 		data, _ := json.Marshal(msg)
 		ws.Write(ctx, websocket.MessageText, data)
@@ -188,10 +190,11 @@ func (s *mockServerState) handleSignaling(t *testing.T, w http.ResponseWriter, r
 			continue
 		}
 
-		if msg.Type == "ice" && msg.Candidate != "" {
-			pc.AddICECandidate(webrtc.ICECandidateInit{
-				Candidate: msg.Candidate,
-			})
+		if msg.Type == "ice" && len(msg.Candidate) > 0 {
+			var candidateInit webrtc.ICECandidateInit
+			if err := json.Unmarshal(msg.Candidate, &candidateInit); err == nil {
+				pc.AddICECandidate(candidateInit)
+			}
 		}
 	}
 }
