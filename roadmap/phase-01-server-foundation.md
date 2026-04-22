@@ -2,7 +2,7 @@
 
 [← Roadmap](index.md)
 
-**Status**: `COMPLETE`
+**Status**: `COMPLETE — all gaps addressed`
 
 The server boots, loads config, connects to SQLite, serves a REST API, and hosts the web UI shell. This phase has no WebRTC — it's pure HTTP + persistence.
 
