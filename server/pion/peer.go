@@ -2,6 +2,7 @@ package pion
 
 import (
 	"fmt"
+	"log/slog"
 	"sync"
 
 	"github.com/oklog/ulid/v2"
@@ -85,6 +86,28 @@ func (pm *PeerManager) CreatePeerConnection() (*PeerConn, error) {
 		ID: ulid.Make().String(),
 		pc: pc,
 	}
+
+	// Monitor ICE connection state and log transitions. On disconnected,
+	// failed, or closed states, remove the peer from the registry to free
+	// resources. In the SFU model, ICE disconnection is effectively terminal
+	// — reconnection is handled at the WebSocket/signaling layer.
+	pc.OnICEConnectionStateChange(func(state webrtc.ICEConnectionState) {
+		logger := slog.With("peer_id", conn.ID, "ice_state", state.String())
+		switch state {
+		case webrtc.ICEConnectionStateConnected:
+			logger.Info("peer ICE connected")
+		case webrtc.ICEConnectionStateDisconnected:
+			logger.Warn("peer ICE disconnected, removing peer")
+			pm.RemovePeer(conn.ID)
+		case webrtc.ICEConnectionStateFailed:
+			logger.Error("peer ICE failed, removing peer")
+			pm.RemovePeer(conn.ID)
+		case webrtc.ICEConnectionStateClosed:
+			logger.Info("peer ICE closed")
+		default:
+			logger.Debug("peer ICE state change")
+		}
+	})
 
 	// Create the server-owned "control" data channel.
 	if err := conn.createControlChannel(); err != nil {
