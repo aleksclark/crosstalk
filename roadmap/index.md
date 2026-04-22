@@ -58,7 +58,7 @@ Phase 1: Server Foundation
 
 ## Phases
 
-### [Phase 1: Server Foundation](phase-01-server-foundation.md) `⬅ CURRENT`
+### [Phase 1: Server Foundation](phase-01-server-foundation.md) ✅
 
 Config loading, SQLite persistence, REST API, web hosting shell. The server boots, serves an API, and persists data.
 
@@ -66,7 +66,7 @@ Config loading, SQLite persistence, REST API, web hosting shell. The server boot
 
 ---
 
-### [Phase 2: WebRTC Signaling](phase-02-webrtc-signaling.md)
+### [Phase 2: WebRTC Signaling](phase-02-webrtc-signaling.md) ✅
 
 WebSocket signaling endpoint, Pion peer connection lifecycle, ICE handling.
 
@@ -74,7 +74,7 @@ WebSocket signaling endpoint, Pion peer connection lifecycle, ICE handling.
 
 ---
 
-### [Phase 3: Control Channel + Protobuf](phase-03-control-channel.md)
+### [Phase 3: Control Channel + Protobuf](phase-03-control-channel.md) ✅
 
 Protobuf code generation, control data channel message handling (Hello/Welcome, ClientStatus, ChannelStatus).
 
@@ -82,7 +82,7 @@ Protobuf code generation, control data channel message handling (Hello/Welcome, 
 
 ---
 
-### [Phase 4: CLI Client Core](phase-04-cli-client.md)
+### [Phase 4: CLI Client Core](phase-04-cli-client.md) ✅
 
 CLI client authenticates, connects via WebSocket, establishes WebRTC, sends Hello, discovers PipeWire sources/sinks.
 
@@ -90,7 +90,7 @@ CLI client authenticates, connects via WebSocket, establishes WebRTC, sends Hell
 
 ---
 
-### [Phase 5: Session Orchestration + Audio Forwarding](phase-05-sessions.md)
+### [Phase 5: Session Orchestration + Audio Forwarding](phase-05-sessions.md) ✅
 
 Create sessions from templates, join clients to roles, resolve channel bindings, forward audio tracks between peer connections.
 
@@ -98,7 +98,7 @@ Create sessions from templates, join clients to roles, resolve channel bindings,
 
 ---
 
-### [Phase 6: Server-Side Recording](phase-06-recording.md)
+### [Phase 6: Server-Side Recording](phase-06-recording.md) `⬅ CURRENT`
 
 Capture audio from `→ record` mappings to OGG/Opus files on disk.
 
