@@ -2,21 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { DashboardPage } from './DashboardPage'
-import type { Client, Session, SessionTemplate } from '@/lib/api/types'
+import type { Session, SessionTemplate } from '@/lib/api/types'
 
 const mockNavigate = vi.fn()
 
-const mockClients: Client[] = [
-  {
-    id: 'client-1',
-    role: 'translator',
-    session: 'session-1',
-    sources: ['mic'],
-    sinks: ['speakers'],
-    codecs: ['opus'],
-    status: 'connected',
-    connected_at: '2026-04-21T10:00:00Z',
-  },
+const mockClients: Record<string, never>[] = [
+  {} as Record<string, never>,
 ]
 
 const mockSessions: Session[] = [
@@ -24,10 +15,7 @@ const mockSessions: Session[] = [
     id: 'session-1',
     name: 'Test Session',
     template_id: 'tmpl-1',
-    template_name: 'Translation',
     status: 'active',
-    client_count: 1,
-    total_roles: 2,
     created_at: '2026-04-21T10:00:00Z',
     ended_at: null,
   },
@@ -52,7 +40,6 @@ vi.mock('@/lib/api/client', () => ({
   getClients: () => Promise.resolve(mockClients),
   getSessions: () => Promise.resolve(mockSessions),
   getTemplates: () => Promise.resolve(mockTemplates),
-  getServerStatus: () => Promise.resolve({ uptime: 3661, active_sessions: 1, connected_clients: 1, version: 'v0.1.0' }),
   createSession: vi.fn().mockResolvedValue({ id: 'new-session', name: 'Quick Test' }),
 }))
 
@@ -91,7 +78,7 @@ describe('DashboardPage', () => {
     })
   })
 
-  it('renders client table with mock data', async () => {
+  it('renders client count from API', async () => {
     render(
       <MemoryRouter>
         <DashboardPage />
@@ -99,9 +86,7 @@ describe('DashboardPage', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByTestId('client-row')).toBeInTheDocument()
-      expect(screen.getByText('client-1')).toBeInTheDocument()
-      expect(screen.getByText('translator')).toBeInTheDocument()
+      expect(screen.getByTestId('connected-clients-count')).toHaveTextContent('1')
     })
   })
 

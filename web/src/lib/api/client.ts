@@ -1,16 +1,18 @@
+/**
+ * Type-safe API client built on openapi-fetch.
+ * DO NOT EDIT — regenerate types with: task generate:api
+ */
+import createClient from 'openapi-fetch'
+import type { paths } from './generated'
 import type {
-  LoginRequest,
-  LoginResponse,
   User,
   ApiToken,
   ApiTokenCreated,
   SessionTemplate,
   SessionTemplateCreate,
   Session,
-  SessionDetail,
+  LoginResponse,
   SessionCreateRequest,
-  Client,
-  ServerStatus,
 } from './types'
 
 class ApiClientError extends Error {
@@ -42,124 +44,125 @@ function getAuthToken(): string | null {
   return sessionStorage.getItem('ct-token')
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  }
-  const token = getAuthToken()
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`
-  }
-  const res = await fetch(path, {
-    ...options,
-    headers: {
-      ...headers,
-      ...options.headers as Record<string, string>,
-    },
-  })
+const client = createClient<paths>({ baseUrl: '' })
 
-  if (res.status === 401) {
-    onUnauthorizedCallback?.()
-    throw new ApiClientError(401, 'Unauthorized')
-  }
+client.use({
+  async onRequest({ request }) {
+    request.headers.set('Content-Type', 'application/json')
+    const token = getAuthToken()
+    if (token) {
+      request.headers.set('Authorization', `Bearer ${token}`)
+    }
+    return request
+  },
+  async onResponse({ response }) {
+    if (response.status === 401) {
+      onUnauthorizedCallback?.()
+      throw new ApiClientError(401, 'Unauthorized')
+    }
+    if (!response.ok) {
+      const body = await response.clone().json().catch(() => ({ error: { message: response.statusText } })) as { error?: { message?: string } }
+      throw new ApiClientError(response.status, body?.error?.message ?? response.statusText)
+    }
+    return response
+  },
+})
 
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ message: res.statusText })) as { message?: string }
-    throw new ApiClientError(res.status, body.message ?? res.statusText)
-  }
+// --- Auth ---
 
-  if (res.status === 204) {
-    return undefined as T
-  }
-
-  return res.json() as Promise<T>
-}
-
-// Auth
-export async function login(data: LoginRequest): Promise<LoginResponse> {
-  return request('/api/auth/login', { method: 'POST', body: JSON.stringify(data) })
+export async function login(data: { username: string; password: string }): Promise<LoginResponse> {
+  const { data: result } = await client.POST('/api/auth/login', { body: data })
+  return result!
 }
 
 export async function logout(): Promise<void> {
-  return request('/api/auth/logout', { method: 'POST' })
+  await client.POST('/api/auth/logout')
 }
 
-// Users
+// --- Users ---
+
 export async function getUsers(): Promise<User[]> {
-  return request('/api/users')
+  const { data: result } = await client.GET('/api/users')
+  return result ?? []
 }
 
 export async function createUser(data: { username: string; password: string }): Promise<User> {
-  return request('/api/users', { method: 'POST', body: JSON.stringify(data) })
+  const { data: result } = await client.POST('/api/users', { body: data })
+  return result!
 }
 
 export async function deleteUser(id: string): Promise<void> {
-  return request(`/api/users/${id}`, { method: 'DELETE' })
+  await client.DELETE('/api/users/{id}', { params: { path: { id } } })
 }
 
-// API Tokens
+// --- API Tokens ---
+
 export async function getTokens(): Promise<ApiToken[]> {
-  return request('/api/tokens')
+  const { data: result } = await client.GET('/api/tokens')
+  return result ?? []
 }
 
 export async function createToken(data: { name: string }): Promise<ApiTokenCreated> {
-  return request('/api/tokens', { method: 'POST', body: JSON.stringify(data) })
+  const { data: result } = await client.POST('/api/tokens', { body: data })
+  return result!
 }
 
 export async function revokeToken(id: string): Promise<void> {
-  return request(`/api/tokens/${id}`, { method: 'DELETE' })
+  await client.DELETE('/api/tokens/{id}', { params: { path: { id } } })
 }
 
-// Templates
+// --- Templates ---
+
 export async function getTemplates(): Promise<SessionTemplate[]> {
-  return request('/api/templates')
+  const { data: result } = await client.GET('/api/templates')
+  return result ?? []
 }
 
 export async function getTemplate(id: string): Promise<SessionTemplate> {
-  return request(`/api/templates/${id}`)
+  const { data: result } = await client.GET('/api/templates/{id}', { params: { path: { id } } })
+  return result!
 }
 
 export async function createTemplate(data: SessionTemplateCreate): Promise<SessionTemplate> {
-  return request('/api/templates', { method: 'POST', body: JSON.stringify(data) })
+  const { data: result } = await client.POST('/api/templates', { body: data })
+  return result!
 }
 
 export async function updateTemplate(id: string, data: SessionTemplateCreate): Promise<SessionTemplate> {
-  return request(`/api/templates/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+  const { data: result } = await client.PUT('/api/templates/{id}', { params: { path: { id } }, body: data })
+  return result!
 }
 
 export async function deleteTemplate(id: string): Promise<void> {
-  return request(`/api/templates/${id}`, { method: 'DELETE' })
+  await client.DELETE('/api/templates/{id}', { params: { path: { id } } })
 }
 
-// Sessions
+// --- Sessions ---
+
 export async function getSessions(): Promise<Session[]> {
-  return request('/api/sessions')
+  const { data: result } = await client.GET('/api/sessions')
+  return result ?? []
 }
 
-export async function getSession(id: string): Promise<SessionDetail> {
-  return request(`/api/sessions/${id}`)
+export async function getSession(id: string): Promise<Session> {
+  const { data: result } = await client.GET('/api/sessions/{id}', { params: { path: { id } } })
+  return result!
 }
 
 export async function createSession(data: SessionCreateRequest): Promise<Session> {
-  return request('/api/sessions', { method: 'POST', body: JSON.stringify(data) })
+  const { data: result } = await client.POST('/api/sessions', { body: data })
+  return result!
 }
 
 export async function endSession(id: string): Promise<void> {
-  return request(`/api/sessions/${id}`, { method: 'DELETE' })
+  await client.DELETE('/api/sessions/{id}', { params: { path: { id } } })
 }
 
-// Clients
-export async function getClients(): Promise<Client[]> {
-  return request('/api/clients')
-}
+// --- Clients (stubs) ---
 
-export async function getClient(id: string): Promise<Client> {
-  return request(`/api/clients/${id}`)
-}
-
-// Server Status
-export async function getServerStatus(): Promise<ServerStatus> {
-  return request('/api/status')
+export async function getClients(): Promise<Record<string, never>[]> {
+  const { data: result } = await client.GET('/api/clients')
+  return result ?? []
 }
 
 export { ApiClientError }

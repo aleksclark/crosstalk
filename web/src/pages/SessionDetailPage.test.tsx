@@ -10,19 +10,10 @@ vi.mock('@/lib/api/client', () => ({
     id: 'session-1',
     name: 'Test Session',
     template_id: 'tmpl-1',
-    template_name: 'Translation',
     status: 'active',
-    client_count: 2,
-    total_roles: 2,
     created_at: '2026-04-21T10:00:00Z',
     ended_at: null,
-    clients: [
-      { id: 'client-1', role: 'translator', status: 'connected', connected_at: '2026-04-21T10:00:00Z' },
-      { id: 'client-2', role: 'studio', status: 'connected', connected_at: '2026-04-21T10:05:00Z' },
-    ],
-    channel_bindings: [
-      { from_role: 'translator', from_channel: 'mic', to_role: 'studio', to_channel: 'output', active: true },
-    ],
+    recording: { active: true, file_count: 2, total_bytes: 1024 },
   }),
   endSession: vi.fn().mockResolvedValue(undefined),
 }))
@@ -61,13 +52,12 @@ describe('SessionDetailPage', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Test Session')).toBeInTheDocument()
-      expect(screen.getByText(/Translation/)).toBeInTheDocument()
-      expect(screen.getByText('active')).toBeInTheDocument()
-      expect(screen.getByText('2 / 2 clients connected')).toBeInTheDocument()
+      expect(screen.getAllByText(/tmpl-1/).length).toBeGreaterThanOrEqual(1)
+      expect(screen.getAllByText('active').length).toBeGreaterThanOrEqual(1)
     })
   })
 
-  it('renders connected clients table', async () => {
+  it('renders session info card with recording status', async () => {
     render(
       <MemoryRouter initialEntries={['/sessions/session-1']}>
         <Routes>
@@ -77,10 +67,9 @@ describe('SessionDetailPage', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText('client-1')).toBeInTheDocument()
-      expect(screen.getByText('client-2')).toBeInTheDocument()
-      expect(screen.getByText('translator')).toBeInTheDocument()
-      expect(screen.getByText('studio')).toBeInTheDocument()
+      expect(screen.getByText('Session Info')).toBeInTheDocument()
+      expect(screen.getByText(/Active/)).toBeInTheDocument()
+      expect(screen.getByText(/2 files/)).toBeInTheDocument()
     })
   })
 
@@ -106,9 +95,19 @@ describe('SessionDetailPage', () => {
     })
   })
 
-  it('renders channel bindings', async () => {
+  it('displays ended_at when session has ended', async () => {
+    const { getSession } = await import('@/lib/api/client')
+    vi.mocked(getSession).mockResolvedValueOnce({
+      id: 'session-2',
+      name: 'Ended Session',
+      template_id: 'tmpl-1',
+      status: 'ended',
+      created_at: '2026-04-21T10:00:00Z',
+      ended_at: '2026-04-21T11:00:00Z',
+    })
+
     render(
-      <MemoryRouter initialEntries={['/sessions/session-1']}>
+      <MemoryRouter initialEntries={['/sessions/session-2']}>
         <Routes>
           <Route path="/sessions/:id" element={<SessionDetailPage />} />
         </Routes>
@@ -116,9 +115,9 @@ describe('SessionDetailPage', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText('translator:mic')).toBeInTheDocument()
-      expect(screen.getByText('studio:output')).toBeInTheDocument()
-      expect(screen.getByText('Active')).toBeInTheDocument()
+      expect(screen.getByText('Ended Session')).toBeInTheDocument()
+      expect(screen.getAllByText('ended').length).toBeGreaterThanOrEqual(1)
+      expect(screen.getByText('Ended')).toBeInTheDocument()
     })
   })
 })

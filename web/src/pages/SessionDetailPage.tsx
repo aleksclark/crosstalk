@@ -1,16 +1,15 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { getSession, endSession } from '@/lib/api/client'
-import type { SessionDetail } from '@/lib/api/types'
+import type { Session } from '@/lib/api/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 
 export function SessionDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const [session, setSession] = useState<SessionDetail | null>(null)
+  const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -24,7 +23,7 @@ export function SessionDetailPage() {
   const handleEnd = async () => {
     if (!id || !confirm('End this session?')) return
     await endSession(id)
-    setSession((prev) => (prev ? { ...prev, status: 'ended' } : prev))
+    setSession((prev) => (prev ? { ...prev, status: 'ended' as const } : prev))
   }
 
   if (loading || !session) return <div className="text-muted-foreground">Loading...</div>
@@ -35,7 +34,7 @@ export function SessionDetailPage() {
         <div>
           <h1 className="text-3xl font-bold text-foreground">{session.name}</h1>
           <p className="text-muted-foreground text-sm">
-            Template: {session.template_name} · Created: {new Date(session.created_at).toLocaleString()}
+            Template: {session.template_id} · Created: {new Date(session.created_at!).toLocaleString()}
           </p>
         </div>
         <div className="flex gap-2">
@@ -56,77 +55,40 @@ export function SessionDetailPage() {
         <Badge variant={session.status === 'active' ? 'success' : session.status === 'waiting' ? 'warning' : 'secondary'}>
           {session.status}
         </Badge>
-        <span className="text-sm text-muted-foreground">
-          {session.client_count} / {session.total_roles} clients connected
-        </span>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Connected Clients</CardTitle>
+          <CardTitle>Session Info</CardTitle>
         </CardHeader>
-        <CardContent>
-          {session.clients.length === 0 ? (
-            <p className="text-muted-foreground text-sm">No clients connected</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Client ID</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Connected Since</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {session.clients.map((client) => (
-                  <TableRow key={client.id}>
-                    <TableCell className="font-mono text-xs">{client.id}</TableCell>
-                    <TableCell>{client.role}</TableCell>
-                    <TableCell>
-                      <Badge variant={client.status === 'connected' ? 'success' : 'secondary'}>
-                        {client.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-xs">{new Date(client.connected_at).toLocaleString()}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+        <CardContent className="space-y-2 text-sm">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">ID</span>
+            <span className="font-mono text-xs">{session.id}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Template ID</span>
+            <span className="font-mono text-xs">{session.template_id}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Status</span>
+            <span>{session.status}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Created</span>
+            <span>{new Date(session.created_at!).toLocaleString()}</span>
+          </div>
+          {session.ended_at && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Ended</span>
+              <span>{new Date(session.ended_at).toLocaleString()}</span>
+            </div>
           )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Channel Bindings</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {session.channel_bindings.length === 0 ? (
-            <p className="text-muted-foreground text-sm">No channel bindings</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Source</TableHead>
-                  <TableHead>Target</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {session.channel_bindings.map((binding, i) => (
-                  <TableRow key={i}>
-                    <TableCell>{binding.from_role}:{binding.from_channel}</TableCell>
-                    <TableCell>{binding.to_role}:{binding.to_channel}</TableCell>
-                    <TableCell>
-                      <Badge variant={binding.active ? 'success' : 'secondary'}>
-                        {binding.active ? 'Active' : 'Inactive'}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+          {session.recording && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Recording</span>
+              <span>{session.recording.active ? 'Active' : 'Inactive'} — {session.recording.file_count ?? 0} files</span>
+            </div>
           )}
         </CardContent>
       </Card>

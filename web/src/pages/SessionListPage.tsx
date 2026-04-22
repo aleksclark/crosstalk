@@ -57,6 +57,9 @@ export function SessionListPage() {
     setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, status: 'ended' as const } : s)))
   }
 
+  // Build a lookup from template ID to name for display
+  const templateNameById = new Map(templates.map((t) => [t.id, t.name]))
+
   if (loading) return <div className="text-muted-foreground">Loading...</div>
 
   return (
@@ -119,7 +122,6 @@ export function SessionListPage() {
                   <TableHead>Name</TableHead>
                   <TableHead>Template</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Clients</TableHead>
                   <TableHead>Created</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
@@ -132,12 +134,11 @@ export function SessionListPage() {
                         {session.name}
                       </Link>
                     </TableCell>
-                    <TableCell>{session.template_name}</TableCell>
+                    <TableCell>{templateNameById.get(session.template_id) ?? session.template_id}</TableCell>
                     <TableCell>
-                      <Badge variant={statusBadgeVariant(session.status)}>{session.status}</Badge>
+                      <Badge variant={statusBadgeVariant(session.status ?? '')}>{session.status}</Badge>
                     </TableCell>
-                    <TableCell>{session.client_count} / {session.total_roles}</TableCell>
-                    <TableCell className="text-xs">{new Date(session.created_at).toLocaleString()}</TableCell>
+                    <TableCell className="text-xs">{new Date(session.created_at!).toLocaleString()}</TableCell>
                     <TableCell>
                       <div className="flex gap-2">
                         {session.status !== 'ended' && (
@@ -152,7 +153,7 @@ export function SessionListPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleEnd(session.id)}
+                              onClick={() => handleEnd(session.id!)}
                               data-testid="end-session-button"
                             >
                               End
