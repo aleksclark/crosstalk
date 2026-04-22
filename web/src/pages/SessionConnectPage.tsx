@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import { getSession, endSession } from '@/lib/api/client'
 import { useWebRTC } from '@/lib/use-webrtc'
@@ -21,7 +21,7 @@ export function SessionConnectPage() {
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
   const [selectedDevice, setSelectedDevice] = useState('')
   const [muted, setMuted] = useState(false)
-  const [micStream, setMicStreamState] = useState<MediaStream | null>(null)
+  const micStreamRef = useRef<MediaStream | null>(null)
 
   const [logFilter, setLogFilter] = useState<string>('all')
 
@@ -77,10 +77,9 @@ export function SessionConnectPage() {
 
   useEffect(() => {
     if (!selectedDevice || muted) {
-      if (micStream) {
-        micStream.getTracks().forEach((t) => t.stop())
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional cleanup when device/muted changes
-        setMicStreamState(null)
+      if (micStreamRef.current) {
+        micStreamRef.current.getTracks().forEach((t) => t.stop())
+        micStreamRef.current = null
         webrtc.setMicStream(null)
       }
       return
@@ -96,7 +95,7 @@ export function SessionConnectPage() {
           stream.getTracks().forEach((t) => t.stop())
           return
         }
-        setMicStreamState(stream)
+        micStreamRef.current = stream
         webrtc.setMicStream(stream)
       } catch {
         // device unavailable
