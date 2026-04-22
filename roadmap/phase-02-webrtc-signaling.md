@@ -2,7 +2,7 @@
 
 [← Roadmap](index.md)
 
-**Status**: `COMPLETE — all tasks implemented, minor test gaps noted`  
+**Status**: `COMPLETE — all gaps addressed`  
 **Depends on**: Phase 1 (server must serve HTTP + auth)
 
 WebSocket signaling endpoint and Pion peer connection lifecycle. After this phase, clients can establish WebRTC connections to the server.
