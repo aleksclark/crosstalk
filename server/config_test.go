@@ -267,3 +267,39 @@ func TestLoadConfig_PartialOverride(t *testing.T) {
 	assert.Equal(t, "24h", cfg.Auth.WebRTCTokenLifetime)
 	assert.Equal(t, "http://localhost:5173", cfg.Web.DevProxyURL)
 }
+
+func TestLoadConfig_TypeMismatchWarnsAndUsesDefault(t *testing.T) {
+	path := writeTestConfig(t, `{
+		"listen": 9090,
+		"log_level": true,
+		"auth": {
+			"session_secret": "s",
+			"webrtc_token_lifetime": 42
+		},
+		"web": {
+			"dev_mode": "yes"
+		}
+	}`)
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	slog.SetDefault(logger)
+	t.Cleanup(func() {
+		slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	})
+
+	cfg, err := LoadConfig(path)
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "listen")
+	assert.Contains(t, output, "type mismatch")
+	assert.Contains(t, output, "log_level")
+	assert.Contains(t, output, "webrtc_token_lifetime")
+	assert.Contains(t, output, "dev_mode")
+
+	assert.Equal(t, ":8080", cfg.Listen)
+	assert.Equal(t, "info", cfg.LogLevel)
+	assert.Equal(t, "24h", cfg.Auth.WebRTCTokenLifetime)
+	assert.False(t, cfg.Web.DevMode)
+}
