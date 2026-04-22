@@ -2,10 +2,15 @@ package pion
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/oklog/ulid/v2"
+	"github.com/pion/webrtc/v4"
 
 	crosstalk "github.com/anthropics/crosstalk/server"
 	crosstalkv1 "github.com/anthropics/crosstalk/proto/gen/go/crosstalk/v1"
@@ -17,6 +22,7 @@ import (
 type Orchestrator struct {
 	SessionService         crosstalk.SessionService
 	SessionTemplateService crosstalk.SessionTemplateService
+	RecordingPath          string // base directory for recording files; empty disables recording
 
 	mu       sync.Mutex
 	sessions map[string]*LiveSession // keyed by session ID
@@ -24,10 +30,11 @@ type Orchestrator struct {
 
 // LiveSession tracks runtime state for an active session.
 type LiveSession struct {
-	Session  *crosstalk.Session
-	Template *crosstalk.SessionTemplate
-	Clients  map[string]*LiveClient  // keyed by peer ID
-	Bindings map[string]*LiveBinding // keyed by channel ID
+	Session   *crosstalk.Session
+	Template  *crosstalk.SessionTemplate
+	Clients   map[string]*LiveClient  // keyed by peer ID
+	Bindings  map[string]*LiveBinding // keyed by channel ID
+	StartedAt time.Time               // when the first client joined
 }
 
 // LiveClient tracks a connected client's role and peer.
@@ -44,6 +51,9 @@ type LiveBinding struct {
 	SinkPeer   *PeerConn // nil for record/broadcast
 	// Track forwarding goroutine control.
 	stopForward func()
+	// Recording state (non-nil for record bindings).
+	Recorder    *Recorder
+	RecordStart time.Time
 }
 
 // NewOrchestrator creates an Orchestrator with the given service dependencies.
@@ -92,10 +102,11 @@ func (o *Orchestrator) JoinSession(peer *PeerConn, sessionID, role string) error
 	ls := o.sessions[sessionID]
 	if ls == nil {
 		ls = &LiveSession{
-			Session:  session,
-			Template: tmpl,
-			Clients:  make(map[string]*LiveClient),
-			Bindings: make(map[string]*LiveBinding),
+			Session:   session,
+			Template:  tmpl,
+			Clients:   make(map[string]*LiveClient),
+			Bindings:  make(map[string]*LiveBinding),
+			StartedAt: time.Now(),
 		}
 		o.sessions[sessionID] = ls
 	}
@@ -175,8 +186,8 @@ func (o *Orchestrator) LeaveSession(peer *PeerConn) {
 	}
 }
 
-// EndSession sends SessionEnded to all clients, stops all forwarding, and
-// cleans up the live session.
+// EndSession sends SessionEnded to all clients, stops all forwarding,
+// writes session metadata, and cleans up the live session.
 func (o *Orchestrator) EndSession(sessionID string) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
@@ -186,9 +197,38 @@ func (o *Orchestrator) EndSession(sessionID string) {
 		return
 	}
 
+	// Collect recording metadata before deactivating bindings.
+	var recordingFiles []RecordingFile
+	for _, lb := range ls.Bindings {
+		if lb.Recorder != nil {
+			recordingFiles = append(recordingFiles, RecordingFile{
+				Path:          lb.Recorder.Path(),
+				SourceRole:    lb.Binding.SourceRole,
+				SourceChannel: lb.Binding.SourceChannel,
+				StartedAt:     lb.RecordStart,
+			})
+		}
+	}
+
 	// Deactivate all bindings.
 	for channelID, lb := range ls.Bindings {
 		o.deactivateBinding(ls, channelID, lb)
+	}
+
+	// Write session-meta.json if any recordings were made.
+	if len(recordingFiles) > 0 && o.RecordingPath != "" {
+		dir := filepath.Join(o.RecordingPath, sessionID)
+		meta := &SessionMeta{
+			SessionID:    sessionID,
+			TemplateName: ls.Template.Name,
+			StartedAt:    ls.StartedAt,
+			EndedAt:      time.Now(),
+			Files:        recordingFiles,
+		}
+		if err := WriteSessionMeta(dir, meta); err != nil {
+			slog.Error("orchestrator: write session meta failed",
+				"session", sessionID, "err", err)
+		}
 	}
 
 	// Notify all clients.
@@ -284,7 +324,8 @@ func (o *Orchestrator) activateBinding(ls *LiveSession, b crosstalk.ActiveBindin
 	// Tell source peer to send audio on this channel.
 	sendBindChannel(sourcePeer, channelID, b.SourceChannel, crosstalkv1.Direction_SOURCE, channelID)
 
-	if b.SinkType == "role" {
+	switch b.SinkType {
+	case "role":
 		sinkPeer := peerForRole(ls, b.SinkRole)
 		if sinkPeer == nil {
 			return
@@ -302,6 +343,9 @@ func (o *Orchestrator) activateBinding(ls *LiveSession, b crosstalk.ActiveBindin
 		} else {
 			lb.stopForward = stop
 		}
+
+	case "record":
+		o.startRecording(ls, lb)
 	}
 
 	ls.Bindings[channelID] = lb
@@ -318,6 +362,14 @@ func (o *Orchestrator) deactivateBinding(ls *LiveSession, channelID string, lb *
 		lb.stopForward()
 	}
 
+	// Close recorder if active.
+	if lb.Recorder != nil {
+		if err := lb.Recorder.Close(); err != nil {
+			slog.Error("orchestrator: close recorder failed",
+				"channel", channelID, "err", err)
+		}
+	}
+
 	// Send UnbindChannel to source.
 	sendUnbindChannel(lb.SourcePeer, channelID)
 
@@ -331,6 +383,81 @@ func (o *Orchestrator) deactivateBinding(ls *LiveSession, channelID string, lb *
 	slog.Info("orchestrator: deactivated binding",
 		"channel", channelID,
 		"source", lb.Binding.Mapping.Source, "sink", lb.Binding.Mapping.Sink)
+}
+
+// startRecording sets up a Recorder for a record binding and wires it to the
+// source peer's incoming audio track. On any error it logs and skips recording
+// rather than failing the session. Must be called with o.mu held.
+func (o *Orchestrator) startRecording(ls *LiveSession, lb *LiveBinding) {
+	if o.RecordingPath == "" {
+		slog.Warn("orchestrator: recording path not configured, skipping recording",
+			"channel", lb.ChannelID)
+		return
+	}
+
+	sessionID := ls.Session.ID
+	dir := filepath.Join(o.RecordingPath, sessionID)
+
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		slog.Error("orchestrator: failed to create recording directory",
+			"dir", dir, "err", err)
+		return
+	}
+
+	now := time.Now()
+	fileName := RecordingFileName(lb.Binding.SourceRole, lb.Binding.SourceChannel, now)
+	filePath := filepath.Join(dir, fileName)
+
+	rec, err := NewRecorder(filePath)
+	if err != nil {
+		slog.Error("orchestrator: failed to create recorder",
+			"path", filePath, "err", err)
+		return
+	}
+
+	lb.Recorder = rec
+	lb.RecordStart = now
+
+	// Register OnTrack on the source peer to capture incoming audio and write
+	// RTP packets to the recorder. The forwarding goroutine runs until the
+	// track ends or the stop function is called.
+	var (
+		stopOnce sync.Once
+		done     = make(chan struct{})
+	)
+
+	lb.stopForward = func() {
+		stopOnce.Do(func() { close(done) })
+	}
+
+	lb.SourcePeer.pc.OnTrack(func(remoteTrack *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
+		go func() {
+			for {
+				select {
+				case <-done:
+					return
+				default:
+				}
+
+				pkt, _, readErr := remoteTrack.ReadRTP()
+				if readErr != nil {
+					if readErr != io.EOF {
+						slog.Debug("orchestrator: recording track read error",
+							"channel", lb.ChannelID, "err", readErr)
+					}
+					return
+				}
+
+				if writeErr := rec.WriteRTP(pkt); writeErr != nil {
+					slog.Debug("orchestrator: recording WriteRTP failed",
+						"channel", lb.ChannelID, "err", writeErr)
+				}
+			}
+		}()
+	})
+
+	slog.Info("orchestrator: started recording",
+		"channel", lb.ChannelID, "path", filePath)
 }
 
 // GetLiveSession returns the live session for the given session ID, or nil.

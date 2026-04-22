@@ -8,6 +8,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.42
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/pion/ice/v4 v4.2.2
+	github.com/pion/rtp v1.10.1
 	github.com/pion/webrtc/v4 v4.2.11
 	github.com/pressly/goose/v3 v3.27.0
 	github.com/stretchr/testify v1.11.1
@@ -27,7 +28,6 @@ require (
 	github.com/pion/mdns/v2 v2.1.0 // indirect
 	github.com/pion/randutil v0.1.0 // indirect
 	github.com/pion/rtcp v1.2.16 // indirect
-	github.com/pion/rtp v1.10.1 // indirect
 	github.com/pion/sctp v1.9.4 // indirect
 	github.com/pion/sdp/v3 v3.0.18 // indirect
 	github.com/pion/srtp/v3 v3.0.10 // indirect
