@@ -11,12 +11,13 @@ services:
       dockerfile: test/Dockerfile.server
     environment:
       - CROSSTALK_CONFIG=/app/test.json
+      - CROSSTALK_TEST_MODE=1
     ports:
       - "18080:8080"
     networks:
       test-net:
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/templates", "||", "true"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/", "||", "true"]
       interval: 2s
       timeout: 5s
       retries: 30

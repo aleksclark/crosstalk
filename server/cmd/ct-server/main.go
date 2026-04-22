@@ -103,6 +103,12 @@ func run() error {
 		return fmt.Errorf("creating web sub-filesystem: %w", err)
 	}
 
+	// Enable test mode when CROSSTALK_TEST_MODE env var is set.
+	testMode := os.Getenv("CROSSTALK_TEST_MODE") == "1"
+	if testMode {
+		slog.Warn("test mode enabled — test-only endpoints are active")
+	}
+
 	// Create HTTP handler with all services injected.
 	handler := &cthttp.Handler{
 		UserService:            userService,
@@ -115,6 +121,8 @@ func run() error {
 		DevProxyURL:            cfg.Web.DevProxyURL,
 		SignalingHandler:       &sigHandler,
 		Orchestrator:           orch,
+		TestMode:               testMode,
+		DB:                     db.DB,
 	}
 
 	// Build the HTTP server.

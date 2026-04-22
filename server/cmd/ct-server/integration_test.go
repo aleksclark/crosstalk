@@ -962,17 +962,24 @@ func TestIntegration_TestResetEndpoint(t *testing.T) {
 	assert.NotEmpty(t, templates, "should have templates before reset")
 
 	// POST /api/test/reset — no auth required (test-only endpoint).
+	// Now returns 200 with JSON containing new admin credentials.
 	resp = apiDo(t, "POST", baseURL+"/api/test/reset", "", nil)
-	require.Equal(t, http.StatusNoContent, resp.StatusCode)
-	resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	resetResp := apiJSON[map[string]any](t, resp)
+	newToken, ok := resetResp["token"].(string)
+	require.True(t, ok, "reset response should contain token")
+	assert.NotEmpty(t, newToken)
 
-	// After reset, all tables are empty. Token is invalid now too,
-	// so re-seed for verification. Actually, since we deleted all tokens,
-	// we can't authenticate. Let's verify by trying to list templates
-	// without auth — we should get 401.
+	// After reset, old token is invalid. New token from reset should work.
 	resp = apiDo(t, "GET", baseURL+"/api/templates", token, nil)
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode,
 		"old token should be invalid after reset")
+	resp.Body.Close()
+
+	// Verify new token works.
+	resp = apiDo(t, "GET", baseURL+"/api/templates", newToken, nil)
+	assert.Equal(t, http.StatusOK, resp.StatusCode,
+		"new token from reset should work")
 	resp.Body.Close()
 }
 

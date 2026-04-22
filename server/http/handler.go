@@ -1101,7 +1101,8 @@ var openapiSpec = map[string]any{
 
 // --- Test-only handlers ---
 
-// handleTestReset truncates all application tables. Only available when
+// handleTestReset truncates all application tables and re-seeds the admin user
+// with known credentials (admin / admin-password). Only available when
 // TestMode is true.
 func (h *Handler) handleTestReset(w http.ResponseWriter, _ *http.Request) {
 	if h.DB == nil {
@@ -1122,5 +1123,43 @@ func (h *Handler) handleTestReset(w http.ResponseWriter, _ *http.Request) {
 			return
 		}
 	}
-	w.WriteHeader(http.StatusNoContent)
+
+	// Re-seed admin user with known password for integration tests.
+	hash, err := HashPassword("admin-password")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to hash admin password: "+err.Error())
+		return
+	}
+	now := time.Now().UTC()
+	adminID := newID()
+	adminUser := &crosstalk.User{
+		ID:           adminID,
+		Username:     "admin",
+		PasswordHash: hash,
+		CreatedAt:    now,
+	}
+	if err := h.UserService.CreateUser(adminUser); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create admin user: "+err.Error())
+		return
+	}
+
+	// Create seed API token for the admin.
+	plaintext := GenerateToken()
+	apiToken := &crosstalk.APIToken{
+		ID:        newID(),
+		Name:      "seed",
+		TokenHash: HashToken(plaintext),
+		UserID:    adminID,
+		CreatedAt: now,
+	}
+	if err := h.TokenService.CreateToken(apiToken); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create seed token: "+err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"token":    plaintext,
+		"username": "admin",
+		"password": "admin-password",
+	})
 }

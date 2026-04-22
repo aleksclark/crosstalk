@@ -1,0 +1,48 @@
+# test/Dockerfile.test — Multi-stage integration test runner.
+# Stage 1: Build Go integration test binary.
+# Stage 2: Node.js + Playwright for browser tests.
+
+# ── Stage 1: Go test binary ──────────────────────────────────────────────
+FROM golang:1.25-bookworm AS go-builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    sqlite3 gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy go modules first for caching.
+COPY server/go.mod server/go.sum ./server/
+COPY proto/gen/go/go.mod proto/gen/go/go.sum ./proto/gen/go/
+RUN cd server && go mod download
+
+# Copy source.
+COPY server/ ./server/
+COPY proto/ ./proto/
+
+# Build the integration test binary (compiles tests without running them).
+RUN cd server && CGO_ENABLED=1 go test -c -o /app/bin/integration-tests ./cmd/ct-server/...
+
+# ── Stage 2: Node.js + Playwright ────────────────────────────────────────
+FROM node:20-bookworm
+
+# Install system deps for Playwright Chromium.
+RUN npx playwright@1.52.0 install --with-deps chromium
+
+WORKDIR /app
+
+# Copy Playwright test project.
+COPY test/playwright/ ./playwright/
+
+# Create package.json for the Playwright project.
+RUN cd playwright && npm init -y && \
+    npm install @playwright/test@1.52.0 typescript
+
+# Copy Go test binary from builder.
+COPY --from=go-builder /app/bin/integration-tests /app/bin/integration-tests
+
+# Copy the entrypoint script.
+COPY test/run-tests.sh /app/run-tests.sh
+RUN chmod +x /app/run-tests.sh
+
+ENTRYPOINT ["/app/run-tests.sh"]

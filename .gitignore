@@ -35,5 +35,6 @@ k2b-board/image/*.img*
 *.so
 *.dylib
 *.test
+!Dockerfile.test
 *.out
 server/ct-server

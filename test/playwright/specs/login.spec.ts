@@ -2,19 +2,28 @@
  * CrossTalk Playwright Integration Tests — Login Flow
  *
  * Prerequisites: ct-server running with embedded web UI at CT_SERVER_URL.
- * Admin user must be seeded (happens automatically on first server start).
+ * Test mode must be enabled (CROSSTALK_TEST_MODE=1) for the reset endpoint.
  *
  * These tests verify the web UI login flow works end-to-end against a real
  * server with real SQLite persistence.
  */
 import { test, expect } from "@playwright/test";
+import { resetServer } from "../helpers";
 
 test.describe("Login flow", () => {
+  test.beforeEach(async ({ request }) => {
+    // Reset server DB and re-seed admin with known credentials.
+    await resetServer(request);
+  });
+
   test("should show login page at /", async ({ page }) => {
     await page.goto("/");
-    // The SPA should render — either a login form or redirect to login.
-    // Verify the page loaded (not a 404 or server error).
-    await expect(page.locator("body")).toBeVisible();
+    // Unauthenticated users are redirected to /login.
+    await expect(page).toHaveURL(/\/login/);
+    // The login form should be visible.
+    await expect(page.locator("#username")).toBeVisible();
+    await expect(page.locator("#password")).toBeVisible();
+    await expect(page.locator('button[type="submit"]')).toBeVisible();
   });
 
   test("should login with valid credentials and redirect to dashboard", async ({
@@ -22,28 +31,27 @@ test.describe("Login flow", () => {
   }) => {
     await page.goto("/login");
 
-    // Fill in credentials. The admin user is seeded on first server start.
-    // The seed password is logged at startup — for integration tests, the
-    // test runner creates the user with a known password.
-    await page.fill('input[name="username"]', "admin");
-    await page.fill('input[name="password"]', "admin-password");
+    // Fill in credentials — admin / admin-password (seeded by test reset).
+    await page.fill("#username", "admin");
+    await page.fill("#password", "admin-password");
     await page.click('button[type="submit"]');
 
-    // After successful login, should redirect to dashboard or main view.
-    // Verify URL changed away from /login.
-    await expect(page).not.toHaveURL(/\/login/);
+    // After successful login, should redirect to dashboard.
+    await expect(page).toHaveURL(/\/dashboard/, { timeout: 10000 });
   });
 
   test("should show error for invalid credentials", async ({ page }) => {
     await page.goto("/login");
 
-    await page.fill('input[name="username"]', "admin");
-    await page.fill('input[name="password"]', "wrong-password");
+    await page.fill("#username", "admin");
+    await page.fill("#password", "wrong-password");
     await page.click('button[type="submit"]');
 
-    // Should stay on login page or show an error message.
-    await expect(page.locator("text=error").or(page.locator(".error"))).toBeVisible({
+    // Should show an error message (role="alert" div).
+    await expect(page.locator('[role="alert"]')).toBeVisible({
       timeout: 5000,
     });
+    // Should stay on login page.
+    await expect(page).toHaveURL(/\/login/);
   });
 });
