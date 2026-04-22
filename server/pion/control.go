@@ -88,12 +88,14 @@ func (h *ControlHandler) handleHello(hello *crosstalkv1.Hello) {
 	}
 }
 
-// handleClientStatus logs the status update and stores it for future use.
+// handleClientStatus logs the status update.
+// TODO(Phase 5): update client registry with reported state, sources, sinks, codecs.
 func (h *ControlHandler) handleClientStatus(status *crosstalkv1.ClientStatus) {
 	slog.Debug("control: received ClientStatus", "peer", h.Peer.ID, "state", status.GetState())
 }
 
 // handleChannelStatus logs the channel status report.
+// TODO(Phase 5): update channel binding state in session registry.
 func (h *ControlHandler) handleChannelStatus(status *crosstalkv1.ChannelStatus) {
 	slog.Debug("control: received ChannelStatus", "peer", h.Peer.ID,
 		"channel", status.GetChannelId(), "state", status.GetState())
