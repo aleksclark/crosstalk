@@ -2,6 +2,7 @@ package pion
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -87,6 +88,6 @@ func (e *AuthError) Error() string {
 
 // IsAuthError checks if an error is an authentication error.
 func IsAuthError(err error) bool {
-	_, ok := err.(*AuthError)
-	return ok
+	var authErr *AuthError
+	return errors.As(err, &authErr)
 }

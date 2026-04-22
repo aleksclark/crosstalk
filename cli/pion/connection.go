@@ -83,8 +83,15 @@ func (c *Connection) Connect(ctx context.Context) error {
 
 	slog.Info("connecting to signaling WebSocket", "url", wsURL)
 
-	wsConn, _, err := websocket.Dial(ctx, wsURL, nil)
+	wsConn, resp, err := websocket.Dial(ctx, wsURL, nil)
 	if err != nil {
+		// Detect 401/403 as auth errors so the client can stop retrying.
+		if resp != nil && (resp.StatusCode == 401 || resp.StatusCode == 403) {
+			return &AuthError{
+				StatusCode: resp.StatusCode,
+				Message:    fmt.Sprintf("authentication failed (HTTP %d)", resp.StatusCode),
+			}
+		}
 		return fmt.Errorf("opening signaling websocket: %w", err)
 	}
 	c.mu.Lock()

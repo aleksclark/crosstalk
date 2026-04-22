@@ -219,18 +219,11 @@ func (c *Client) ClientID() string {
 
 func (c *Client) connectOnce(ctx context.Context) error {
 	// 1. Request WebRTC token
-	var auth AuthClientInterface
-	if c.authClientFactory != nil {
-		auth = c.authClientFactory(c.config.ServerURL, c.config.Token)
-	} else {
-		auth = NewAuthClient(c.config.ServerURL, c.config.Token)
-	}
+	slog.Info("connecting with API token", "server", c.config.ServerURL)
 
-	slog.Info("requesting WebRTC token", "server", c.config.ServerURL)
-	webrtcToken, err := auth.RequestWebRTCToken()
-	if err != nil {
-		return err
-	}
+	// Use the API token directly for WebSocket auth (the server validates
+	// API tokens on the WS signaling endpoint via FindTokenByHash).
+	wsToken := c.config.Token
 
 	// 2. Discover PipeWire devices
 	sources, sinks, err := c.pwSvc.Discover()
@@ -280,9 +273,9 @@ func (c *Client) connectOnce(ctx context.Context) error {
 
 	var conn ConnectionInterface
 	if c.connFactory != nil {
-		conn = c.connFactory(c.config.ServerURL, webrtcToken, connOpts...)
+		conn = c.connFactory(c.config.ServerURL, wsToken, connOpts...)
 	} else {
-		conn = NewConnection(c.config.ServerURL, webrtcToken, connOpts...)
+		conn = NewConnection(c.config.ServerURL, wsToken, connOpts...)
 	}
 
 	c.mu.Lock()

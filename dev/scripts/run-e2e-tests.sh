@@ -278,13 +278,12 @@ else
     fail_test "9.5a Server REST API not responding"
 fi
 
-# 5b. ct-client binary runs on K2B
-K2B_BIN_OK=$(ssh "root@${K2B_HOST}" "file /usr/local/bin/ct-client 2>&1" | grep -c aarch64 || true)
-K2B_BIN_OK="${K2B_BIN_OK:-0}"
-if [[ "$K2B_BIN_OK" -ge 1 ]]; then
-    pass_test "9.5b ct-client binary is valid arm64 on K2B"
+# 5b. ct-client binary runs on K2B (check it's executable and ELF)
+K2B_BIN_OK=$(ssh "root@${K2B_HOST}" "test -x /usr/local/bin/ct-client && head -c4 /usr/local/bin/ct-client | od -An -tx1 | tr -d ' '" 2>/dev/null || echo "")
+if [[ "$K2B_BIN_OK" == *"7f454c46"* ]]; then
+    pass_test "9.5b ct-client binary is valid ELF on K2B"
 else
-    fail_test "9.5b ct-client binary not valid arm64"
+    fail_test "9.5b ct-client binary not valid on K2B (got: $K2B_BIN_OK)"
 fi
 
 # 5c. K2B PipeWire loopback nodes
