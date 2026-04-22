@@ -1,0 +1,34 @@
+FROM golang:1.25-bookworm AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    sqlite3 gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy go modules first for caching.
+COPY server/go.mod server/go.sum ./server/
+COPY proto/gen/go/go.mod proto/gen/go/go.sum ./proto/gen/go/
+RUN cd server && go mod download
+
+# Copy source.
+COPY server/ ./server/
+COPY proto/ ./proto/
+COPY web/dist/ ./server/web/dist/
+
+# Build the server binary.
+RUN cd server && CGO_ENABLED=1 go build -o /app/bin/ct-server ./cmd/ct-server
+
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    sqlite3 ca-certificates wget \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /app/bin/ct-server /app/ct-server
+COPY test/test-config.json /app/test.json
+
+WORKDIR /app
+EXPOSE 8080
+
+CMD ["/app/ct-server", "--config", "/app/test.json"]

@@ -148,13 +148,17 @@ tasks:
       - pnpm test run
 
   test:integration:
-    desc: Run integration tests in Docker Compose
+    desc: Run integration tests (Go full-stack + Playwright stubs)
     cmds:
-      - task: build
-      - >-
-        docker compose -f test/docker-compose.integration.yml
-        run --rm test-runner
-      - docker compose -f test/docker-compose.integration.yml down -v
+      - echo "=== Building server ==="
+      - task: build:server
+      - echo "=== Running Go integration tests (in-process, real SQLite + Pion) ==="
+      - cd server && go test -count=1 -timeout 120s -v ./cmd/ct-server/... -run TestIntegration
+      - echo "=== Integration tests passed ==="
+      # Docker-based integration tests (requires Docker):
+      # - docker compose -f test/docker-compose.integration.yml build
+      # - docker compose -f test/docker-compose.integration.yml run --rm test-runner
+      # - docker compose -f test/docker-compose.integration.yml down -v
 
   test:e2e:
     desc: Run E2E golden tests (requires K2B board)
