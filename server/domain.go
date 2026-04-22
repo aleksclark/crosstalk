@@ -9,7 +9,10 @@
 //   - mock/     — In-memory mock implementations for testing
 package crosstalk
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // User represents an authenticated admin user.
 type User struct {
@@ -166,4 +169,70 @@ func sourceRole(source string) string {
 		}
 	}
 	return ""
+}
+
+// ActiveBinding represents a resolved template mapping where both sides are available.
+type ActiveBinding struct {
+	Mapping       Mapping // The original template mapping
+	SourceRole    string  // Role name of the source
+	SourceChannel string  // Channel name on the source
+	SinkRole      string  // Role name of the sink (empty for "record"/"broadcast")
+	SinkChannel   string  // Channel name on the sink (empty for "record"/"broadcast")
+	SinkType      string  // "role", "record", or "broadcast"
+}
+
+// SplitRoleChannel splits "role:channel" into (role, channel).
+// Returns ("", "") if the format is invalid.
+func SplitRoleChannel(s string) (string, string) {
+	i := strings.IndexByte(s, ':')
+	if i < 0 {
+		return "", ""
+	}
+	return s[:i], s[i+1:]
+}
+
+// ResolveBindings computes which template mappings can activate given the set of
+// connected role names. A mapping activates when:
+//   - Its source role is in connectedRoles
+//   - Its sink is "record" or "broadcast" (always available when source is present)
+//   - OR its sink role is also in connectedRoles
+func ResolveBindings(tmpl *SessionTemplate, connectedRoles map[string]bool) []ActiveBinding {
+	var bindings []ActiveBinding
+	for _, m := range tmpl.Mappings {
+		srcRole, srcChannel := SplitRoleChannel(m.Source)
+		if srcRole == "" || !connectedRoles[srcRole] {
+			continue
+		}
+
+		switch m.Sink {
+		case "record":
+			bindings = append(bindings, ActiveBinding{
+				Mapping:       m,
+				SourceRole:    srcRole,
+				SourceChannel: srcChannel,
+				SinkType:      "record",
+			})
+		case "broadcast":
+			bindings = append(bindings, ActiveBinding{
+				Mapping:       m,
+				SourceRole:    srcRole,
+				SourceChannel: srcChannel,
+				SinkType:      "broadcast",
+			})
+		default:
+			sinkRole, sinkChannel := SplitRoleChannel(m.Sink)
+			if sinkRole == "" || !connectedRoles[sinkRole] {
+				continue
+			}
+			bindings = append(bindings, ActiveBinding{
+				Mapping:       m,
+				SourceRole:    srcRole,
+				SourceChannel: srcChannel,
+				SinkRole:      sinkRole,
+				SinkChannel:   sinkChannel,
+				SinkType:      "role",
+			})
+		}
+	}
+	return bindings
 }

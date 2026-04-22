@@ -14,6 +14,7 @@ import (
 // ControlHandler processes protobuf messages on the control data channel.
 type ControlHandler struct {
 	Peer           *PeerConn
+	Orchestrator   *Orchestrator
 	SessionService crosstalk.SessionService
 	ServerVersion  string
 
@@ -110,8 +111,8 @@ func (h *ControlHandler) handleLogEntry(entry *crosstalkv1.LogEntry) {
 		"message", entry.GetMessage())
 }
 
-// handleJoinSession validates the session and role, stores them on the
-// PeerConn, and sends back a SessionEvent.
+// handleJoinSession delegates to the Orchestrator if available, otherwise
+// falls back to the basic session lookup and role storage.
 func (h *ControlHandler) handleJoinSession(join *crosstalkv1.JoinSession) {
 	slog.Debug("control: received JoinSession", "peer", h.Peer.ID,
 		"session_id", join.GetSessionId(), "role", join.GetRole())
@@ -120,7 +121,17 @@ func (h *ControlHandler) handleJoinSession(join *crosstalkv1.JoinSession) {
 		h.OnJoinSession(h.Peer, join)
 	}
 
-	// Look up the session.
+	// Delegate to orchestrator if available — it handles validation,
+	// cardinality, binding evaluation, and BindChannel commands.
+	if h.Orchestrator != nil {
+		if err := h.Orchestrator.JoinSession(h.Peer, join.GetSessionId(), join.GetRole()); err != nil {
+			slog.Warn("control: orchestrator rejected join", "peer", h.Peer.ID, "err", err)
+			h.sendSessionEvent(crosstalkv1.SessionEventType_SESSION_ROLE_REJECTED, join.GetSessionId(), err.Error())
+		}
+		return
+	}
+
+	// Fallback: basic session lookup (no orchestrator).
 	session, err := h.SessionService.FindSessionByID(join.GetSessionId())
 	if err != nil || session == nil {
 		msg := "session not found"
@@ -131,7 +142,6 @@ func (h *ControlHandler) handleJoinSession(join *crosstalkv1.JoinSession) {
 		return
 	}
 
-	// Validate role: accept any non-empty role for now (template validation later).
 	if join.GetRole() == "" {
 		h.sendSessionEvent(crosstalkv1.SessionEventType_SESSION_ROLE_REJECTED, join.GetSessionId(), "role must not be empty")
 		return
