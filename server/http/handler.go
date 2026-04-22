@@ -37,6 +37,13 @@ type Handler struct {
 	// SignalingHandler is the WebSocket signaling handler for WebRTC.
 	// It handles its own authentication via query parameter tokens.
 	SignalingHandler http.Handler
+
+	// TestMode enables test-only endpoints (e.g. POST /api/test/reset).
+	TestMode bool
+
+	// DB is the raw database handle, only used in test mode for the reset
+	// endpoint. It must not be nil when TestMode is true.
+	DB *sql.DB
 }
 
 // Router builds and returns the chi router with the full route tree.
@@ -61,6 +68,11 @@ func (h *Handler) Router() *chi.Mux {
 	r.Route("/api", func(r chi.Router) {
 		// Public: login does not require auth.
 		r.Post("/auth/login", h.handleLogin)
+
+		// Test-only: reset endpoint truncates all tables.
+		if h.TestMode {
+			r.Post("/test/reset", h.handleTestReset)
+		}
 
 		// All other /api routes require auth.
 		r.Group(func(r chi.Router) {
@@ -697,4 +709,30 @@ func (h *Handler) handleOpenAPI(w http.ResponseWriter, _ *http.Request) {
 		"paths": map[string]any{},
 	}
 	writeJSON(w, http.StatusOK, spec)
+}
+
+// --- Test-only handlers ---
+
+// handleTestReset truncates all application tables. Only available when
+// TestMode is true.
+func (h *Handler) handleTestReset(w http.ResponseWriter, _ *http.Request) {
+	if h.DB == nil {
+		writeError(w, http.StatusInternalServerError, "test mode DB not configured")
+		return
+	}
+
+	tables := []string{
+		"session_clients",
+		"sessions",
+		"session_templates",
+		"api_tokens",
+		"users",
+	}
+	for _, table := range tables {
+		if _, err := h.DB.Exec("DELETE FROM " + table); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to truncate "+table+": "+err.Error())
+			return
+		}
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

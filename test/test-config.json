@@ -1,0 +1,13 @@
+{
+  "$schema": "../server/config.schema.json",
+  "listen": ":8080",
+  "db_path": "/data/crosstalk-test.db",
+  "recording_path": "/data/recordings",
+  "log_level": "debug",
+  "auth": {
+    "session_secret": "test-integration-secret"
+  },
+  "web": {
+    "dev_mode": false
+  }
+}
