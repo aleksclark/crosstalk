@@ -162,6 +162,11 @@ type PeerConn struct {
 	// Session membership set by JoinSession.
 	SessionID string
 	Role      string
+
+	// onNegotiationNeeded is called when the server adds/removes tracks and the
+	// client must renegotiate. Set by the signaling layer before any bindings
+	// are activated.
+	onNegotiationNeeded func(offer webrtc.SessionDescription)
 }
 
 // OnICEConnectionStateChange registers a callback invoked when the ICE
@@ -198,6 +203,54 @@ func (c *PeerConn) AddICECandidate(candidate webrtc.ICECandidateInit) error {
 // is discovered. A nil candidate signals that gathering is complete.
 func (c *PeerConn) OnICECandidate(f func(*webrtc.ICECandidate)) {
 	c.pc.OnICECandidate(f)
+}
+
+// OnNegotiationNeeded registers a callback invoked when the server adds or
+// removes tracks and the client must renegotiate. The callback receives a
+// server-created SDP offer that should be forwarded to the client.
+func (c *PeerConn) OnNegotiationNeeded(f func(webrtc.SessionDescription)) {
+	c.mu.Lock()
+	c.onNegotiationNeeded = f
+	c.mu.Unlock()
+}
+
+// Negotiate creates a server-side SDP offer (triggered after AddTrack or
+// RemoveTrack) and delivers it to the signaling layer via the registered
+// OnNegotiationNeeded callback. The client is expected to reply with an answer
+// via HandleAnswer. Errors are logged, not returned, because renegotiation
+// is best-effort — the binding can still function once the client sends its
+// own renegotiation offer.
+func (c *PeerConn) Negotiate() {
+	c.mu.Lock()
+	cb := c.onNegotiationNeeded
+	c.mu.Unlock()
+
+	if cb == nil {
+		slog.Debug("pion: negotiate called but no callback registered", "peer", c.ID)
+		return
+	}
+
+	offer, err := c.pc.CreateOffer(nil)
+	if err != nil {
+		slog.Error("pion: create renegotiation offer", "peer", c.ID, "err", err)
+		return
+	}
+	if err := c.pc.SetLocalDescription(offer); err != nil {
+		slog.Error("pion: set local description for renegotiation", "peer", c.ID, "err", err)
+		return
+	}
+
+	cb(*c.pc.LocalDescription())
+}
+
+// HandleAnswer sets the remote answer SDP. This is used for server-initiated
+// renegotiation: the server sends an offer, and the client responds with an
+// answer that is applied here.
+func (c *PeerConn) HandleAnswer(answer webrtc.SessionDescription) error {
+	if err := c.pc.SetRemoteDescription(answer); err != nil {
+		return fmt.Errorf("pion: set remote description (answer): %w", err)
+	}
+	return nil
 }
 
 // SendControlMessage marshals a protobuf ControlMessage and sends it on the

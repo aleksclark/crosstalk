@@ -45,6 +45,9 @@ func ForwardTrack(sourcePeer, sinkPeer *PeerConn, trackLabel string) (stop func(
 		return nil, fmt.Errorf("forward: add track to sink: %w", err)
 	}
 
+	// Trigger renegotiation so the sink client learns about the new track.
+	sinkPeer.Negotiate()
+
 	var (
 		stopOnce sync.Once
 		done     = make(chan struct{})

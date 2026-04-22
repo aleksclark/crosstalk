@@ -114,6 +114,7 @@ func run() error {
 		DevMode:                cfg.Web.DevMode,
 		DevProxyURL:            cfg.Web.DevProxyURL,
 		SignalingHandler:       &sigHandler,
+		Orchestrator:           orch,
 	}
 
 	// Build the HTTP server.

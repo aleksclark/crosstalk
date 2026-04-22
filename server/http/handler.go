@@ -36,6 +36,10 @@ type Handler struct {
 	// It handles its own authentication via query parameter tokens.
 	SignalingHandler http.Handler
 
+	// Orchestrator manages live session state. When set, the delete-session
+	// handler notifies connected WebRTC clients before updating the DB.
+	Orchestrator crosstalk.SessionOrchestrator
+
 	// TestMode enables test-only endpoints (e.g. POST /api/test/reset).
 	TestMode bool
 
@@ -671,6 +675,9 @@ func (h *Handler) handleGetSession(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	if h.Orchestrator != nil {
+		h.Orchestrator.EndSession(id)
+	}
 	if err := h.SessionService.EndSession(id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "session not found")

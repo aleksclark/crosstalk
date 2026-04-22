@@ -113,6 +113,22 @@ func (h *SignalingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	})
 
+	// 4b. Register renegotiation callback → forward server offers to client.
+	peer.OnNegotiationNeeded(func(offer webrtc.SessionDescription) {
+		msg := SignalMessage{
+			Type: "offer",
+			SDP:  offer.SDP,
+		}
+		data, err := json.Marshal(msg)
+		if err != nil {
+			slog.Error("failed to marshal renegotiation offer", "peer", peer.ID, "err", err)
+			return
+		}
+		if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
+			slog.Debug("failed to send renegotiation offer", "peer", peer.ID, "err", err)
+		}
+	})
+
 	// 5. Read loop: process signaling messages from the client.
 	h.readLoop(ctx, conn, peer)
 }
@@ -147,6 +163,8 @@ func (h *SignalingHandler) readLoop(ctx context.Context, conn *websocket.Conn, p
 		switch msg.Type {
 		case "offer":
 			h.handleOffer(ctx, conn, peer, msg)
+		case "answer":
+			h.handleAnswer(peer, msg)
 		case "ice":
 			h.handleICE(peer, msg)
 		default:
@@ -190,5 +208,17 @@ func (h *SignalingHandler) handleICE(peer *ctpion.PeerConn, msg SignalMessage) {
 	}
 	if err := peer.AddICECandidate(*msg.Candidate); err != nil {
 		slog.Error("failed to add ICE candidate", "peer", peer.ID, "err", err)
+	}
+}
+
+// handleAnswer processes an SDP answer from the client in response to a
+// server-initiated renegotiation offer.
+func (h *SignalingHandler) handleAnswer(peer *ctpion.PeerConn, msg SignalMessage) {
+	answer := webrtc.SessionDescription{
+		Type: webrtc.SDPTypeAnswer,
+		SDP:  msg.SDP,
+	}
+	if err := peer.HandleAnswer(answer); err != nil {
+		slog.Error("failed to handle answer", "peer", peer.ID, "err", err)
 	}
 }
