@@ -110,3 +110,26 @@ func TestSessionService_EndSession_NotFound(t *testing.T) {
 	err := svc.EndSession("nonexistent")
 	assert.ErrorIs(t, err, sql.ErrNoRows)
 }
+
+func TestSessionService_UpdateSessionStatus(t *testing.T) {
+	db := openTestDB(t)
+	svc := &sqlite.SessionService{DB: db.DB}
+	session := newTestSession(t, db)
+
+	require.NoError(t, svc.CreateSession(session))
+
+	require.NoError(t, svc.UpdateSessionStatus(session.ID, crosstalk.SessionActive))
+
+	got, err := svc.FindSessionByID(session.ID)
+	require.NoError(t, err)
+	assert.Equal(t, crosstalk.SessionActive, got.Status)
+	assert.Nil(t, got.EndedAt)
+}
+
+func TestSessionService_UpdateSessionStatus_NotFound(t *testing.T) {
+	db := openTestDB(t)
+	svc := &sqlite.SessionService{DB: db.DB}
+
+	err := svc.UpdateSessionStatus("nonexistent", crosstalk.SessionActive)
+	assert.ErrorIs(t, err, sql.ErrNoRows)
+}

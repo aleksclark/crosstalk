@@ -125,7 +125,14 @@ type SessionService interface {
 	FindSessionByID(id string) (*Session, error)
 	ListSessions() ([]Session, error)
 	CreateSession(session *Session) error
+	UpdateSessionStatus(id string, status SessionStatus) error
 	EndSession(id string) error
+}
+
+// SessionOrchestrator defines the subset of orchestrator operations needed by
+// the HTTP layer. The full implementation lives in pion.Orchestrator.
+type SessionOrchestrator interface {
+	EndSession(sessionID string)
 }
 
 // Validate checks that a SessionTemplate's mappings are consistent with its roles.

@@ -76,6 +76,24 @@ func (s *SessionService) ListSessions() ([]crosstalk.Session, error) {
 	return sessions, rows.Err()
 }
 
+func (s *SessionService) UpdateSessionStatus(id string, status crosstalk.SessionStatus) error {
+	result, err := s.DB.Exec(
+		`UPDATE sessions SET status = ? WHERE id = ?`,
+		string(status), id,
+	)
+	if err != nil {
+		return fmt.Errorf("sqlite update session status: %w", err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("sqlite update session status rows affected: %w", err)
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func (s *SessionService) EndSession(id string) error {
 	now := time.Now().UTC().Format(timeFormat)
 	result, err := s.DB.Exec(

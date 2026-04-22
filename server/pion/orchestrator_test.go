@@ -424,3 +424,78 @@ unbindCollect:
 	// At least one UnbindChannel should be sent to candidate.
 	assert.NotEmpty(t, unbinds, "candidate should receive UnbindChannel")
 }
+
+func TestOrchestrator_JoinSession_TransitionsToActive(t *testing.T) {
+	env := newOrchestratorTestEnv(t)
+
+	var updatedStatus crosstalk.SessionStatus
+	var updatedID string
+	env.sessions.UpdateSessionStatusFn = func(id string, status crosstalk.SessionStatus) error {
+		updatedID = id
+		updatedStatus = status
+		return nil
+	}
+
+	server, _, _ := createConnectedServerPeer(t)
+
+	err := env.orchestrator.JoinSession(server, "sess-1", "interviewer")
+	require.NoError(t, err)
+
+	// The record binding (interviewer:mic → record) activates immediately,
+	// which should transition the session to "active".
+	assert.Equal(t, "sess-1", updatedID)
+	assert.Equal(t, crosstalk.SessionActive, updatedStatus)
+	assert.True(t, env.sessions.UpdateSessionStatusInvoked)
+
+	ls := env.orchestrator.GetLiveSession("sess-1")
+	require.NotNil(t, ls)
+	assert.Equal(t, crosstalk.SessionActive, ls.Session.Status)
+}
+
+func TestOrchestrator_JoinSession_SinkReceivesBindChannel(t *testing.T) {
+	env := newOrchestratorTestEnv(t)
+
+	// Join interviewer first (produces record binding only).
+	server1, _, _ := createConnectedServerPeer(t)
+	err := env.orchestrator.JoinSession(server1, "sess-1", "interviewer")
+	require.NoError(t, err)
+
+	// Join candidate — this should activate role→role bindings.
+	server2, _, dc2 := createConnectedServerPeer(t)
+
+	msgsCh := make(chan *crosstalkv1.ControlMessage, 10)
+	dc2.OnMessage(func(msg webrtc.DataChannelMessage) {
+		var cm crosstalkv1.ControlMessage
+		if err := proto.Unmarshal(msg.Data, &cm); err == nil {
+			msgsCh <- &cm
+		}
+	})
+
+	err = env.orchestrator.JoinSession(server2, "sess-1", "candidate")
+	require.NoError(t, err)
+
+	// Collect messages from candidate's data channel.
+	var received []*crosstalkv1.ControlMessage
+	timer := time.NewTimer(3 * time.Second)
+	defer timer.Stop()
+collect:
+	for {
+		select {
+		case m := <-msgsCh:
+			received = append(received, m)
+		case <-timer.C:
+			break collect
+		}
+	}
+
+	// Find BindChannel with SINK direction.
+	var sinkBinds []*crosstalkv1.BindChannel
+	for _, m := range received {
+		if bc := m.GetBindChannel(); bc != nil && bc.GetDirection() == crosstalkv1.Direction_SINK {
+			sinkBinds = append(sinkBinds, bc)
+		}
+	}
+
+	require.NotEmpty(t, sinkBinds, "candidate should receive BindChannel{SINK}")
+	assert.Equal(t, "speaker", sinkBinds[0].GetLocalName())
+}

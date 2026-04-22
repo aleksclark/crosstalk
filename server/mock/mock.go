@@ -155,6 +155,9 @@ type SessionService struct {
 	CreateSessionFn      func(session *crosstalk.Session) error
 	CreateSessionInvoked bool
 
+	UpdateSessionStatusFn      func(id string, status crosstalk.SessionStatus) error
+	UpdateSessionStatusInvoked bool
+
 	EndSessionFn      func(id string) error
 	EndSessionInvoked bool
 }
@@ -172,6 +175,14 @@ func (s *SessionService) ListSessions() ([]crosstalk.Session, error) {
 func (s *SessionService) CreateSession(session *crosstalk.Session) error {
 	s.CreateSessionInvoked = true
 	return s.CreateSessionFn(session)
+}
+
+func (s *SessionService) UpdateSessionStatus(id string, status crosstalk.SessionStatus) error {
+	s.UpdateSessionStatusInvoked = true
+	if s.UpdateSessionStatusFn != nil {
+		return s.UpdateSessionStatusFn(id, status)
+	}
+	return nil
 }
 
 func (s *SessionService) EndSession(id string) error {

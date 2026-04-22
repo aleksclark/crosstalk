@@ -19,6 +19,11 @@ import (
 // Orchestrator manages live session state and coordinates channel bindings
 // between connected peers. It sits between the control channel handler and the
 // Pion peer connections, evaluating template mappings as clients join/leave.
+//
+// TODO(phase5.5): Session client state (LiveSession, LiveClient, LiveBinding)
+// is held only in memory. To survive server restarts, this state needs to be
+// persisted — either by reconstructing it from the database on startup or by
+// serializing the live session map. This is deferred; see roadmap task 5.5.
 type Orchestrator struct {
 	SessionService         crosstalk.SessionService
 	SessionTemplateService crosstalk.SessionTemplateService
@@ -286,6 +291,15 @@ func (o *Orchestrator) evaluateBindings(ls *LiveSession) {
 			continue // already active
 		}
 		o.activateBinding(ls, b)
+	}
+
+	// Transition session from "waiting" to "active" when the first binding activates.
+	if len(ls.Bindings) > 0 && ls.Session.Status == crosstalk.SessionWaiting {
+		ls.Session.Status = crosstalk.SessionActive
+		if err := o.SessionService.UpdateSessionStatus(ls.Session.ID, crosstalk.SessionActive); err != nil {
+			slog.Error("orchestrator: failed to update session status to active",
+				"session", ls.Session.ID, "err", err)
+		}
 	}
 }
 
