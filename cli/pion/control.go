@@ -1,96 +1,37 @@
 package pion
 
 import (
-	"encoding/json"
 	"fmt"
 	"log/slog"
+	"time"
 
 	crosstalk "github.com/aleksclark/crosstalk/cli"
+	crosstalkv1 "github.com/aleksclark/crosstalk/proto/gen/go/crosstalk/v1"
+	"google.golang.org/protobuf/proto"
 )
-
-// ControlMessageType identifies the type of control channel message.
-type ControlMessageType string
-
-const (
-	ControlTypeHello         ControlMessageType = "hello"
-	ControlTypeClientStatus  ControlMessageType = "client_status"
-	ControlTypeWelcome       ControlMessageType = "welcome"
-)
-
-// ControlMessage is the envelope for all control data channel messages.
-// This uses JSON encoding matching the protobuf ControlMessage schema.
-type ControlMessage struct {
-	Type         ControlMessageType `json:"type"`
-	Hello        *HelloMessage      `json:"hello,omitempty"`
-	ClientStatus *ClientStatusMsg   `json:"client_status,omitempty"`
-	Welcome      *WelcomeMessage    `json:"welcome,omitempty"`
-}
-
-// HelloMessage is sent by the client immediately after the control channel opens.
-type HelloMessage struct {
-	Sources []SourceInfo `json:"sources"`
-	Sinks   []SinkInfo   `json:"sinks"`
-	Codecs  []CodecInfo  `json:"codecs"`
-}
-
-// SourceInfo reports an available audio/video source.
-type SourceInfo struct {
-	Name string `json:"name"`
-	Type string `json:"type"`
-}
-
-// SinkInfo reports an available audio/video sink.
-type SinkInfo struct {
-	Name string `json:"name"`
-	Type string `json:"type"`
-}
-
-// CodecInfo reports a supported codec.
-type CodecInfo struct {
-	Name      string `json:"name"`
-	MediaType string `json:"media_type"`
-}
-
-// ClientStatusMsg reports the client's current state and capabilities.
-type ClientStatusMsg struct {
-	State   string       `json:"state"` // "READY", "BUSY", "ERROR"
-	Sources []SourceInfo `json:"sources"`
-	Sinks   []SinkInfo   `json:"sinks"`
-	Codecs  []CodecInfo  `json:"codecs"`
-}
-
-// WelcomeMessage is sent by the server after the control channel opens.
-type WelcomeMessage struct {
-	ClientID      string `json:"client_id"`
-	ServerVersion string `json:"server_version"`
-}
 
 // SendHello sends a Hello message on the control data channel with the client's capabilities.
 func (c *Connection) SendHello(sources []crosstalk.Source, sinks []crosstalk.Sink, codecs []crosstalk.Codec) error {
-	hello := &HelloMessage{
-		Sources: make([]SourceInfo, len(sources)),
-		Sinks:   make([]SinkInfo, len(sinks)),
-		Codecs:  make([]CodecInfo, len(codecs)),
+	hello := &crosstalkv1.Hello{
+		Sources: make([]*crosstalkv1.SourceInfo, len(sources)),
+		Sinks:   make([]*crosstalkv1.SinkInfo, len(sinks)),
+		Codecs:  make([]*crosstalkv1.CodecInfo, len(codecs)),
 	}
 
 	for i, s := range sources {
-		hello.Sources[i] = SourceInfo{Name: s.Name, Type: s.Type}
+		hello.Sources[i] = &crosstalkv1.SourceInfo{Name: s.Name, Type: s.Type}
 	}
 	for i, s := range sinks {
-		hello.Sinks[i] = SinkInfo{Name: s.Name, Type: s.Type}
+		hello.Sinks[i] = &crosstalkv1.SinkInfo{Name: s.Name, Type: s.Type}
 	}
-	for i, c := range codecs {
-		hello.Codecs[i] = CodecInfo{Name: c.Name, MediaType: c.MediaType}
-	}
-
-	msg := ControlMessage{
-		Type:  ControlTypeHello,
-		Hello: hello,
+	for i, co := range codecs {
+		hello.Codecs[i] = &crosstalkv1.CodecInfo{Name: co.Name, MediaType: co.MediaType}
 	}
 
-	data, err := json.Marshal(msg)
-	if err != nil {
-		return fmt.Errorf("marshaling Hello message: %w", err)
+	msg := &crosstalkv1.ControlMessage{
+		Payload: &crosstalkv1.ControlMessage_Hello{
+			Hello: hello,
+		},
 	}
 
 	slog.Info("sending Hello message",
@@ -99,36 +40,32 @@ func (c *Connection) SendHello(sources []crosstalk.Source, sinks []crosstalk.Sin
 		"codecs", len(codecs),
 	)
 
-	return c.SendControl(data)
+	return c.SendControlMessage(msg)
 }
 
 // SendClientStatus sends a ClientStatus update on the control data channel.
-func (c *Connection) SendClientStatus(state string, sources []crosstalk.Source, sinks []crosstalk.Sink, codecs []crosstalk.Codec) error {
-	status := &ClientStatusMsg{
+func (c *Connection) SendClientStatus(state crosstalkv1.ClientState, sources []crosstalk.Source, sinks []crosstalk.Sink, codecs []crosstalk.Codec) error {
+	status := &crosstalkv1.ClientStatus{
 		State:   state,
-		Sources: make([]SourceInfo, len(sources)),
-		Sinks:   make([]SinkInfo, len(sinks)),
-		Codecs:  make([]CodecInfo, len(codecs)),
+		Sources: make([]*crosstalkv1.SourceInfo, len(sources)),
+		Sinks:   make([]*crosstalkv1.SinkInfo, len(sinks)),
+		Codecs:  make([]*crosstalkv1.CodecInfo, len(codecs)),
 	}
 
 	for i, s := range sources {
-		status.Sources[i] = SourceInfo{Name: s.Name, Type: s.Type}
+		status.Sources[i] = &crosstalkv1.SourceInfo{Name: s.Name, Type: s.Type}
 	}
 	for i, s := range sinks {
-		status.Sinks[i] = SinkInfo{Name: s.Name, Type: s.Type}
+		status.Sinks[i] = &crosstalkv1.SinkInfo{Name: s.Name, Type: s.Type}
 	}
 	for i, co := range codecs {
-		status.Codecs[i] = CodecInfo{Name: co.Name, MediaType: co.MediaType}
+		status.Codecs[i] = &crosstalkv1.CodecInfo{Name: co.Name, MediaType: co.MediaType}
 	}
 
-	msg := ControlMessage{
-		Type:         ControlTypeClientStatus,
-		ClientStatus: status,
-	}
-
-	data, err := json.Marshal(msg)
-	if err != nil {
-		return fmt.Errorf("marshaling ClientStatus message: %w", err)
+	msg := &crosstalkv1.ControlMessage{
+		Payload: &crosstalkv1.ControlMessage_ClientStatus{
+			ClientStatus: status,
+		},
 	}
 
 	slog.Info("sending ClientStatus",
@@ -137,13 +74,69 @@ func (c *Connection) SendClientStatus(state string, sources []crosstalk.Source, 
 		"sinks", len(sinks),
 	)
 
+	return c.SendControlMessage(msg)
+}
+
+// SendJoinSession sends a JoinSession request on the control data channel.
+func (c *Connection) SendJoinSession(sessionID, role string) error {
+	msg := &crosstalkv1.ControlMessage{
+		Payload: &crosstalkv1.ControlMessage_JoinSession{
+			JoinSession: &crosstalkv1.JoinSession{
+				SessionId: sessionID,
+				Role:      role,
+			},
+		},
+	}
+
+	slog.Info("sending JoinSession", "session_id", sessionID, "role", role)
+	return c.SendControlMessage(msg)
+}
+
+// SendLogEntry sends a LogEntry message on the control data channel.
+func (c *Connection) SendLogEntry(severity crosstalkv1.LogSeverity, source, message string) error {
+	msg := &crosstalkv1.ControlMessage{
+		Payload: &crosstalkv1.ControlMessage_LogEntry{
+			LogEntry: &crosstalkv1.LogEntry{
+				Timestamp: time.Now().UnixMilli(),
+				Severity:  severity,
+				Source:    source,
+				Message:   message,
+			},
+		},
+	}
+
+	return c.SendControlMessage(msg)
+}
+
+// SendChannelStatus sends a ChannelStatus report on the control data channel.
+func (c *Connection) SendChannelStatus(channelID string, state crosstalkv1.ChannelState, errorMsg string, bytesTransferred uint64) error {
+	msg := &crosstalkv1.ControlMessage{
+		Payload: &crosstalkv1.ControlMessage_ChannelStatus{
+			ChannelStatus: &crosstalkv1.ChannelStatus{
+				ChannelId:        channelID,
+				State:            state,
+				ErrorMessage:     errorMsg,
+				BytesTransferred: bytesTransferred,
+			},
+		},
+	}
+
+	return c.SendControlMessage(msg)
+}
+
+// SendControlMessage marshals a ControlMessage to protobuf and sends it on the control data channel.
+func (c *Connection) SendControlMessage(msg *crosstalkv1.ControlMessage) error {
+	data, err := proto.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("marshaling control message: %w", err)
+	}
 	return c.SendControl(data)
 }
 
-// ParseControlMessage parses a control channel message from JSON bytes.
-func ParseControlMessage(data []byte) (*ControlMessage, error) {
-	var msg ControlMessage
-	if err := json.Unmarshal(data, &msg); err != nil {
+// ParseControlMessage unmarshals raw bytes into a protobuf ControlMessage.
+func ParseControlMessage(data []byte) (*crosstalkv1.ControlMessage, error) {
+	var msg crosstalkv1.ControlMessage
+	if err := proto.Unmarshal(data, &msg); err != nil {
 		return nil, fmt.Errorf("parsing control message: %w", err)
 	}
 	return &msg, nil

@@ -3,8 +3,10 @@ module github.com/aleksclark/crosstalk/cli
 go 1.25.5
 
 require (
+	github.com/aleksclark/crosstalk/proto/gen/go v0.0.0-00010101000000-000000000000
 	github.com/pion/webrtc/v4 v4.2.11
 	github.com/stretchr/testify v1.11.1
+	google.golang.org/protobuf v1.36.11
 	nhooyr.io/websocket v1.8.17
 )
 
@@ -34,3 +36,5 @@ require (
 	golang.org/x/time v0.10.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/aleksclark/crosstalk/proto/gen/go => ../proto/gen/go

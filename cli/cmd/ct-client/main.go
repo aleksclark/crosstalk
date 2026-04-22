@@ -9,6 +9,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	crosstalkv1 "github.com/aleksclark/crosstalk/proto/gen/go/crosstalk/v1"
+
 	"github.com/aleksclark/crosstalk/cli/pion"
 	"github.com/aleksclark/crosstalk/cli/pipewire"
 )
@@ -74,10 +76,10 @@ func run() error {
 		pion.WithClientOnDisconnected(func() {
 			slog.Warn("disconnected from server")
 		}),
-		pion.WithClientOnWelcome(func(w *pion.WelcomeMessage) {
+		pion.WithClientOnWelcome(func(w *crosstalkv1.Welcome) {
 			slog.Info("welcome received",
-				"client_id", w.ClientID,
-				"server_version", w.ServerVersion,
+				"client_id", w.GetClientId(),
+				"server_version", w.GetServerVersion(),
 			)
 		}),
 	)

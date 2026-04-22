@@ -2,7 +2,6 @@ package pion
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -13,9 +12,11 @@ import (
 
 	crosstalk "github.com/aleksclark/crosstalk/cli"
 	climock "github.com/aleksclark/crosstalk/cli/mock"
+	crosstalkv1 "github.com/aleksclark/crosstalk/proto/gen/go/crosstalk/v1"
 	"github.com/pion/webrtc/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestClient_ConnectAndSendHello(t *testing.T) {
@@ -38,17 +39,16 @@ func TestClient_ConnectAndSendHello(t *testing.T) {
 		},
 	}
 
-	welcomeCh := make(chan *WelcomeMessage, 1)
+	welcomeCh := make(chan *crosstalkv1.Welcome, 1)
 	connectedCh := make(chan struct{}, 1)
 
 	client := NewClient(cfg, pwSvc,
 		WithClientOnConnected(func() {
 			connectedCh <- struct{}{}
 		}),
-		WithClientOnWelcome(func(w *WelcomeMessage) {
+		WithClientOnWelcome(func(w *crosstalkv1.Welcome) {
 			welcomeCh <- w
 		}),
-		// Inject auth that hits our test server
 		WithAuthClientFactory(func(serverURL, token string) AuthClientInterface {
 			ac := NewAuthClient(serverURL, token)
 			return ac
@@ -79,7 +79,7 @@ func TestClient_ConnectAndSendHello(t *testing.T) {
 	// Check Welcome
 	select {
 	case w := <-welcomeCh:
-		assert.Equal(t, "test-client-1", w.ClientID)
+		assert.Equal(t, "test-client-1", w.GetClientId())
 	case <-time.After(1 * time.Second):
 		// Welcome might have already been processed
 	}
@@ -87,11 +87,10 @@ func TestClient_ConnectAndSendHello(t *testing.T) {
 	// Check server received Hello
 	select {
 	case hello := <-state.helloReceived:
-		require.NotNil(t, hello.Hello)
-		assert.Len(t, hello.Hello.Sources, 1)
-		assert.Equal(t, "test-mic", hello.Hello.Sources[0].Name)
-		assert.Len(t, hello.Hello.Sinks, 1)
-		assert.Equal(t, "test-speakers", hello.Hello.Sinks[0].Name)
+		require.Len(t, hello.GetSources(), 1)
+		assert.Equal(t, "test-mic", hello.GetSources()[0].GetName())
+		require.Len(t, hello.GetSinks(), 1)
+		assert.Equal(t, "test-speakers", hello.GetSinks()[0].GetName())
 	case <-time.After(5 * time.Second):
 		t.Fatal("timeout waiting for Hello")
 	}
@@ -175,7 +174,7 @@ func TestClient_ReconnectAfterFailure(t *testing.T) {
 		switch r.URL.Path {
 		case "/api/webrtc/token":
 			attemptCount.Add(1)
-			json.NewEncoder(w).Encode(map[string]string{"token": "wrt-token"})
+			fmt.Fprintf(w, `{"token":"wrt-token"}`)
 		default:
 			http.NotFound(w, r)
 		}
@@ -214,15 +213,15 @@ func TestClient_ReconnectAfterFailure(t *testing.T) {
 							go tempConn.onControlOpen()
 						}
 						if tempConn.onControlMessage != nil {
-							// Send Welcome
-							welcome := ControlMessage{
-								Type: ControlTypeWelcome,
-								Welcome: &WelcomeMessage{
-									ClientID:      "reconnected-client",
-									ServerVersion: "test",
+							welcome := &crosstalkv1.ControlMessage{
+								Payload: &crosstalkv1.ControlMessage_Welcome{
+									Welcome: &crosstalkv1.Welcome{
+										ClientId:      "reconnected-client",
+										ServerVersion: "test",
+									},
 								},
 							}
-							data, _ := json.Marshal(welcome)
+							data, _ := proto.Marshal(welcome)
 							go func() {
 								time.Sleep(10 * time.Millisecond)
 								tempConn.onControlMessage(data)
@@ -289,7 +288,23 @@ func (m *mockConn) SendHello(sources []crosstalk.Source, sinks []crosstalk.Sink,
 	return nil
 }
 
-func (m *mockConn) SendClientStatus(state string, sources []crosstalk.Source, sinks []crosstalk.Sink, codecs []crosstalk.Codec) error {
+func (m *mockConn) SendClientStatus(state crosstalkv1.ClientState, sources []crosstalk.Source, sinks []crosstalk.Sink, codecs []crosstalk.Codec) error {
+	return nil
+}
+
+func (m *mockConn) SendJoinSession(sessionID, role string) error {
+	return nil
+}
+
+func (m *mockConn) SendLogEntry(severity crosstalkv1.LogSeverity, source, message string) error {
+	return nil
+}
+
+func (m *mockConn) SendChannelStatus(channelID string, state crosstalkv1.ChannelState, errorMsg string, bytesTransferred uint64) error {
+	return nil
+}
+
+func (m *mockConn) SendControlMessage(msg *crosstalkv1.ControlMessage) error {
 	return nil
 }
 

@@ -2,7 +2,6 @@ package pion
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"math"
@@ -10,6 +9,7 @@ import (
 	"time"
 
 	crosstalk "github.com/aleksclark/crosstalk/cli"
+	crosstalkv1 "github.com/aleksclark/crosstalk/proto/gen/go/crosstalk/v1"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -36,7 +36,7 @@ type Client struct {
 	// Callbacks
 	onConnected    func()
 	onDisconnected func()
-	onWelcome      func(*WelcomeMessage)
+	onWelcome      func(*crosstalkv1.Welcome)
 
 	// For testing: allow injecting auth client and connection factory
 	authClientFactory func(serverURL, token string) AuthClientInterface
@@ -52,7 +52,11 @@ type AuthClientInterface interface {
 type ConnectionInterface interface {
 	Connect(ctx context.Context) error
 	SendHello(sources []crosstalk.Source, sinks []crosstalk.Sink, codecs []crosstalk.Codec) error
-	SendClientStatus(state string, sources []crosstalk.Source, sinks []crosstalk.Sink, codecs []crosstalk.Codec) error
+	SendClientStatus(state crosstalkv1.ClientState, sources []crosstalk.Source, sinks []crosstalk.Sink, codecs []crosstalk.Codec) error
+	SendJoinSession(sessionID, role string) error
+	SendLogEntry(severity crosstalkv1.LogSeverity, source, message string) error
+	SendChannelStatus(channelID string, state crosstalkv1.ChannelState, errorMsg string, bytesTransferred uint64) error
+	SendControlMessage(msg *crosstalkv1.ControlMessage) error
 	SendControl(data []byte) error
 	Close() error
 	ConnectionState() webrtc.ICEConnectionState
@@ -61,22 +65,22 @@ type ConnectionInterface interface {
 // ClientOption configures a Client.
 type ClientOption func(*Client)
 
-// WithOnConnected sets the callback for when the client connects.
+// WithClientOnConnected sets the callback for when the client connects.
 func WithClientOnConnected(fn func()) ClientOption {
 	return func(c *Client) {
 		c.onConnected = fn
 	}
 }
 
-// WithOnDisconnected sets the callback for when the client disconnects.
+// WithClientOnDisconnected sets the callback for when the client disconnects.
 func WithClientOnDisconnected(fn func()) ClientOption {
 	return func(c *Client) {
 		c.onDisconnected = fn
 	}
 }
 
-// WithOnWelcome sets the callback for when a Welcome message is received.
-func WithClientOnWelcome(fn func(*WelcomeMessage)) ClientOption {
+// WithClientOnWelcome sets the callback for when a Welcome message is received.
+func WithClientOnWelcome(fn func(*crosstalkv1.Welcome)) ClientOption {
 	return func(c *Client) {
 		c.onWelcome = fn
 	}
@@ -240,7 +244,7 @@ func (c *Client) connectOnce(ctx context.Context) error {
 
 	// 3. Create connection
 	controlOpened := make(chan struct{}, 1)
-	welcomeReceived := make(chan *WelcomeMessage, 1)
+	welcomeReceived := make(chan *crosstalkv1.Welcome, 1)
 	disconnected := make(chan struct{}, 1)
 
 	connOpts := []ConnectionOption{
@@ -253,8 +257,8 @@ func (c *Client) connectOnce(ctx context.Context) error {
 				slog.Warn("unparseable control message", "error", err)
 				return
 			}
-			if msg.Type == ControlTypeWelcome && msg.Welcome != nil {
-				welcomeReceived <- msg.Welcome
+			if welcome := msg.GetWelcome(); welcome != nil {
+				welcomeReceived <- welcome
 			}
 		}),
 		WithOnConnectionStateChange(func(state webrtc.ICEConnectionState) {
@@ -324,11 +328,11 @@ func (c *Client) connectOnce(ctx context.Context) error {
 	select {
 	case welcome := <-welcomeReceived:
 		c.mu.Lock()
-		c.clientID = welcome.ClientID
+		c.clientID = welcome.GetClientId()
 		c.mu.Unlock()
 		slog.Info("received Welcome",
-			"client_id", welcome.ClientID,
-			"server_version", welcome.ServerVersion,
+			"client_id", welcome.GetClientId(),
+			"server_version", welcome.GetServerVersion(),
 		)
 		if c.onWelcome != nil {
 			c.onWelcome(welcome)
@@ -395,23 +399,9 @@ func (c *Client) calculateBackoff(attempt int) time.Duration {
 // Ensure *Connection implements ConnectionInterface
 var _ ConnectionInterface = (*Connection)(nil)
 
-// Ensure Connection exposes the right methods - add missing ones
-
-// Connect satisfies ConnectionInterface (already defined in connection.go)
-// SendHello satisfies ConnectionInterface (already defined in control.go)
-// SendClientStatus satisfies ConnectionInterface (already defined in control.go)
-// SendControl satisfies ConnectionInterface (already defined in connection.go)
-// Close satisfies ConnectionInterface (already defined in connection.go)
-// ConnectionState satisfies ConnectionInterface (already defined in connection.go)
-
 // DefaultCodecs returns the default supported codecs.
 func DefaultCodecs() []crosstalk.Codec {
 	return []crosstalk.Codec{
 		{Name: "opus/48000/2", MediaType: "audio"},
 	}
-}
-
-// marshalControlMessage marshals a control message to JSON.
-func marshalControlMessage(msg *ControlMessage) ([]byte, error) {
-	return json.Marshal(msg)
 }

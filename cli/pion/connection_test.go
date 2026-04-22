@@ -10,18 +10,21 @@ import (
 	"time"
 
 	crosstalk "github.com/aleksclark/crosstalk/cli"
+	crosstalkv1 "github.com/aleksclark/crosstalk/proto/gen/go/crosstalk/v1"
 	"github.com/pion/webrtc/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 	"nhooyr.io/websocket"
 )
 
 // mockSignalingServer creates a test server that handles WebSocket signaling
-// and acts as a WebRTC peer for testing.
+// and acts as a WebRTC peer for testing. It speaks protobuf on the control
+// channel, matching the real server behavior.
 func mockSignalingServer(t *testing.T) (*httptest.Server, *mockServerState) {
 	t.Helper()
 	state := &mockServerState{
-		helloReceived: make(chan *ControlMessage, 1),
+		helloReceived: make(chan *crosstalkv1.Hello, 1),
 	}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -42,7 +45,7 @@ type mockServerState struct {
 	mu             sync.Mutex
 	peerConn       *webrtc.PeerConnection
 	controlDC      *webrtc.DataChannel
-	helloReceived  chan *ControlMessage
+	helloReceived  chan *crosstalkv1.Hello
 	clientID       string
 }
 
@@ -88,24 +91,21 @@ func (s *mockServerState) handleSignaling(t *testing.T, w http.ResponseWriter, r
 			s.controlDC = dc
 			s.mu.Unlock()
 
-			dc.OnOpen(func() {
-				// Send Welcome message
-				welcome := ControlMessage{
-					Type: ControlTypeWelcome,
-					Welcome: &WelcomeMessage{
-						ClientID:      "test-client-1",
-						ServerVersion: "0.1.0-test",
-					},
-				}
-				data, _ := json.Marshal(welcome)
-				dc.Send(data)
-			})
-
 			dc.OnMessage(func(msg webrtc.DataChannelMessage) {
-				var ctrlMsg ControlMessage
-				if err := json.Unmarshal(msg.Data, &ctrlMsg); err == nil {
-					if ctrlMsg.Type == ControlTypeHello {
-						s.helloReceived <- &ctrlMsg
+				var cm crosstalkv1.ControlMessage
+				if err := proto.Unmarshal(msg.Data, &cm); err == nil {
+					if hello := cm.GetHello(); hello != nil {
+						s.helloReceived <- hello
+						welcome := &crosstalkv1.ControlMessage{
+							Payload: &crosstalkv1.ControlMessage_Welcome{
+								Welcome: &crosstalkv1.Welcome{
+									ClientId:      "test-client-1",
+									ServerVersion: "0.1.0-test",
+								},
+							},
+						}
+						data, _ := proto.Marshal(welcome)
+						dc.Send(data)
 					}
 				}
 			})
@@ -208,7 +208,7 @@ func TestConnection_ConnectAndSendHello(t *testing.T) {
 	var statesMu sync.Mutex
 
 	controlOpened := make(chan struct{}, 1)
-	var welcomeMsg *ControlMessage
+	var welcomeMsg *crosstalkv1.ControlMessage
 	welcomeReceived := make(chan struct{}, 1)
 
 	conn := NewConnection(srv.URL, "test-wrt-token",
@@ -217,7 +217,7 @@ func TestConnection_ConnectAndSendHello(t *testing.T) {
 		}),
 		WithOnControlMessage(func(data []byte) {
 			msg, err := ParseControlMessage(data)
-			if err == nil && msg.Type == ControlTypeWelcome {
+			if err == nil && msg.GetWelcome() != nil {
 				welcomeMsg = msg
 				welcomeReceived <- struct{}{}
 			}
@@ -259,15 +259,14 @@ func TestConnection_ConnectAndSendHello(t *testing.T) {
 
 	// Wait for server to receive Hello
 	select {
-	case helloMsg := <-state.helloReceived:
-		require.NotNil(t, helloMsg.Hello)
-		assert.Len(t, helloMsg.Hello.Sources, 1)
-		assert.Equal(t, "mic-1", helloMsg.Hello.Sources[0].Name)
-		assert.Equal(t, "audio", helloMsg.Hello.Sources[0].Type)
-		assert.Len(t, helloMsg.Hello.Sinks, 1)
-		assert.Equal(t, "speakers-1", helloMsg.Hello.Sinks[0].Name)
-		assert.Len(t, helloMsg.Hello.Codecs, 1)
-		assert.Equal(t, "opus/48000/2", helloMsg.Hello.Codecs[0].Name)
+	case hello := <-state.helloReceived:
+		require.Len(t, hello.GetSources(), 1)
+		assert.Equal(t, "mic-1", hello.GetSources()[0].GetName())
+		assert.Equal(t, "audio", hello.GetSources()[0].GetType())
+		require.Len(t, hello.GetSinks(), 1)
+		assert.Equal(t, "speakers-1", hello.GetSinks()[0].GetName())
+		require.Len(t, hello.GetCodecs(), 1)
+		assert.Equal(t, "opus/48000/2", hello.GetCodecs()[0].GetName())
 	case <-time.After(5 * time.Second):
 		t.Fatal("timeout waiting for Hello message on server")
 	}
@@ -276,9 +275,10 @@ func TestConnection_ConnectAndSendHello(t *testing.T) {
 	select {
 	case <-welcomeReceived:
 		require.NotNil(t, welcomeMsg)
-		require.NotNil(t, welcomeMsg.Welcome)
-		assert.Equal(t, "test-client-1", welcomeMsg.Welcome.ClientID)
-		assert.Equal(t, "0.1.0-test", welcomeMsg.Welcome.ServerVersion)
+		welcome := welcomeMsg.GetWelcome()
+		require.NotNil(t, welcome)
+		assert.Equal(t, "test-client-1", welcome.GetClientId())
+		assert.Equal(t, "0.1.0-test", welcome.GetServerVersion())
 	case <-time.After(5 * time.Second):
 		t.Fatal("timeout waiting for Welcome message")
 	}
@@ -303,15 +303,143 @@ func TestHttpToWS(t *testing.T) {
 }
 
 func TestParseControlMessage(t *testing.T) {
-	data := `{"type":"welcome","welcome":{"client_id":"c1","server_version":"1.0"}}`
-	msg, err := ParseControlMessage([]byte(data))
+	welcome := &crosstalkv1.ControlMessage{
+		Payload: &crosstalkv1.ControlMessage_Welcome{
+			Welcome: &crosstalkv1.Welcome{
+				ClientId:      "c1",
+				ServerVersion: "1.0",
+			},
+		},
+	}
+	data, err := proto.Marshal(welcome)
 	require.NoError(t, err)
-	assert.Equal(t, ControlTypeWelcome, msg.Type)
-	require.NotNil(t, msg.Welcome)
-	assert.Equal(t, "c1", msg.Welcome.ClientID)
+
+	msg, err := ParseControlMessage(data)
+	require.NoError(t, err)
+	w := msg.GetWelcome()
+	require.NotNil(t, w)
+	assert.Equal(t, "c1", w.GetClientId())
+	assert.Equal(t, "1.0", w.GetServerVersion())
 }
 
 func TestParseControlMessage_Invalid(t *testing.T) {
-	_, err := ParseControlMessage([]byte("not json"))
+	_, err := ParseControlMessage([]byte("not protobuf"))
 	assert.Error(t, err)
+}
+
+func TestSendJoinSession(t *testing.T) {
+	srv, state := mockSignalingServer(t)
+	defer srv.Close()
+
+	controlOpened := make(chan struct{}, 1)
+
+	// Capture messages on server side
+	joinReceived := make(chan *crosstalkv1.JoinSession, 1)
+
+	conn := NewConnection(srv.URL, "test-wrt-token",
+		WithOnControlOpen(func() {
+			controlOpened <- struct{}{}
+		}),
+		WithOnControlMessage(func(data []byte) {}),
+	)
+	defer conn.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	connectDone := make(chan error, 1)
+	go func() {
+		connectDone <- conn.Connect(ctx)
+	}()
+
+	select {
+	case <-controlOpened:
+	case err := <-connectDone:
+		t.Fatalf("Connect returned before control opened: %v", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("timeout waiting for control channel to open")
+	}
+
+	// Set up server-side message capture for JoinSession
+	state.mu.Lock()
+	dc := state.controlDC
+	state.mu.Unlock()
+	require.NotNil(t, dc)
+	dc.OnMessage(func(msg webrtc.DataChannelMessage) {
+		var cm crosstalkv1.ControlMessage
+		if err := proto.Unmarshal(msg.Data, &cm); err == nil {
+			if join := cm.GetJoinSession(); join != nil {
+				joinReceived <- join
+			}
+		}
+	})
+
+	err := conn.SendJoinSession("session-abc", "host")
+	require.NoError(t, err)
+
+	select {
+	case join := <-joinReceived:
+		assert.Equal(t, "session-abc", join.GetSessionId())
+		assert.Equal(t, "host", join.GetRole())
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for JoinSession on server")
+	}
+}
+
+func TestSendLogEntry(t *testing.T) {
+	srv, state := mockSignalingServer(t)
+	defer srv.Close()
+
+	controlOpened := make(chan struct{}, 1)
+	logReceived := make(chan *crosstalkv1.LogEntry, 1)
+
+	conn := NewConnection(srv.URL, "test-wrt-token",
+		WithOnControlOpen(func() {
+			controlOpened <- struct{}{}
+		}),
+		WithOnControlMessage(func(data []byte) {}),
+	)
+	defer conn.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	connectDone := make(chan error, 1)
+	go func() {
+		connectDone <- conn.Connect(ctx)
+	}()
+
+	select {
+	case <-controlOpened:
+	case err := <-connectDone:
+		t.Fatalf("Connect returned before control opened: %v", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("timeout waiting for control channel to open")
+	}
+
+	state.mu.Lock()
+	dc := state.controlDC
+	state.mu.Unlock()
+	require.NotNil(t, dc)
+	dc.OnMessage(func(msg webrtc.DataChannelMessage) {
+		var cm crosstalkv1.ControlMessage
+		if err := proto.Unmarshal(msg.Data, &cm); err == nil {
+			if entry := cm.GetLogEntry(); entry != nil {
+				logReceived <- entry
+			}
+		}
+	})
+
+	err := conn.SendLogEntry(crosstalkv1.LogSeverity_LOG_WARN, "cli-test", "something happened")
+	require.NoError(t, err)
+
+	select {
+	case entry := <-logReceived:
+		assert.Equal(t, crosstalkv1.LogSeverity_LOG_WARN, entry.GetSeverity())
+		assert.Equal(t, "cli-test", entry.GetSource())
+		assert.Equal(t, "something happened", entry.GetMessage())
+		assert.Greater(t, entry.GetTimestamp(), int64(0))
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for LogEntry on server")
+	}
 }
