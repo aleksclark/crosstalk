@@ -2,7 +2,7 @@
 
 [← Roadmap](index.md)
 
-**Status**: `PARTIAL — 3/4 tasks done, critical gaps in 3.3 and 3.4`  
+**Status**: `COMPLETE — all gaps addressed`  
 **Depends on**: Phase 2 (WebRTC data channel must work)
 
 Protobuf code generation and control data channel message handling. After this phase, connected clients exchange typed messages with the server.
