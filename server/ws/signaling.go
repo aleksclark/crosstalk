@@ -34,6 +34,7 @@ type SignalingHandler struct {
 	TokenService   crosstalk.TokenService
 	SessionService crosstalk.SessionService
 	PeerManager    *ctpion.PeerManager
+	Orchestrator   *ctpion.Orchestrator
 	ServerVersion  string
 }
 
@@ -85,6 +86,7 @@ func (h *SignalingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// 3b. Install protobuf control channel handler (replaces default echo).
 	ctrl := &ctpion.ControlHandler{
 		Peer:           peer,
+		Orchestrator:   h.Orchestrator,
 		SessionService: h.SessionService,
 		ServerVersion:  h.ServerVersion,
 	}
