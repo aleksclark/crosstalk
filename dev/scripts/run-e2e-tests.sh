@@ -182,36 +182,12 @@ curl -sf "${SERVER_URL}/api/templates" -H "Authorization: Bearer ${SEED_TOKEN}" 
 ok "ct-server started (PID ${SERVER_PID}, port ${SERVER_PORT})"
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SETUP: Template + Session + Token
+# SETUP: API token for K2B client
 # ══════════════════════════════════════════════════════════════════════════════
-info "Setting up template, session, and client token..."
-
-# Create template with bidirectional mapping
-TMPL_RESP=$(curl -sf -X POST "${SERVER_URL}/api/templates" \
-    -H "Authorization: Bearer ${SEED_TOKEN}" \
-    -H "Content-Type: application/json" \
-    -d '{
-        "name": "e2e-test",
-        "roles": [
-            {"name": "studio", "multi_client": false},
-            {"name": "translator", "multi_client": false}
-        ],
-        "mappings": [
-            {"source": "studio:mic", "sink": "translator:output"},
-            {"source": "translator:mic", "sink": "studio:output"}
-        ]
-    }')
-TMPL_ID=$(echo "$TMPL_RESP" | jq -r '.id')
-[[ "$TMPL_ID" != "null" && -n "$TMPL_ID" ]] || die "Template create failed: $TMPL_RESP"
-ok "Template: $TMPL_ID"
-
-SESSION_RESP=$(curl -sf -X POST "${SERVER_URL}/api/sessions" \
-    -H "Authorization: Bearer ${SEED_TOKEN}" \
-    -H "Content-Type: application/json" \
-    -d "{\"template_id\": \"${TMPL_ID}\", \"name\": \"e2e-session\"}")
-SESSION_ID=$(echo "$SESSION_RESP" | jq -r '.id')
-[[ "$SESSION_ID" != "null" && -n "$SESSION_ID" ]] || die "Session create failed: $SESSION_RESP"
-ok "Session: $SESSION_ID"
+# Only infrastructure setup happens here — creating an API token so ct-client
+# can authenticate with the server. Template, session, role assignment, and
+# connecting are ALL done through the admin UI in the Playwright test.
+info "Creating API token for K2B client..."
 
 TOKEN_RESP=$(curl -sf -X POST "${SERVER_URL}/api/tokens" \
     -H "Authorization: Bearer ${SEED_TOKEN}" \
@@ -233,14 +209,13 @@ ssh "root@${K2B_HOST}" "chmod +x /usr/local/bin/ct-client"
 scp "$REF_TONE" "root@${K2B_HOST}:/tmp/test-tone.wav" >/dev/null
 ok "Deployed ct-client and test tone to K2B"
 
-# Write client config — connect to session as "studio" role
+# Write client config — server URL and token only. No session_id or role.
+# Session assignment is done by the admin UI (Playwright) via the Assign Peers card.
 K2B_CFG="/tmp/ct-client-e2e.json"
 ssh "root@${K2B_HOST}" "cat > ${K2B_CFG}" <<EOCFG
 {
   "server_url": "http://${HOST_IP}:${SERVER_PORT}",
   "token": "${K2B_TOKEN}",
-  "session_id": "${SESSION_ID}",
-  "role": "studio",
   "source_name": "${K2B_SOURCE}",
   "sink_name": "${K2B_SINK}",
   "log_level": "debug"
@@ -248,7 +223,7 @@ ssh "root@${K2B_HOST}" "cat > ${K2B_CFG}" <<EOCFG
 EOCFG
 ok "K2B client config written"
 
-# Start ct-client on K2B — joins the session as "studio" role
+# Start ct-client on K2B — connects to server and idles, waiting for assignment.
 K2B_CLIENT_LOG="/tmp/ct-client-e2e.log"
 ssh "root@${K2B_HOST}" "su - ${K2B_USER} -c 'XDG_RUNTIME_DIR=/run/user/${K2B_UID} nohup /usr/local/bin/ct-client --config ${K2B_CFG} > ${K2B_CLIENT_LOG} 2>&1 &'"
 info "Waiting for K2B client to connect..."
@@ -278,7 +253,7 @@ info "  TEST 9.5: E2E Infrastructure Verification"
 info "═══════════════════════════════════════════"
 
 # 5a. Server REST API
-if curl -sf "${SERVER_URL}/api/sessions/${SESSION_ID}" \
+if curl -sf "${SERVER_URL}/api/templates" \
     -H "Authorization: Bearer ${SEED_TOKEN}" >/dev/null 2>&1; then
     pass_test "9.5a Server REST API healthy"
 else
@@ -322,74 +297,19 @@ else
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TEST 9.3: Browser → K2B audio path (full WebRTC pipeline)
+# GOLDEN AUDIO: Full admin UI flow (K2B → Browser)
 # ══════════════════════════════════════════════════════════════════════════════
+# This is the main E2E test. It exercises the ENTIRE user journey through the
+# admin UI: login → create template → create session → assign K2B peer →
+# connect as translator → verify WebRTC → capture audio from K2B.
+#
+# The Playwright test (golden-audio.spec.ts) drives all admin UI steps.
+# The ONLY non-UI steps are SSH commands to the K2B board:
+#   - Verifying ct-client is running
+#   - Playing test audio into PipeWire
 echo ""
 info "═══════════════════════════════════════════"
-info "  TEST 9.3: Audio Path — Browser → K2B"
-info "═══════════════════════════════════════════"
-info ""
-info "Full path: Playwright browser (fake mic = test tone)"
-info "  → WebRTC → ct-server SFU → WebRTC → ct-client → PipeWire → capture"
-
-K2B_CAPTURE_93="/tmp/k2b-capture-93.wav"
-ssh "root@${K2B_HOST}" "rm -f ${K2B_CAPTURE_93}"
-
-# Start PipeWire capture on K2B — records from the ALSA loopback sink
-# (this is where ct-client outputs audio received via WebRTC)
-info "Starting audio capture on K2B PipeWire sink..."
-ssh "root@${K2B_HOST}" "nohup su - ${K2B_USER} -c 'XDG_RUNTIME_DIR=/run/user/${K2B_UID} ffmpeg -y -loglevel warning -f pulse -i ${K2B_SINK}.monitor -t 8 -ar 48000 -ac 1 ${K2B_CAPTURE_93}' > /tmp/ffmpeg-cap-93.log 2>&1 &"
-sleep 1
-
-# Run Playwright test — connects as "translator" role with fake audio capture.
-# The --use-file-for-fake-audio-capture flag makes Chromium play the test tone
-# as the microphone input, which flows through WebRTC to the server and then
-# to ct-client on K2B.
-info "Launching Playwright (Browser→K2B)..."
-CT_SERVER_URL="${SERVER_URL}" \
-CT_SESSION_ID="${SESSION_ID}" \
-CT_ROLE="translator" \
-CT_TEST_MODE="browser-to-k2b" \
-CT_AUDIO_DURATION_MS="7000" \
-CT_FAKE_AUDIO_FILE="${REF_TONE}" \
-npx playwright test \
-    --config "$PW_CONFIG" \
-    --grep "Browser→K2B" \
-    --project chromium \
-    2>&1 | tee "$TMPDIR/pw-93.log" || true
-
-# Wait for K2B capture to complete
-info "Waiting for K2B capture to complete..."
-sleep 3
-ssh "root@${K2B_HOST}" "pkill -x ffmpeg 2>/dev/null || true"
-sleep 1
-
-K2B_CAP_SIZE=$(ssh "root@${K2B_HOST}" "stat -c%s ${K2B_CAPTURE_93} 2>/dev/null || echo 0")
-info "Captured ${K2B_CAP_SIZE} bytes on K2B"
-
-if [[ "$K2B_CAP_SIZE" -gt 5000 ]]; then
-    scp "root@${K2B_HOST}:${K2B_CAPTURE_93}" "$TMPDIR/k2b-capture-93.wav" >/dev/null
-
-    SCORE_93=$("$COMPARE" "$REF_TONE" "$TMPDIR/k2b-capture-93.wav" "$THRESHOLD" 2>&1 | tail -1 || echo "0.0")
-    info "Cross-correlation score: $SCORE_93 (threshold: $THRESHOLD)"
-
-    if python3 -c "import sys; sys.exit(0 if float('$SCORE_93') > float('$THRESHOLD') else 1)" 2>/dev/null; then
-        pass_test "9.3 Browser→K2B audio path verified (corr: $SCORE_93 > $THRESHOLD)"
-    else
-        fail_test "9.3 Browser→K2B audio correlation too low: $SCORE_93 < $THRESHOLD"
-    fi
-else
-    fail_test "9.3 Browser→K2B capture failed (${K2B_CAP_SIZE} bytes — no audio arrived at K2B)"
-    info "Check: K2B ffmpeg log: ssh root@${K2B_HOST} cat /tmp/ffmpeg-cap-93.log"
-    info "Check: Playwright log: cat $TMPDIR/pw-93.log"
-fi
-
-# ══════════════════════════════════════════════════════════════════════════════
-# TEST 9.4: K2B → Browser audio path (full WebRTC pipeline)
-# ══════════════════════════════════════════════════════════════════════════════
-echo ""
-info "═══════════════════════════════════════════"
-info "  TEST 9.4: Audio Path — K2B → Browser"
+info "  GOLDEN AUDIO: Full Admin UI E2E Test"
 info "═══════════════════════════════════════════"
 info ""
 info "Full path: K2B PipeWire (test tone) → ct-client"
@@ -398,72 +318,37 @@ info "  → WebRTC → ct-server SFU → WebRTC → Playwright browser → captu
 BROWSER_CAPTURE="$TMPDIR/browser-captured-audio.webm"
 BROWSER_CAPTURE_WAV="$TMPDIR/browser-captured-audio.wav"
 
-# Play test tone into K2B PipeWire loopback source (simulates mic input on K2B).
-# ct-client picks this up and sends via WebRTC to the server.
-info "Playing test tone into K2B PipeWire source..."
-ssh "root@${K2B_HOST}" "nohup su - ${K2B_USER} -c 'XDG_RUNTIME_DIR=/run/user/${K2B_UID} ffmpeg -re -i /tmp/test-tone.wav -t 6 -f pulse default' > /tmp/ffmpeg-play-94.log 2>&1 &"
-sleep 0.5
-
-# Run Playwright test — connects as "translator", captures received audio
-# from the WebRTC stream using Web Audio API + MediaRecorder.
-info "Launching Playwright (K2B→Browser)..."
+info "Launching Playwright golden audio test..."
 CT_SERVER_URL="${SERVER_URL}" \
-CT_SESSION_ID="${SESSION_ID}" \
-CT_ROLE="translator" \
-CT_TEST_MODE="k2b-to-browser" \
+CT_K2B_HOST="${K2B_HOST}" \
+CT_K2B_USER="${K2B_USER}" \
+CT_K2B_UID="${K2B_UID}" \
+CT_ADMIN_PASSWORD="Password!" \
 CT_CAPTURE_PATH="${BROWSER_CAPTURE}" \
 CT_AUDIO_DURATION_MS="7000" \
 npx playwright test \
     --config "$PW_CONFIG" \
-    --grep "K2B→Browser" \
+    --grep "Golden Audio" \
     --project chromium \
-    2>&1 | tee "$TMPDIR/pw-94.log" || true
+    2>&1 | tee "$TMPDIR/pw-golden.log" || true
 
-# Wait for K2B playback to finish
-ssh "root@${K2B_HOST}" "pkill -x ffmpeg 2>/dev/null || true"
-sleep 1
-
+# Evaluate captured audio
 if [[ -f "$BROWSER_CAPTURE" ]] && [[ "$(stat -c%s "$BROWSER_CAPTURE" 2>/dev/null || echo 0)" -gt 1000 ]]; then
     # Convert webm to wav for comparison
     ffmpeg -y -hide_banner -loglevel error -i "$BROWSER_CAPTURE" -ar 48000 -ac 1 "$BROWSER_CAPTURE_WAV"
 
-    SCORE_94=$("$COMPARE" "$REF_TONE" "$BROWSER_CAPTURE_WAV" "$THRESHOLD" 2>&1 | tail -1 || echo "0.0")
-    info "Cross-correlation score: $SCORE_94 (threshold: $THRESHOLD)"
+    SCORE=$("$COMPARE" "$REF_TONE" "$BROWSER_CAPTURE_WAV" "$THRESHOLD" 2>&1 | tail -1 || echo "0.0")
+    info "Cross-correlation score: $SCORE (threshold: $THRESHOLD)"
 
-    if python3 -c "import sys; sys.exit(0 if float('$SCORE_94') > float('$THRESHOLD') else 1)" 2>/dev/null; then
-        pass_test "9.4 K2B→Browser audio path verified (corr: $SCORE_94 > $THRESHOLD)"
+    if python3 -c "import sys; sys.exit(0 if float('$SCORE') > float('$THRESHOLD') else 1)" 2>/dev/null; then
+        pass_test "Golden audio K2B→Browser verified (corr: $SCORE > $THRESHOLD)"
     else
-        fail_test "9.4 K2B→Browser audio correlation too low: $SCORE_94 < $THRESHOLD"
+        fail_test "Golden audio correlation too low: $SCORE < $THRESHOLD"
     fi
 else
-    fail_test "9.4 K2B→Browser capture failed (no audio captured in browser)"
-    info "Check: Playwright log: cat $TMPDIR/pw-94.log"
-    info "Check: K2B playback log: ssh root@${K2B_HOST} cat /tmp/ffmpeg-play-94.log"
-fi
-
-# ══════════════════════════════════════════════════════════════════════════════
-# TEST 9.5f: WebRTC Signaling Verification
-# ══════════════════════════════════════════════════════════════════════════════
-echo ""
-info "═══════════════════════════════════════════"
-info "  TEST 9.5f: WebRTC Signaling Verification"
-info "═══════════════════════════════════════════"
-
-# Check the server log for evidence of WebRTC handshake
-WS_UPGRADE=$(grep -c "upgrade\|websocket\|signaling" "$SERVER_LOG" 2>/dev/null || echo "0"); WS_UPGRADE="${WS_UPGRADE%%$'\n'*}"
-SDP_EXCHANGE=$(grep -c "offer\|answer\|SDP\|sdp" "$SERVER_LOG" 2>/dev/null || echo "0"); SDP_EXCHANGE="${SDP_EXCHANGE%%$'\n'*}"
-HELLO_RECV=$(grep -c "Hello\|hello\|capabilities" "$SERVER_LOG" 2>/dev/null || echo "0"); HELLO_RECV="${HELLO_RECV%%$'\n'*}"
-
-info "Server log signals: websocket=$WS_UPGRADE, sdp=$SDP_EXCHANGE, hello=$HELLO_RECV"
-
-if [[ "$WS_UPGRADE" -gt 0 ]] || [[ "$SDP_EXCHANGE" -gt 0 ]]; then
-    pass_test "9.5f WebRTC signaling exchange detected in server logs"
-else
-    if $K2B_CONNECTED; then
-        pass_test "9.5f K2B client reported connected (signaling verified client-side)"
-    else
-        skip_test "9.5f WebRTC signaling not detected (ct-client may not have connected)"
-    fi
+    fail_test "Golden audio capture failed (no audio captured in browser)"
+    info "Check: Playwright log: cat $TMPDIR/pw-golden.log"
+    info "Check: K2B client log: ssh root@${K2B_HOST} cat ${K2B_CLIENT_LOG}"
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -480,11 +365,10 @@ echo -e "  ${YEL}Skipped: ${TESTS_SKIPPED}${RST}"
 echo -e "  ${RED}Failed:  ${TESTS_FAILED}${RST}"
 echo ""
 info "Artifacts:"
-info "  Server log:  $SERVER_LOG"
-info "  K2B log:     ssh root@${K2B_HOST} cat ${K2B_CLIENT_LOG}"
-info "  PW 9.3 log:  $TMPDIR/pw-93.log"
-info "  PW 9.4 log:  $TMPDIR/pw-94.log"
-info "  Temp dir:    $TMPDIR"
+info "  Server log:     $SERVER_LOG"
+info "  K2B log:        ssh root@${K2B_HOST} cat ${K2B_CLIENT_LOG}"
+info "  PW golden log:  $TMPDIR/pw-golden.log"
+info "  Temp dir:       $TMPDIR"
 echo ""
 
 if [[ "$TESTS_FAILED" -eq 0 ]]; then
