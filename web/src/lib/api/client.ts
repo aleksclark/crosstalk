@@ -66,8 +66,11 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   }
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ message: res.statusText })) as { message?: string }
-    throw new ApiClientError(res.status, body.message ?? res.statusText)
+    const body = await res.json().catch(() => ({})) as Record<string, unknown>
+    const msg = (body?.error as Record<string, unknown>)?.message as string
+      ?? (body?.message as string)
+      ?? res.statusText
+    throw new ApiClientError(res.status, msg)
   }
 
   if (res.status === 204) {
