@@ -583,18 +583,29 @@ func (h *Handler) handleDeleteTemplate(w http.ResponseWriter, r *http.Request) {
 
 // --- Session handlers ---
 
-type sessionResponse struct {
-	ID         string                  `json:"id"`
-	TemplateID string                  `json:"template_id"`
-	Name       string                  `json:"name"`
-	Status     crosstalk.SessionStatus `json:"status"`
-	CreatedAt  time.Time               `json:"created_at"`
-	EndedAt    *time.Time              `json:"ended_at,omitempty"`
-	Recording  *crosstalk.RecordingInfo `json:"recording,omitempty"`
+type sessionClientResponse struct {
+	ID          string `json:"id"`
+	Role        string `json:"role"`
+	Status      string `json:"status"`
+	ConnectedAt string `json:"connected_at"`
 }
 
-func toSessionResponse(s *crosstalk.Session) sessionResponse {
-	return sessionResponse{
+type sessionResponse struct {
+	ID           string                   `json:"id"`
+	TemplateID   string                   `json:"template_id"`
+	TemplateName string                   `json:"template_name,omitempty"`
+	Name         string                   `json:"name"`
+	Status       crosstalk.SessionStatus  `json:"status"`
+	ClientCount  int                      `json:"client_count"`
+	TotalRoles   int                      `json:"total_roles"`
+	Clients      []sessionClientResponse   `json:"clients,omitempty"`
+	CreatedAt    time.Time                `json:"created_at"`
+	EndedAt      *time.Time               `json:"ended_at,omitempty"`
+	Recording    *crosstalk.RecordingInfo `json:"recording,omitempty"`
+}
+
+func (h *Handler) toSessionResponse(s *crosstalk.Session) sessionResponse {
+	resp := sessionResponse{
 		ID:         s.ID,
 		TemplateID: s.TemplateID,
 		Name:       s.Name,
@@ -602,6 +613,27 @@ func toSessionResponse(s *crosstalk.Session) sessionResponse {
 		CreatedAt:  s.CreatedAt,
 		EndedAt:    s.EndedAt,
 	}
+	if tmpl, err := h.SessionTemplateService.FindTemplateByID(s.TemplateID); err == nil && tmpl != nil {
+		resp.TemplateName = tmpl.Name
+		resp.TotalRoles = len(tmpl.Roles)
+	}
+	if h.PeerLister != nil {
+		for _, p := range h.PeerLister.ListPeerInfo() {
+			if p.SessionID == s.ID {
+				resp.ClientCount++
+				resp.Clients = append(resp.Clients, sessionClientResponse{
+					ID:          p.ID,
+					Role:        p.Role,
+					Status:      "connected",
+					ConnectedAt: s.CreatedAt.Format(time.RFC3339),
+				})
+			}
+		}
+	}
+	if resp.Clients == nil {
+		resp.Clients = []sessionClientResponse{}
+	}
+	return resp
 }
 
 func (h *Handler) handleListSessions(w http.ResponseWriter, r *http.Request) {
@@ -619,7 +651,7 @@ func (h *Handler) handleListSessions(w http.ResponseWriter, r *http.Request) {
 		if statusFilter != "" && string(sessions[i].Status) != statusFilter {
 			continue
 		}
-		resp = append(resp, toSessionResponse(&sessions[i]))
+		resp = append(resp, h.toSessionResponse(&sessions[i]))
 	}
 	if resp == nil {
 		resp = []sessionResponse{}
@@ -662,7 +694,7 @@ func (h *Handler) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to create session")
 		return
 	}
-	writeJSON(w, http.StatusCreated, toSessionResponse(session))
+	writeJSON(w, http.StatusCreated, h.toSessionResponse(session))
 }
 
 func (h *Handler) handleGetSession(w http.ResponseWriter, r *http.Request) {
@@ -676,7 +708,7 @@ func (h *Handler) handleGetSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to find session")
 		return
 	}
-	resp := toSessionResponse(session)
+	resp := h.toSessionResponse(session)
 	if h.Orchestrator != nil {
 		resp.Recording = h.Orchestrator.RecordingStatus(id)
 	}

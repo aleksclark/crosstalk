@@ -182,6 +182,10 @@ func (m *mockOrchestrator) RecordingStatus(sessionID string) *crosstalk.Recordin
 	return nil
 }
 
+func (m *mockOrchestrator) AssignSession(peerID, sessionID, role string) error {
+	return nil
+}
+
 func TestGetSession_WithRecordingStatus(t *testing.T) {
 	h, _, ts, _, sessSvc := newTestHandler(t)
 	token := authToken(t, ts)

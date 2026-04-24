@@ -123,6 +123,15 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
     const trackId = event.track.id
     gainNodesRef.current.set(trackId, gain)
     analyserNodesRef.current.set(trackId, analyser)
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(window as any).__remoteStream = stream
+
+    const audioEl = document.createElement('audio')
+    audioEl.srcObject = stream
+    audioEl.autoplay = true
+    audioEl.style.display = 'none'
+    document.body.appendChild(audioEl)
   }, [addLog, getOrCreateAudioContext])
 
   const handleDataChannel = useCallback((event: RTCDataChannelEvent) => {
