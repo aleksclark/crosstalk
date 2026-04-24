@@ -141,6 +141,20 @@ type RecordingInfo struct {
 type SessionOrchestrator interface {
 	EndSession(sessionID string)
 	RecordingStatus(sessionID string) *RecordingInfo
+	AssignSession(peerID, sessionID, role string) error
+}
+
+// PeerInfo summarises a connected WebRTC peer for the REST API.
+type PeerInfo struct {
+	ID        string `json:"id"`
+	SessionID string `json:"session_id,omitempty"`
+	Role      string `json:"role,omitempty"`
+	ClientID  string `json:"client_id,omitempty"`
+}
+
+// PeerLister returns live peer information from the WebRTC layer.
+type PeerLister interface {
+	ListPeerInfo() []PeerInfo
 }
 
 // Validate checks that a SessionTemplate's mappings are consistent with its roles.

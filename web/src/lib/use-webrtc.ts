@@ -111,6 +111,16 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
     const stream = event.streams[0]
     if (!stream || event.track.kind !== 'audio') return
 
+    // Expose the remote stream for E2E audio capture tests.
+    // The golden-audio spec looks for <audio> elements with srcObject
+    // or window.__remoteStream.
+    ;(window as Record<string, unknown>).__remoteStream = stream
+    const audioEl = document.createElement('audio')
+    audioEl.srcObject = stream
+    audioEl.autoplay = true
+    audioEl.style.display = 'none'
+    document.body.appendChild(audioEl)
+
     const source = ctx.createMediaStreamSource(stream)
     const gain = ctx.createGain()
     const analyser = ctx.createAnalyser()

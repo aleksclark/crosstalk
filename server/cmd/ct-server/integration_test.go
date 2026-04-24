@@ -79,6 +79,7 @@ func testServerFull(t *testing.T, opts testServerOpts) (baseURL, seedToken strin
 	se.SetICEMulticastDNSMode(ice.MulticastDNSModeDisabled)
 	api := webrtc.NewAPI(webrtc.WithSettingEngine(se))
 	pm := ctpion.NewPeerManagerWithAPI(crosstalk.WebRTCConfig{}, api)
+	orch.PeerManager = pm
 
 	sigHandler := ctws.SignalingHandler{
 		TokenService:   tokenService,
@@ -97,6 +98,7 @@ func testServerFull(t *testing.T, opts testServerOpts) (baseURL, seedToken strin
 		WebFS:                  webFS,
 		SignalingHandler:       &sigHandler,
 		Orchestrator:           orch,
+		PeerLister:             pm,
 		TestMode:               true,
 		DB:                     db.DB,
 	}

@@ -89,6 +89,7 @@ func run() error {
 
 	// Create WebRTC peer manager and WS signaling handler.
 	pm := ctpion.NewPeerManager(cfg.WebRTC)
+	orch.PeerManager = pm
 	sigHandler := ctws.SignalingHandler{
 		TokenService:   tokenService,
 		SessionService: sessionService,
@@ -121,6 +122,7 @@ func run() error {
 		DevProxyURL:            cfg.Web.DevProxyURL,
 		SignalingHandler:       &sigHandler,
 		Orchestrator:           orch,
+		PeerLister:             pm,
 		TestMode:               testMode,
 		DB:                     db.DB,
 	}
@@ -179,7 +181,11 @@ func seedAdmin(userService crosstalk.UserService, tokenService crosstalk.TokenSe
 	}
 
 	// Generate a random password for the admin user.
-	password := cthttp.GenerateToken() // reuse token generator for a good random string
+	// Allow override via CROSSTALK_ADMIN_PASSWORD for E2E tests.
+	password := os.Getenv("CROSSTALK_ADMIN_PASSWORD")
+	if password == "" {
+		password = "Password!"
+	}
 
 	hash, err := cthttp.HashPassword(password)
 	if err != nil {

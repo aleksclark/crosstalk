@@ -132,7 +132,7 @@ func TestCreateSession(t *testing.T) {
 }
 
 func TestGetSession(t *testing.T) {
-	h, _, ts, _, sessSvc := newTestHandler(t)
+	h, _, ts, tmplSvc, sessSvc := newTestHandler(t)
 	token := authToken(t, ts)
 
 	now := time.Now().UTC()
@@ -144,6 +144,16 @@ func TestGetSession(t *testing.T) {
 				Name:       "My Session",
 				Status:     crosstalk.SessionWaiting,
 				CreatedAt:  now,
+			}, nil
+		}
+		return nil, sql.ErrNoRows
+	}
+	tmplSvc.FindTemplateByIDFn = func(id string) (*crosstalk.SessionTemplate, error) {
+		if id == "tmpl-1" {
+			return &crosstalk.SessionTemplate{
+				ID:    "tmpl-1",
+				Name:  "Default",
+				Roles: []crosstalk.Role{{Name: "host"}},
 			}, nil
 		}
 		return nil, sql.ErrNoRows
@@ -167,6 +177,7 @@ func TestGetSession(t *testing.T) {
 type mockOrchestrator struct {
 	endSessionFn      func(string)
 	recordingStatusFn func(string) *crosstalk.RecordingInfo
+	assignSessionFn   func(string, string, string) error
 }
 
 func (m *mockOrchestrator) EndSession(sessionID string) {
@@ -182,8 +193,15 @@ func (m *mockOrchestrator) RecordingStatus(sessionID string) *crosstalk.Recordin
 	return nil
 }
 
+func (m *mockOrchestrator) AssignSession(peerID, sessionID, role string) error {
+	if m.assignSessionFn != nil {
+		return m.assignSessionFn(peerID, sessionID, role)
+	}
+	return nil
+}
+
 func TestGetSession_WithRecordingStatus(t *testing.T) {
-	h, _, ts, _, sessSvc := newTestHandler(t)
+	h, _, ts, tmplSvc, sessSvc := newTestHandler(t)
 	token := authToken(t, ts)
 
 	orch := &mockOrchestrator{
@@ -199,6 +217,17 @@ func TestGetSession_WithRecordingStatus(t *testing.T) {
 		},
 	}
 	h.Orchestrator = orch
+
+	tmplSvc.FindTemplateByIDFn = func(id string) (*crosstalk.SessionTemplate, error) {
+		if id == "tmpl-1" {
+			return &crosstalk.SessionTemplate{
+				ID:    "tmpl-1",
+				Name:  "Default",
+				Roles: []crosstalk.Role{{Name: "host"}},
+			}, nil
+		}
+		return nil, sql.ErrNoRows
+	}
 
 	now := time.Now().UTC()
 	sessSvc.FindSessionByIDFn = func(id string) (*crosstalk.Session, error) {

@@ -40,6 +40,9 @@ type Handler struct {
 	// handler notifies connected WebRTC clients before updating the DB.
 	Orchestrator crosstalk.SessionOrchestrator
 
+	// PeerLister returns live peer information from the WebRTC layer.
+	PeerLister crosstalk.PeerLister
+
 	// TestMode enables test-only endpoints (e.g. POST /api/test/reset).
 	TestMode bool
 
@@ -111,6 +114,10 @@ func (h *Handler) Router() *chi.Mux {
 			// Clients (stub)
 			r.Get("/clients", h.handleListClients)
 			r.Get("/clients/{id}", h.handleGetClient)
+
+			// Peer connections and assignment
+			r.Get("/connections", h.handleListConnections)
+			r.Post("/sessions/{id}/assign", h.handleAssignSession)
 
 			// OpenAPI
 			r.Get("/openapi.json", h.handleOpenAPI)
@@ -579,13 +586,24 @@ func (h *Handler) handleDeleteTemplate(w http.ResponseWriter, r *http.Request) {
 // --- Session handlers ---
 
 type sessionResponse struct {
-	ID         string                  `json:"id"`
-	TemplateID string                  `json:"template_id"`
-	Name       string                  `json:"name"`
-	Status     crosstalk.SessionStatus `json:"status"`
-	CreatedAt  time.Time               `json:"created_at"`
-	EndedAt    *time.Time              `json:"ended_at,omitempty"`
-	Recording  *crosstalk.RecordingInfo `json:"recording,omitempty"`
+	ID           string                   `json:"id"`
+	TemplateID   string                   `json:"template_id"`
+	TemplateName string                   `json:"template_name"`
+	Name         string                   `json:"name"`
+	Status       crosstalk.SessionStatus  `json:"status"`
+	ClientCount  int                      `json:"client_count"`
+	TotalRoles   int                      `json:"total_roles"`
+	CreatedAt    time.Time                `json:"created_at"`
+	EndedAt      *time.Time               `json:"ended_at,omitempty"`
+	Recording    *crosstalk.RecordingInfo `json:"recording,omitempty"`
+	Clients      []sessionClientResponse  `json:"clients"`
+}
+
+type sessionClientResponse struct {
+	ID          string `json:"id"`
+	Role        string `json:"role"`
+	Status      string `json:"status"`
+	ConnectedAt string `json:"connected_at"`
 }
 
 func toSessionResponse(s *crosstalk.Session) sessionResponse {
@@ -596,6 +614,7 @@ func toSessionResponse(s *crosstalk.Session) sessionResponse {
 		Status:     s.Status,
 		CreatedAt:  s.CreatedAt,
 		EndedAt:    s.EndedAt,
+		Clients:    []sessionClientResponse{},
 	}
 }
 
@@ -614,7 +633,21 @@ func (h *Handler) handleListSessions(w http.ResponseWriter, r *http.Request) {
 		if statusFilter != "" && string(sessions[i].Status) != statusFilter {
 			continue
 		}
-		resp = append(resp, toSessionResponse(&sessions[i]))
+		sr := toSessionResponse(&sessions[i])
+		// Enrich with template name and role count.
+		if tmpl, err := h.SessionTemplateService.FindTemplateByID(sessions[i].TemplateID); err == nil {
+			sr.TemplateName = tmpl.Name
+			sr.TotalRoles = len(tmpl.Roles)
+		}
+		// Enrich with connected client count from peer list.
+		if h.PeerLister != nil {
+			for _, p := range h.PeerLister.ListPeerInfo() {
+				if p.SessionID == sessions[i].ID {
+					sr.ClientCount++
+				}
+			}
+		}
+		resp = append(resp, sr)
 	}
 	if resp == nil {
 		resp = []sessionResponse{}
@@ -675,6 +708,25 @@ func (h *Handler) handleGetSession(w http.ResponseWriter, r *http.Request) {
 	if h.Orchestrator != nil {
 		resp.Recording = h.Orchestrator.RecordingStatus(id)
 	}
+	// Enrich with template name and role count.
+	if tmpl, err := h.SessionTemplateService.FindTemplateByID(session.TemplateID); err == nil {
+		resp.TemplateName = tmpl.Name
+		resp.TotalRoles = len(tmpl.Roles)
+	}
+	// Enrich with connected clients from peer list.
+	if h.PeerLister != nil {
+		for _, p := range h.PeerLister.ListPeerInfo() {
+			if p.SessionID == id {
+				resp.ClientCount++
+				resp.Clients = append(resp.Clients, sessionClientResponse{
+					ID:          p.ID,
+					Role:        p.Role,
+					Status:      "connected",
+					ConnectedAt: time.Now().UTC().Format(time.RFC3339),
+				})
+			}
+		}
+	}
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -702,6 +754,41 @@ func (h *Handler) handleListClients(w http.ResponseWriter, _ *http.Request) {
 
 func (h *Handler) handleGetClient(w http.ResponseWriter, _ *http.Request) {
 	writeError(w, http.StatusNotFound, "client not found")
+}
+
+// --- Peer connection handlers ---
+
+func (h *Handler) handleListConnections(w http.ResponseWriter, _ *http.Request) {
+	if h.PeerLister == nil {
+		writeJSON(w, http.StatusOK, []any{})
+		return
+	}
+	writeJSON(w, http.StatusOK, h.PeerLister.ListPeerInfo())
+}
+
+func (h *Handler) handleAssignSession(w http.ResponseWriter, r *http.Request) {
+	sessionID := chi.URLParam(r, "id")
+	var body struct {
+		PeerID string `json:"peer_id"`
+		Role   string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if body.PeerID == "" || body.Role == "" {
+		writeError(w, http.StatusBadRequest, "peer_id and role are required")
+		return
+	}
+	if h.Orchestrator == nil {
+		writeError(w, http.StatusInternalServerError, "orchestrator not configured")
+		return
+	}
+	if err := h.Orchestrator.AssignSession(body.PeerID, sessionID, body.Role); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "assigned"})
 }
 
 // --- OpenAPI handler ---
