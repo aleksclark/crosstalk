@@ -7,6 +7,7 @@ CrossTalk — realtime audio/video/data bridge using WebRTC.
 ```
 task test:unit:go        # Go unit tests (server + cli)
 task test:unit:web       # TypeScript unit tests (vitest)
+task test:integration    # Go in-process + Playwright browser tests (Docker)
 task build:server        # Build server binary (bin/ct-server)
 task build:cli           # Build CLI binary (bin/ct-client)
 task lint:go             # golangci-lint on server + cli
@@ -41,6 +42,33 @@ spec/            Design specification (living document)
 5. **Use structured JSON logging** — `log/slog` in Go, structured console in TypeScript. Never `fmt.Println` for operational output.
 
 6. **Don't add dependencies without justification** — check what's already in `go.mod` / `package.json`. Prefer stdlib. If you must add a dep, it gets its own subpackage.
+
+7. **Run `task test:integration` after any server/ or web/ change** — the Playwright browser suite exercises every admin SPA view against a real server and database. It must pass before merging. See "When to Run Integration Tests" below.
+
+## When to Run Integration Tests
+
+**Any change to `server/` or `web/` must pass `task test:integration` before merging.** This runs both Go in-process integration tests and the full Playwright browser suite against a real server with real SQLite.
+
+The Playwright suite (`test/playwright/specs/`) exercises every routed view of the admin SPA:
+
+| Spec file | Views covered |
+|---|---|
+| `login.spec.ts` | `/login` — auth flow, invalid credentials |
+| `navigation.spec.ts` | Layout nav bar, logout, auth guard, active link |
+| `dashboard.spec.ts` | `/dashboard` — stat cards, recent sessions, quick test |
+| `template-editor.spec.ts` | `/templates`, `/templates/:id` — CRUD, roles, mappings, validation |
+| `session-list.spec.ts` | `/sessions` — list, create, end, empty state |
+| `session-detail.spec.ts` | `/sessions/:id` — status, clients, bindings, assign peers |
+| `session-connect.spec.ts` | `/sessions/:id/connect` — WebRTC debug, mic, logs, volume |
+| `templates.spec.ts` | `/templates` — create, edit, delete via UI |
+| `sessions.spec.ts` | `/sessions` — create from template, connect view |
+| `quick-test.spec.ts` | `/dashboard` — quick test button → connect |
+| `assign-peer.spec.ts` | API + assign UI on detail/connect pages |
+
+Run the suite locally:
+```
+task test:integration
+```
 
 ## Commands
 

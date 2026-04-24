@@ -11,7 +11,9 @@ import type {
   SessionCreateRequest,
   Client,
   ServerStatus,
+  ApiMapping,
 } from './types'
+import { mappingToApi, apiToMapping } from './types'
 
 class ApiClientError extends Error {
   status: number
@@ -111,20 +113,50 @@ export async function revokeToken(id: string): Promise<void> {
 }
 
 // Templates
+interface ApiTemplateResponse {
+  id: string
+  name: string
+  is_default: boolean
+  roles: SessionTemplate['roles']
+  mappings: ApiMapping[]
+  created_at: string
+  updated_at: string
+}
+
+function fromApiTemplate(t: ApiTemplateResponse): SessionTemplate {
+  return {
+    ...t,
+    mappings: (t.mappings ?? []).map(apiToMapping),
+  }
+}
+
+function toApiTemplateBody(data: SessionTemplateCreate): string {
+  return JSON.stringify({
+    name: data.name,
+    is_default: data.is_default,
+    roles: data.roles,
+    mappings: data.mappings.map(mappingToApi),
+  })
+}
+
 export async function getTemplates(): Promise<SessionTemplate[]> {
-  return request('/api/templates')
+  const raw: ApiTemplateResponse[] = await request('/api/templates')
+  return raw.map(fromApiTemplate)
 }
 
 export async function getTemplate(id: string): Promise<SessionTemplate> {
-  return request(`/api/templates/${id}`)
+  const raw: ApiTemplateResponse = await request(`/api/templates/${id}`)
+  return fromApiTemplate(raw)
 }
 
 export async function createTemplate(data: SessionTemplateCreate): Promise<SessionTemplate> {
-  return request('/api/templates', { method: 'POST', body: JSON.stringify(data) })
+  const raw: ApiTemplateResponse = await request('/api/templates', { method: 'POST', body: toApiTemplateBody(data) })
+  return fromApiTemplate(raw)
 }
 
 export async function updateTemplate(id: string, data: SessionTemplateCreate): Promise<SessionTemplate> {
-  return request(`/api/templates/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+  const raw: ApiTemplateResponse = await request(`/api/templates/${id}`, { method: 'PUT', body: toApiTemplateBody(data) })
+  return fromApiTemplate(raw)
 }
 
 export async function deleteTemplate(id: string): Promise<void> {

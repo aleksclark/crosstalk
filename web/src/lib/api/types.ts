@@ -36,6 +36,40 @@ export interface Mapping {
   to_type: 'role' | 'record' | 'broadcast'
 }
 
+export interface ApiMapping {
+  source: string
+  sink: string
+}
+
+export function mappingToApi(m: Mapping): ApiMapping {
+  const source = `${m.from_role}:${m.from_channel}`
+  let sink: string
+  if (m.to_type === 'record') {
+    sink = 'record'
+  } else if (m.to_type === 'broadcast') {
+    sink = 'broadcast'
+  } else {
+    sink = `${m.to_role}:${m.to_channel}`
+  }
+  return { source, sink }
+}
+
+export function apiToMapping(m: ApiMapping): Mapping {
+  const [from_role, ...fromRest] = m.source.split(':')
+  const from_channel = fromRest.join(':')
+
+  if (m.sink === 'record') {
+    return { from_role, from_channel, to_role: '', to_channel: '', to_type: 'record' }
+  }
+  if (m.sink === 'broadcast') {
+    return { from_role, from_channel, to_role: '', to_channel: '', to_type: 'broadcast' }
+  }
+
+  const [to_role, ...toRest] = m.sink.split(':')
+  const to_channel = toRest.join(':')
+  return { from_role, from_channel, to_role, to_channel, to_type: 'role' }
+}
+
 export interface SessionTemplate {
   id: string
   name: string

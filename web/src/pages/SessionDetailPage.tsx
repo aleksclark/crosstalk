@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
-import { getSession, endSession, getConnections, assignSession } from '@/lib/api/client'
+import { useParams, useNavigate } from 'react-router-dom'
+import { getSession, getTemplate, endSession, getConnections, assignSession } from '@/lib/api/client'
 import type { PeerConnection } from '@/lib/api/client'
-import type { SessionDetail } from '@/lib/api/types'
+import type { SessionDetail, Role } from '@/lib/api/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
@@ -15,13 +15,28 @@ export function SessionDetailPage() {
   const [session, setSession] = useState<SessionDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [peers, setPeers] = useState<PeerConnection[]>([])
+  const [templateRoles, setTemplateRoles] = useState<Role[]>([])
+  const [connectRole, setConnectRole] = useState('')
   const [assignRole, setAssignRole] = useState('studio')
   const [assignError, setAssignError] = useState('')
 
   useEffect(() => {
     if (!id) return
     void getSession(id)
-      .then(setSession)
+      .then((s) => {
+        setSession(s)
+        if (s.template_id) {
+          void getTemplate(s.template_id)
+            .then((t) => {
+              setTemplateRoles(t.roles)
+              if (t.roles.length > 0) {
+                setConnectRole(t.roles[0].name)
+                setAssignRole(t.roles[0].name)
+              }
+            })
+            .catch(() => {})
+        }
+      })
       .catch(() => navigate('/sessions'))
       .finally(() => setLoading(false))
   }, [id, navigate])
@@ -51,12 +66,28 @@ export function SessionDetailPage() {
             Template: {session.template_name} · Created: {new Date(session.created_at).toLocaleString()}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           {session.status !== 'ended' && (
             <>
-              <Link to={`/sessions/${id}/connect`}>
-                <Button variant="outline">Connect</Button>
-              </Link>
+              {templateRoles.length > 0 && (
+                <Select
+                  value={connectRole}
+                  onChange={(e) => setConnectRole(e.target.value)}
+                  className="w-36 h-9"
+                  data-testid="connect-role-select"
+                >
+                  {templateRoles.map((r) => (
+                    <option key={r.name} value={r.name}>{r.name}</option>
+                  ))}
+                </Select>
+              )}
+              <Button
+                variant="outline"
+                onClick={() => navigate(`/sessions/${id}/connect?role=${encodeURIComponent(connectRole)}`)}
+                data-testid="connect-button"
+              >
+                Connect
+              </Button>
               <Button variant="destructive" onClick={handleEnd} data-testid="end-session-button">
                 End Session
               </Button>
@@ -93,8 +124,9 @@ export function SessionDetailPage() {
               {(!p.session_id || p.session_id !== id) && session.status !== 'ended' && (
                 <div className="flex items-center gap-2">
                   <Select value={assignRole} onChange={(e) => setAssignRole(e.target.value)} className="w-28 h-8 text-xs" data-testid="assign-role-select">
-                    <option value="studio">studio</option>
-                    <option value="translator">translator</option>
+                    {templateRoles.map((r) => (
+                      <option key={r.name} value={r.name}>{r.name}</option>
+                    ))}
                   </Select>
                   <Button size="sm" variant="outline" data-testid="assign-peer-button" onClick={async () => {
                     setAssignError('')
