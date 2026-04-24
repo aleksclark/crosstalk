@@ -14,6 +14,16 @@ import (
 	"time"
 )
 
+type Client struct {
+	ID         string    `json:"id"`
+	Name       string    `json:"name"`
+	OwnerID    string    `json:"owner_id"`
+	SourceName string    `json:"source_name"`
+	SinkName   string    `json:"sink_name"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
 // User represents an authenticated admin user.
 type User struct {
 	ID           string
@@ -141,6 +151,18 @@ type RecordingInfo struct {
 type SessionOrchestrator interface {
 	EndSession(sessionID string)
 	RecordingStatus(sessionID string) *RecordingInfo
+	AssignSession(peerID, sessionID, role string) error
+}
+
+type PeerInfo struct {
+	ID        string `json:"id"`
+	SessionID string `json:"session_id,omitempty"`
+	Role      string `json:"role,omitempty"`
+	ClientID  string `json:"client_id,omitempty"`
+}
+
+type PeerLister interface {
+	ListPeerInfo() []PeerInfo
 }
 
 // Validate checks that a SessionTemplate's mappings are consistent with its roles.

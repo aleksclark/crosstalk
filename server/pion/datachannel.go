@@ -20,15 +20,8 @@ func (c *PeerConn) createControlChannel() error {
 
 	c.control = dc
 
-	// Default handler: echo received messages back.
 	dc.OnOpen(func() {
 		slog.Debug("control data channel opened", "peer", c.ID)
-	})
-
-	dc.OnMessage(func(msg webrtc.DataChannelMessage) {
-		if err := dc.Send(msg.Data); err != nil {
-			slog.Error("control echo send failed", "peer", c.ID, "err", err)
-		}
 	})
 
 	return nil

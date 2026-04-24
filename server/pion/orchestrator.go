@@ -27,10 +27,19 @@ import (
 type Orchestrator struct {
 	SessionService         crosstalk.SessionService
 	SessionTemplateService crosstalk.SessionTemplateService
-	RecordingPath          string // base directory for recording files; empty disables recording
+	PeerManager            *PeerManager
+	RecordingPath          string
 
 	mu       sync.Mutex
 	sessions map[string]*LiveSession // keyed by session ID
+}
+
+func (o *Orchestrator) AssignSession(peerID, sessionID, role string) error {
+	peer := o.PeerManager.FindPeer(peerID)
+	if peer == nil {
+		return fmt.Errorf("peer not found: %s", peerID)
+	}
+	return o.JoinSession(peer, sessionID, role)
 }
 
 // LiveSession tracks runtime state for an active session.

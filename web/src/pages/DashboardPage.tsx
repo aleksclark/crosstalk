@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getClients, getSessions, getTemplates, getServerStatus, createSession, assignSession } from '@/lib/api/client'
-import type { Client, Session, SessionTemplate, ServerStatus } from '@/lib/api/types'
+import { getSessions, getTemplates, getServerStatus, createSession } from '@/lib/api/client'
+import type { Session, SessionTemplate, ServerStatus } from '@/lib/api/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
@@ -17,7 +17,6 @@ function formatUptime(seconds: number): string {
 }
 
 export function DashboardPage() {
-  const [clients, setClients] = useState<Client[]>([])
   const [sessions, setSessions] = useState<Session[]>([])
   const [templates, setTemplates] = useState<SessionTemplate[]>([])
   const [serverStatus, setServerStatus] = useState<ServerStatus | null>(null)
@@ -32,19 +31,16 @@ export function DashboardPage() {
 
     async function fetchData() {
       try {
-        const [c, s, t, status] = await Promise.all([
-          getClients(),
+        const [s, t, status] = await Promise.all([
           getSessions(),
           getTemplates(),
           getServerStatus().catch(() => null),
         ])
         if (cancelled) return
-        setClients(c)
         setSessions(s)
         setTemplates(t)
         setServerStatus(status)
       } catch {
-        // silently handle - auth context will redirect on 401
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -75,11 +71,6 @@ export function DashboardPage() {
         template_id: defaultTemplate.id,
         name: `Quick Test ${now}`,
       })
-      const peers = await getClients()
-      const firstPeer = peers.find((p) => p.status === 'connected')
-      if (firstPeer) {
-        await assignSession(session.id, { peer_id: firstPeer.id, role: 'studio' })
-      }
       navigate(`/sessions/${session.id}/connect?role=translator`)
     } catch (err) {
       setQuickTestError(err instanceof Error ? err.message : 'Quick test failed')
@@ -127,7 +118,7 @@ export function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold" data-testid="connected-clients-count">
-              {clients.length}
+              {serverStatus?.connections ?? 0}
             </div>
           </CardContent>
         </Card>
@@ -163,40 +154,36 @@ export function DashboardPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Connected Clients</CardTitle>
+          <CardTitle>Recent Sessions</CardTitle>
         </CardHeader>
         <CardContent>
-          {clients.length === 0 ? (
-            <p className="text-muted-foreground text-sm">No clients connected</p>
+          {sessions.length === 0 ? (
+            <p className="text-muted-foreground text-sm">No sessions yet</p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Client ID</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Session</TableHead>
-                  <TableHead>Sources</TableHead>
-                  <TableHead>Sinks</TableHead>
-                  <TableHead>Codecs</TableHead>
+                  <TableHead>Name</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Connected Since</TableHead>
+                  <TableHead>Created</TableHead>
+                  <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {clients.map((client) => (
-                  <TableRow key={client.id} data-testid="client-row">
-                    <TableCell className="font-mono text-xs">{client.id}</TableCell>
-                    <TableCell>{client.role || '—'}</TableCell>
-                    <TableCell>{client.session || '—'}</TableCell>
-                    <TableCell>{client.sources.join(', ') || '—'}</TableCell>
-                    <TableCell>{client.sinks.join(', ') || '—'}</TableCell>
-                    <TableCell>{client.codecs.join(', ') || '—'}</TableCell>
+                {sessions.slice(0, 10).map((s) => (
+                  <TableRow key={s.id}>
+                    <TableCell>{s.name}</TableCell>
                     <TableCell>
-                      <Badge variant={client.status === 'connected' ? 'success' : 'secondary'}>
-                        {client.status}
+                      <Badge variant={s.status === 'active' ? 'success' : s.status === 'ended' ? 'secondary' : 'warning'}>
+                        {s.status}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-xs">{new Date(client.connected_at).toLocaleString()}</TableCell>
+                    <TableCell className="text-xs">{new Date(s.created_at).toLocaleString()}</TableCell>
+                    <TableCell>
+                      <Button size="sm" variant="outline" onClick={() => navigate(`/sessions/${s.id}`)}>
+                        View
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

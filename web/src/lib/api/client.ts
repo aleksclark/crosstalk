@@ -152,6 +152,17 @@ export async function assignSession(id: string, data: { peer_id: string; role: s
   return request(`/api/sessions/${id}/assign`, { method: 'POST', body: JSON.stringify(data) })
 }
 
+export interface PeerConnection {
+  id: string
+  session_id?: string
+  role?: string
+  client_id?: string
+}
+
+export async function getConnections(): Promise<PeerConnection[]> {
+  return request('/api/connections')
+}
+
 // Clients
 export async function getClients(): Promise<Client[]> {
   return request('/api/clients')

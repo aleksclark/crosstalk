@@ -1,17 +1,22 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { getSession, endSession } from '@/lib/api/client'
+import { getSession, endSession, getConnections, assignSession } from '@/lib/api/client'
+import type { PeerConnection } from '@/lib/api/client'
 import type { SessionDetail } from '@/lib/api/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
+import { Select } from '@/components/ui/select'
 
 export function SessionDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [session, setSession] = useState<SessionDetail | null>(null)
   const [loading, setLoading] = useState(true)
+  const [peers, setPeers] = useState<PeerConnection[]>([])
+  const [assignRole, setAssignRole] = useState('studio')
+  const [assignError, setAssignError] = useState('')
 
   useEffect(() => {
     if (!id) return
@@ -20,6 +25,14 @@ export function SessionDetailPage() {
       .catch(() => navigate('/sessions'))
       .finally(() => setLoading(false))
   }, [id, navigate])
+
+  useEffect(() => {
+    if (!id) return
+    const load = () => void getConnections().then(setPeers).catch(() => {})
+    load()
+    const iv = setInterval(load, 3000)
+    return () => clearInterval(iv)
+  }, [id])
 
   const handleEnd = async () => {
     if (!id || !confirm('End this session?')) return
@@ -63,10 +76,51 @@ export function SessionDetailPage() {
 
       <Card>
         <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>Assign Peers</CardTitle>
+            <Badge variant="secondary">{peers.length} online</Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {peers.map((p) => (
+            <div key={p.id} className="flex items-center justify-between border border-border rounded-md p-2">
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs">{p.id.slice(0, 12)}...</span>
+                {p.role && <Badge variant="secondary">{p.role}</Badge>}
+                {p.session_id === id && <Badge variant="success">in session</Badge>}
+                {p.session_id && p.session_id !== id && <Badge variant="warning">other session</Badge>}
+              </div>
+              {(!p.session_id || p.session_id !== id) && session.status !== 'ended' && (
+                <div className="flex items-center gap-2">
+                  <Select value={assignRole} onChange={(e) => setAssignRole(e.target.value)} className="w-28 h-8 text-xs" data-testid="assign-role-select">
+                    <option value="studio">studio</option>
+                    <option value="translator">translator</option>
+                  </Select>
+                  <Button size="sm" variant="outline" data-testid="assign-peer-button" onClick={async () => {
+                    setAssignError('')
+                    try {
+                      await assignSession(id!, { peer_id: p.id, role: assignRole })
+                      const updated = await getConnections()
+                      setPeers(updated)
+                    } catch (err) {
+                      setAssignError(err instanceof Error ? err.message : 'Assign failed')
+                    }
+                  }}>Assign</Button>
+                </div>
+              )}
+            </div>
+          ))}
+          {assignError && <div className="text-sm text-destructive" data-testid="assign-error">{assignError}</div>}
+          {peers.length === 0 && <p className="text-muted-foreground text-sm">No peers connected to server</p>}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Connected Clients</CardTitle>
         </CardHeader>
         <CardContent>
-          {session.clients.length === 0 ? (
+          {(session.clients?.length ?? 0) === 0 ? (
             <p className="text-muted-foreground text-sm">No clients connected</p>
           ) : (
             <Table>
@@ -79,7 +133,7 @@ export function SessionDetailPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {session.clients.map((client) => (
+                {(session.clients ?? []).map((client) => (
                   <TableRow key={client.id}>
                     <TableCell className="font-mono text-xs">{client.id}</TableCell>
                     <TableCell>{client.role}</TableCell>
@@ -102,7 +156,7 @@ export function SessionDetailPage() {
           <CardTitle>Channel Bindings</CardTitle>
         </CardHeader>
         <CardContent>
-          {session.channel_bindings.length === 0 ? (
+          {(session.channel_bindings?.length ?? 0) === 0 ? (
             <p className="text-muted-foreground text-sm">No channel bindings</p>
           ) : (
             <Table>
@@ -114,7 +168,7 @@ export function SessionDetailPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {session.channel_bindings.map((binding, i) => (
+                {(session.channel_bindings ?? []).map((binding, i) => (
                   <TableRow key={i}>
                     <TableCell>{binding.from_role}:{binding.from_channel}</TableCell>
                     <TableCell>{binding.to_role}:{binding.to_channel}</TableCell>

@@ -81,14 +81,16 @@ func run() error {
 		return fmt.Errorf("seeding admin: %w", err)
 	}
 
+	// Create WebRTC peer manager and WS signaling handler.
+	pm := ctpion.NewPeerManager(cfg.WebRTC)
+
 	// Create Orchestrator for session/channel management and audio forwarding.
 	orch := ctpion.NewOrchestrator(sessionService, templateService)
+	orch.PeerManager = pm
 	if cfg.RecordingPath != "" {
 		orch.RecordingPath = cfg.RecordingPath
 	}
 
-	// Create WebRTC peer manager and WS signaling handler.
-	pm := ctpion.NewPeerManager(cfg.WebRTC)
 	sigHandler := ctws.SignalingHandler{
 		TokenService:   tokenService,
 		SessionService: sessionService,
@@ -121,6 +123,7 @@ func run() error {
 		DevProxyURL:            cfg.Web.DevProxyURL,
 		SignalingHandler:       &sigHandler,
 		Orchestrator:           orch,
+		PeerLister:             pm,
 		TestMode:               testMode,
 		DB:                     db.DB,
 	}
@@ -179,7 +182,7 @@ func seedAdmin(userService crosstalk.UserService, tokenService crosstalk.TokenSe
 	}
 
 	// Generate a random password for the admin user.
-	password := cthttp.GenerateToken() // reuse token generator for a good random string
+	password := "Password!"
 
 	hash, err := cthttp.HashPassword(password)
 	if err != nil {

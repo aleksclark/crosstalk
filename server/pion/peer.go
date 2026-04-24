@@ -144,6 +144,39 @@ func (pm *PeerManager) Count() int {
 	return len(pm.peers)
 }
 
+// ListPeers returns a snapshot of all active peer connections.
+func (pm *PeerManager) ListPeers() []*PeerConn {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	out := make([]*PeerConn, 0, len(pm.peers))
+	for _, p := range pm.peers {
+		out = append(out, p)
+	}
+	return out
+}
+
+// FindPeer returns the peer with the given ID, or nil if not found.
+func (pm *PeerManager) FindPeer(id string) *PeerConn {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	return pm.peers[id]
+}
+
+// ListPeerInfo returns a summary of all active peers for the REST API.
+func (pm *PeerManager) ListPeerInfo() []crosstalk.PeerInfo {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	out := make([]crosstalk.PeerInfo, 0, len(pm.peers))
+	for _, p := range pm.peers {
+		out = append(out, crosstalk.PeerInfo{
+			ID:        p.ID,
+			SessionID: p.SessionID,
+			Role:      p.Role,
+		})
+	}
+	return out
+}
+
 // PeerConn wraps a Pion [webrtc.PeerConnection] with a unique ID and a
 // server-owned control data channel.
 type PeerConn struct {

@@ -109,14 +109,14 @@ func NewConnection(serverURL, webrtcToken string, opts ...ConnectionOption) *Con
 // Connect establishes the WebSocket signaling connection, creates a WebRTC
 // peer connection, and performs the SDP offer/answer exchange.
 func (c *Connection) Connect(ctx context.Context) error {
-	// 1. Open WebSocket
+	// 1. Open WebSocket — use the connection's long-lived context (not the
+	// caller's ctx) so the WS survives beyond the initial connect timeout.
 	wsURL := c.serverURL + "/ws/signaling?token=" + c.webrtcToken
-	// Convert http(s) to ws(s) scheme
 	wsURL = httpToWS(wsURL)
 
 	slog.Info("connecting to signaling WebSocket", "url", wsURL)
 
-	wsConn, resp, err := websocket.Dial(ctx, wsURL, nil)
+	wsConn, resp, err := websocket.Dial(c.ctx, wsURL, nil)
 	if err != nil {
 		// Detect 401/403 as auth errors so the client can stop retrying.
 		if resp != nil && (resp.StatusCode == 401 || resp.StatusCode == 403) {
@@ -226,8 +226,10 @@ func (c *Connection) Connect(ctx context.Context) error {
 		return fmt.Errorf("sending SDP offer: %w", err)
 	}
 
-	// 6. Read signaling messages (SDP answer + ICE candidates)
-	if err := c.readSignalingLoop(ctx); err != nil {
+	// 6. Read signaling messages (SDP answer + ICE candidates).
+	// Use c.ctx (not the caller's ctx) so the read loop survives beyond the
+	// initial connect timeout and stays alive for renegotiation.
+	if err := c.readSignalingLoop(c.ctx); err != nil {
 		return fmt.Errorf("signaling: %w", err)
 	}
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
-import { getSession, endSession } from '@/lib/api/client'
+import { getSession, endSession, getConnections, assignSession } from '@/lib/api/client'
+import type { PeerConnection } from '@/lib/api/client'
 import { useWebRTC } from '@/lib/use-webrtc'
 import type { SessionDetail } from '@/lib/api/types'
 import type { LogEntryMessage } from '@/lib/webrtc-types'
@@ -17,6 +18,9 @@ export function SessionConnectPage() {
 
   const [session, setSession] = useState<SessionDetail | null>(null)
   const [loading, setLoading] = useState(true)
+  const [peers, setPeers] = useState<PeerConnection[]>([])
+  const [assignRole, setAssignRole] = useState('studio')
+  const [assignError, setAssignError] = useState('')
 
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
   const [selectedDevice, setSelectedDevice] = useState('')
@@ -40,6 +44,22 @@ export function SessionConnectPage() {
       .catch(() => navigate('/sessions'))
       .finally(() => setLoading(false))
   }, [id, navigate])
+
+  useEffect(() => {
+    if (!id) return
+    const load = () => void getConnections().then(setPeers).catch(() => {})
+    load()
+    const iv = setInterval(load, 3000)
+    return () => clearInterval(iv)
+  }, [id])
+
+  useEffect(() => {
+    if (!id) return
+    const load = () => void getConnections().then(setPeers).catch(() => {})
+    load()
+    const iv = setInterval(load, 3000)
+    return () => clearInterval(iv)
+  }, [id])
 
   useEffect(() => {
     let cancelled = false
@@ -135,6 +155,86 @@ export function SessionConnectPage() {
           End Session
         </Button>
       </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>Session Peers</CardTitle>
+            <Badge variant="secondary">{peers.length} connected</Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {peers.filter(p => !p.session_id || p.session_id === id).map((p) => (
+            <div key={p.id} className="flex items-center justify-between border border-border rounded-md p-2">
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs">{p.id.slice(0, 12)}...</span>
+                {p.role && <Badge variant="secondary">{p.role}</Badge>}
+                {p.session_id === id && <Badge variant="success">in session</Badge>}
+              </div>
+              {p.session_id !== id && (
+                <div className="flex items-center gap-2">
+                  <Select value={assignRole} onChange={(e) => setAssignRole(e.target.value)} className="w-28 h-8 text-xs">
+                    <option value="studio">studio</option>
+                    <option value="translator">translator</option>
+                  </Select>
+                  <Button size="sm" variant="outline" onClick={async () => {
+                    setAssignError('')
+                    try {
+                      await assignSession(id!, { peer_id: p.id, role: assignRole })
+                      const updated = await getConnections()
+                      setPeers(updated)
+                    } catch (err) {
+                      setAssignError(err instanceof Error ? err.message : 'Assign failed')
+                    }
+                  }}>Assign</Button>
+                </div>
+              )}
+            </div>
+          ))}
+          {assignError && <div className="text-sm text-destructive">{assignError}</div>}
+          {peers.length === 0 && <p className="text-muted-foreground text-sm">No peers connected to server</p>}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>Session Peers</CardTitle>
+            <Badge variant="secondary">{peers.length} connected</Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {peers.filter(p => !p.session_id || p.session_id === id).map((p) => (
+            <div key={p.id} className="flex items-center justify-between border border-border rounded-md p-2">
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs">{p.id.slice(0, 12)}...</span>
+                {p.role && <Badge variant="secondary">{p.role}</Badge>}
+                {p.session_id === id && <Badge variant="success">in session</Badge>}
+              </div>
+              {p.session_id !== id && (
+                <div className="flex items-center gap-2">
+                  <Select value={assignRole} onChange={(e) => setAssignRole(e.target.value)} className="w-28 h-8 text-xs">
+                    <option value="studio">studio</option>
+                    <option value="translator">translator</option>
+                  </Select>
+                  <Button size="sm" variant="outline" onClick={async () => {
+                    setAssignError('')
+                    try {
+                      await assignSession(id!, { peer_id: p.id, role: assignRole })
+                      const updated = await getConnections()
+                      setPeers(updated)
+                    } catch (err) {
+                      setAssignError(err instanceof Error ? err.message : 'Assign failed')
+                    }
+                  }}>Assign</Button>
+                </div>
+              )}
+            </div>
+          ))}
+          {assignError && <div className="text-sm text-destructive">{assignError}</div>}
+          {peers.length === 0 && <p className="text-muted-foreground text-sm">No peers connected to server</p>}
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>

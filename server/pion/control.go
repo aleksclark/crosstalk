@@ -27,7 +27,9 @@ type ControlHandler struct {
 // Install replaces the PeerConn's data channel OnMessage handler with the
 // protobuf control-message dispatcher.
 func (h *ControlHandler) Install() {
+	slog.Debug("control: installing handler", "peer", h.Peer.ID)
 	h.Peer.control.OnMessage(func(msg webrtc.DataChannelMessage) {
+		slog.Info("control: message received", "peer", h.Peer.ID, "bytes", len(msg.Data), "is_string", msg.IsString)
 		h.dispatch(msg.Data)
 	})
 }

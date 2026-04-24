@@ -40,6 +40,8 @@ type Handler struct {
 	// handler notifies connected WebRTC clients before updating the DB.
 	Orchestrator crosstalk.SessionOrchestrator
 
+	PeerLister crosstalk.PeerLister
+
 	// TestMode enables test-only endpoints (e.g. POST /api/test/reset).
 	TestMode bool
 
@@ -111,6 +113,9 @@ func (h *Handler) Router() *chi.Mux {
 			// Clients (stub)
 			r.Get("/clients", h.handleListClients)
 			r.Get("/clients/{id}", h.handleGetClient)
+
+			r.Get("/connections", h.handleListConnections)
+			r.Post("/sessions/{id}/assign", h.handleAssignSession)
 
 			// OpenAPI
 			r.Get("/openapi.json", h.handleOpenAPI)
@@ -702,6 +707,39 @@ func (h *Handler) handleListClients(w http.ResponseWriter, _ *http.Request) {
 
 func (h *Handler) handleGetClient(w http.ResponseWriter, _ *http.Request) {
 	writeError(w, http.StatusNotFound, "client not found")
+}
+
+func (h *Handler) handleListConnections(w http.ResponseWriter, _ *http.Request) {
+	if h.PeerLister == nil {
+		writeJSON(w, http.StatusOK, []any{})
+		return
+	}
+	writeJSON(w, http.StatusOK, h.PeerLister.ListPeerInfo())
+}
+
+func (h *Handler) handleAssignSession(w http.ResponseWriter, r *http.Request) {
+	sessionID := chi.URLParam(r, "id")
+	var body struct {
+		PeerID string `json:"peer_id"`
+		Role   string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if body.PeerID == "" || body.Role == "" {
+		writeError(w, http.StatusBadRequest, "peer_id and role are required")
+		return
+	}
+	if h.Orchestrator == nil {
+		writeError(w, http.StatusInternalServerError, "orchestrator not configured")
+		return
+	}
+	if err := h.Orchestrator.AssignSession(body.PeerID, sessionID, body.Role); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "assigned"})
 }
 
 // --- OpenAPI handler ---
