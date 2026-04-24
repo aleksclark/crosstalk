@@ -148,6 +148,10 @@ export async function endSession(id: string): Promise<void> {
   return request(`/api/sessions/${id}`, { method: 'DELETE' })
 }
 
+export async function assignSession(id: string, data: { peer_id: string; role: string }): Promise<void> {
+  return request(`/api/sessions/${id}/assign`, { method: 'POST', body: JSON.stringify(data) })
+}
+
 // Clients
 export async function getClients(): Promise<Client[]> {
   return request('/api/clients')

@@ -49,11 +49,12 @@ const mockTemplates: SessionTemplate[] = [
 ]
 
 vi.mock('@/lib/api/client', () => ({
-  getClients: () => Promise.resolve(mockClients),
+  getClients: vi.fn((): Promise<Client[]> => Promise.resolve(mockClients)),
   getSessions: () => Promise.resolve(mockSessions),
   getTemplates: () => Promise.resolve(mockTemplates),
   getServerStatus: () => Promise.resolve({ uptime: 3661, active_sessions: 1, connected_clients: 1, version: 'v0.1.0' }),
   createSession: vi.fn().mockResolvedValue({ id: 'new-session', name: 'Quick Test' }),
+  assignSession: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('@/lib/use-auth', () => ({
@@ -105,8 +106,8 @@ describe('DashboardPage', () => {
     })
   })
 
-  it('quick test button creates session and navigates', async () => {
-    const { createSession } = await import('@/lib/api/client')
+  it('quick test button creates session, assigns peer, and navigates', async () => {
+    const { createSession, assignSession } = await import('@/lib/api/client')
 
     render(
       <MemoryRouter>
@@ -124,7 +125,29 @@ describe('DashboardPage', () => {
       expect(createSession).toHaveBeenCalledWith(
         expect.objectContaining({ template_id: 'tmpl-1' }),
       )
+      expect(assignSession).toHaveBeenCalledWith('new-session', { peer_id: 'client-1', role: 'studio' })
       expect(mockNavigate).toHaveBeenCalledWith('/sessions/new-session/connect?role=translator')
+    })
+  })
+
+  it('quick test button shows error on failure', async () => {
+    const { createSession } = await import('@/lib/api/client')
+    vi.mocked(createSession).mockRejectedValueOnce(new Error('Server error'))
+
+    render(
+      <MemoryRouter>
+        <DashboardPage />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('quick-test-button')).not.toBeDisabled()
+    })
+
+    fireEvent.click(screen.getByTestId('quick-test-button'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('quick-test-error')).toHaveTextContent('Server error')
     })
   })
 })

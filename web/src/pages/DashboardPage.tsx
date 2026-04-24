@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getClients, getSessions, getTemplates, getServerStatus, createSession } from '@/lib/api/client'
+import { getClients, getSessions, getTemplates, getServerStatus, createSession, assignSession } from '@/lib/api/client'
 import type { Client, Session, SessionTemplate, ServerStatus } from '@/lib/api/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
@@ -23,6 +23,7 @@ export function DashboardPage() {
   const [serverStatus, setServerStatus] = useState<ServerStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [quickTestLoading, setQuickTestLoading] = useState(false)
+  const [quickTestError, setQuickTestError] = useState('')
   const navigate = useNavigate()
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -67,15 +68,21 @@ export function DashboardPage() {
   const handleQuickTest = async () => {
     if (!defaultTemplate) return
     setQuickTestLoading(true)
+    setQuickTestError('')
     try {
       const now = new Date().toISOString().replace('T', ' ').slice(0, 16)
       const session = await createSession({
         template_id: defaultTemplate.id,
         name: `Quick Test ${now}`,
       })
+      const peers = await getClients()
+      const firstPeer = peers.find((p) => p.status === 'connected')
+      if (firstPeer) {
+        await assignSession(session.id, { peer_id: firstPeer.id, role: 'studio' })
+      }
       navigate(`/sessions/${session.id}/connect?role=translator`)
-    } catch {
-      // error handling
+    } catch (err) {
+      setQuickTestError(err instanceof Error ? err.message : 'Quick test failed')
     } finally {
       setQuickTestLoading(false)
     }
@@ -95,9 +102,13 @@ export function DashboardPage() {
           title={!defaultTemplate ? 'Set a default template first' : 'Create a quick test session'}
           data-testid="quick-test-button"
         >
-          {quickTestLoading ? 'Creating...' : 'Quick Test'}
+          {quickTestLoading ? 'Setting up...' : 'Quick Test'}
         </Button>
       </div>
+
+      {quickTestError && (
+        <div className="text-sm text-destructive" data-testid="quick-test-error">{quickTestError}</div>
+      )}
 
       <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
         <Card>
