@@ -24,6 +24,17 @@ vi.mock('@/lib/api/client', () => ({
       { from_role: 'translator', from_channel: 'mic', to_role: 'studio', to_channel: 'output', active: true },
     ],
   }),
+  getTemplate: vi.fn().mockResolvedValue({
+    id: 'tmpl-1',
+    name: 'Translation',
+    is_default: false,
+    roles: [{ name: 'studio', multi_client: false }, { name: 'translator', multi_client: false }],
+    mappings: [],
+    created_at: '2026-04-21T00:00:00Z',
+    updated_at: '2026-04-21T00:00:00Z',
+  }),
+  getConnections: vi.fn().mockResolvedValue([]),
+  assignSession: vi.fn().mockResolvedValue(undefined),
   endSession: vi.fn().mockResolvedValue(undefined),
 }))
 

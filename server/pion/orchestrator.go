@@ -27,6 +27,7 @@ import (
 type Orchestrator struct {
 	SessionService         crosstalk.SessionService
 	SessionTemplateService crosstalk.SessionTemplateService
+	PeerManager            *PeerManager
 	RecordingPath          string // base directory for recording files; empty disables recording
 
 	mu       sync.Mutex
@@ -68,6 +69,19 @@ func NewOrchestrator(ss crosstalk.SessionService, sts crosstalk.SessionTemplateS
 		SessionTemplateService: sts,
 		sessions:               make(map[string]*LiveSession),
 	}
+}
+
+// AssignSession assigns an existing peer to a session with the given role.
+// It is called from the HTTP handler (POST /api/sessions/:id/assign).
+func (o *Orchestrator) AssignSession(peerID, sessionID, role string) error {
+	if o.PeerManager == nil {
+		return fmt.Errorf("peer manager not configured")
+	}
+	peer := o.PeerManager.FindPeer(peerID)
+	if peer == nil {
+		return fmt.Errorf("peer not found: %s", peerID)
+	}
+	return o.JoinSession(peer, sessionID, role)
 }
 
 // JoinSession validates the session and role, enforces cardinality, registers
