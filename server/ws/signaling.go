@@ -18,7 +18,11 @@ import (
 )
 
 // readTimeout is the maximum duration to wait for a single WebSocket message.
-const readTimeout = 60 * time.Second
+// This must be long enough to keep the connection alive during idle periods
+// (after SDP/ICE exchange completes, no signaling messages flow unless
+// renegotiation is needed). The WebSocket stays open for the lifetime of the
+// WebRTC session to support server-initiated renegotiation offers.
+const readTimeout = 24 * time.Hour
 
 // SignalMessage is the JSON envelope for all WebSocket signaling messages.
 type SignalMessage struct {
