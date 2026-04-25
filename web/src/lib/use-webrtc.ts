@@ -107,9 +107,11 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
   const handleTrack = useCallback((event: RTCTrackEvent) => {
     addLog('info', 'webrtc', `Received remote track: ${event.track.kind} (${event.track.id})`)
 
+    if (event.track.kind !== 'audio') return
+    if (gainNodesRef.current.has(event.track.id)) return // already processing this track
+
     const ctx = getOrCreateAudioContext()
-    const stream = event.streams[0]
-    if (!stream || event.track.kind !== 'audio') return
+    const stream = event.streams[0] || new MediaStream([event.track])
 
     const source = ctx.createMediaStreamSource(stream)
     const gain = ctx.createGain()
@@ -124,11 +126,12 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
     gainNodesRef.current.set(trackId, gain)
     analyserNodesRef.current.set(trackId, analyser)
 
+    // Use a dedicated MediaStream so the track survives renegotiation
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ;(window as any).__remoteStream = stream
+    ;(window as any).__remoteStream = new MediaStream([event.track])
 
     const audioEl = document.createElement('audio')
-    audioEl.srcObject = stream
+    audioEl.srcObject = new MediaStream([event.track])
     audioEl.autoplay = true
     audioEl.style.display = 'none'
     document.body.appendChild(audioEl)
@@ -136,7 +139,7 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
 
   const handleDataChannel = useCallback((event: RTCDataChannelEvent) => {
     const dc = event.channel
-    addLog('info', 'webrtc', `Data channel opened: ${dc.label}`)
+    addLog('info', 'webrtc', `Data channel received: ${dc.label}`)
     dcRef.current = dc
 
     dc.onmessage = (msgEvent) => {
@@ -181,6 +184,24 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
 
     dc.onclose = () => {
       addLog('info', 'webrtc', 'Data channel closed')
+    }
+
+    const sendHello = () => {
+      addLog('info', 'webrtc', `Data channel opened: ${dc.label}`)
+      dc.send(JSON.stringify({
+        hello: {
+          sources: [{ name: 'mic', type: 'audio' }],
+          sinks: [{ name: 'speakers', type: 'audio' }],
+          codecs: [{ name: 'opus/48000/2', mediaType: 'audio' }],
+        },
+      }))
+      addLog('debug', 'webrtc', 'Sent Hello to server')
+    }
+
+    if (dc.readyState === 'open') {
+      sendHello()
+    } else {
+      dc.onopen = sendHello
     }
   }, [addLog, sendControl, sessionId, role, handleBindChannel, handleUnbindChannel])
 
@@ -278,12 +299,14 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
     }
 
     pc.ontrack = handleTrack
-    pc.ondatachannel = handleDataChannel
 
     ws.onopen = async () => {
       addLog('info', 'system', 'WebSocket connected, creating offer...')
 
       try {
+        const dc = pc.createDataChannel('control', { ordered: true })
+        handleDataChannel({ channel: dc } as RTCDataChannelEvent)
+
         pc.addTransceiver('audio', { direction: 'recvonly' })
 
         const offer = await pc.createOffer()

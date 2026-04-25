@@ -40,10 +40,19 @@ func ForwardTrack(sourcePeer, sinkPeer *PeerConn, trackLabel string) (stop func(
 
 	// Add the local track to the sink's PeerConnection. This creates a sender
 	// that will transmit the forwarded packets to the sink client.
+	slog.Info("forward: adding local track to sink peer",
+		"track", trackLabel,
+		"source_peer", sourcePeer.ID,
+		"sink_peer", sinkPeer.ID)
+
 	sender, err := sinkPeer.pc.AddTrack(localTrack)
 	if err != nil {
 		return nil, fmt.Errorf("forward: add track to sink: %w", err)
 	}
+
+	slog.Info("forward: track added to sink peer, triggering renegotiation",
+		"track", trackLabel,
+		"sink_peer", sinkPeer.ID)
 
 	// Trigger renegotiation so the sink client learns about the new track.
 	sinkPeer.Negotiate()

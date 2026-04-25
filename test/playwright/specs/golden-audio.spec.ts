@@ -301,6 +301,7 @@ test.describe("Golden Audio — Full Admin UI Flow", () => {
     await expect(page).toHaveURL(/\/connect\?role=translator/, {
       timeout: 15_000,
     });
+
     await expect(
       page.locator('[data-testid="webrtc-debug"]'),
     ).toBeVisible({ timeout: 15_000 });

@@ -39,8 +39,8 @@ sleep 1
 
 # 2. Deploy binary
 echo "[2/5] Deploying binary..."
-$SCP "$BINARY" "root@${BOARD_IP}:/usr/local/bin/app"
-$SSH "chmod +x /usr/local/bin/app"
+$SCP "$BINARY" "root@${BOARD_IP}:/usr/local/bin/ct-client"
+$SSH "chmod +x /usr/local/bin/ct-client"
 
 # 3. Write client config
 echo "[3/5] Writing config..."

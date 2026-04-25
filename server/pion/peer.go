@@ -186,6 +186,24 @@ type PeerConn struct {
 	pc      *webrtc.PeerConnection
 	control *webrtc.DataChannel
 
+	// clientControl is the control data channel created by the remote client.
+	// WebRTC data channels are matched by label, but when both sides create a
+	// channel named "control" they get two independent channels. The server
+	// installs its handler on the server-created one (control) but the client
+	// sends messages on its own — which arrives here via OnDataChannel.
+	clientControl *webrtc.DataChannel
+
+	// jsonMode indicates the peer speaks JSON on the control channel instead
+	// of protobuf. Detected automatically on the first message: if protobuf
+	// unmarshal fails but JSON parse succeeds, the peer is switched to JSON
+	// mode and all subsequent outbound messages are sent as JSON.
+	jsonMode bool
+
+	// onControlMessage is an optional callback invoked for every message
+	// received on any control data channel (server-created or client-created).
+	// Set by ControlHandler.Install().
+	onControlMessage func(data []byte)
+
 	// Client capabilities reported via Hello.
 	mu      sync.Mutex
 	Sources []*crosstalkv1.SourceInfo
@@ -247,13 +265,21 @@ func (c *PeerConn) OnNegotiationNeeded(f func(webrtc.SessionDescription)) {
 	c.mu.Unlock()
 }
 
-// Negotiate creates a server-side SDP offer (triggered after AddTrack or
-// RemoveTrack) and delivers it to the signaling layer via the registered
-// OnNegotiationNeeded callback. The client is expected to reply with an answer
-// via HandleAnswer. Errors are logged, not returned, because renegotiation
-// is best-effort — the binding can still function once the client sends its
-// own renegotiation offer.
+// Negotiate triggers renegotiation after adding or removing tracks.
+//
+// The server creates a new SDP offer and delivers it via the
+// OnNegotiationNeeded callback. For WebSocket/JSON peers, the signaling layer
+// forwards the offer over the WebSocket and the browser answers. For protobuf
+// peers, the offer is delivered via the protocol-specific transport. The client
+// answers via HandleAnswer.
+//
+// Errors are logged, not returned, because renegotiation is best-effort.
 func (c *PeerConn) Negotiate() {
+	sigState := c.pc.SignalingState()
+	slog.Info("pion: negotiate called",
+		"peer", c.ID,
+		"signaling_state", sigState.String())
+
 	c.mu.Lock()
 	cb := c.onNegotiationNeeded
 	c.mu.Unlock()
@@ -263,13 +289,23 @@ func (c *PeerConn) Negotiate() {
 		return
 	}
 
+	slog.Info("pion: creating renegotiation offer",
+		"peer", c.ID, "signaling_state", sigState.String())
+
 	offer, err := c.pc.CreateOffer(nil)
 	if err != nil {
-		slog.Error("pion: create renegotiation offer", "peer", c.ID, "err", err)
+		slog.Error("pion: create renegotiation offer failed",
+			"peer", c.ID,
+			"signaling_state", sigState.String(),
+			"err", err)
 		return
 	}
+
+	slog.Info("pion: renegotiation offer created", "peer", c.ID)
+
 	if err := c.pc.SetLocalDescription(offer); err != nil {
-		slog.Error("pion: set local description for renegotiation", "peer", c.ID, "err", err)
+		slog.Error("pion: set local description for renegotiation",
+			"peer", c.ID, "err", err)
 		return
 	}
 
@@ -286,14 +322,60 @@ func (c *PeerConn) HandleAnswer(answer webrtc.SessionDescription) error {
 	return nil
 }
 
-// SendControlMessage marshals a protobuf ControlMessage and sends it on the
-// control data channel.
+// SendControlMessage marshals a ControlMessage and sends it on the control
+// data channel. When the peer has been detected as a JSON-speaking client
+// (browser), the message is serialised as JSON instead of protobuf.
 func (c *PeerConn) SendControlMessage(msg *crosstalkv1.ControlMessage) error {
-	data, err := proto.Marshal(msg)
+	c.mu.Lock()
+	useJSON := c.jsonMode
+	c.mu.Unlock()
+
+	var data []byte
+	var err error
+
+	if useJSON {
+		data, err = controlMessageToJSON(msg)
+		if err != nil {
+			return fmt.Errorf("pion: marshal control message as JSON: %w", err)
+		}
+		return c.sendControlRaw(data)
+	}
+
+	data, err = proto.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("pion: marshal control message: %w", err)
 	}
-	return c.control.Send(data)
+	return c.sendControlRaw(data)
+}
+
+// sendControlRaw sends raw bytes on whichever control data channel is
+// available, preferring the client-created one (since the client listens on
+// the DC it created). When the peer is in JSON mode, data is sent as a text
+// frame so browser clients receive it as a string (not ArrayBuffer).
+func (c *PeerConn) sendControlRaw(data []byte) error {
+	c.mu.Lock()
+	dc := c.clientControl
+	if dc == nil {
+		dc = c.control
+	}
+	useJSON := c.jsonMode
+	c.mu.Unlock()
+
+	dcLabel := "unknown"
+	if dc == c.clientControl {
+		dcLabel = "client"
+	} else if dc == c.control {
+		dcLabel = "server"
+	}
+
+	if dc == nil {
+		return fmt.Errorf("pion: no control data channel available")
+	}
+	if useJSON {
+		slog.Debug("pion: sendControlRaw (text)", "peer", c.ID, "dc", dcLabel, "bytes", len(data))
+		return dc.SendText(string(data))
+	}
+	return dc.Send(data)
 }
 
 // Close closes the underlying Pion PeerConnection and any associated data

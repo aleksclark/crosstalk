@@ -9,7 +9,7 @@ Wants=network-online.target
 Type=simple
 User=streamlate
 Group=audio
-ExecStart=/usr/local/bin/app
+ExecStart=/usr/local/bin/ct-client
 Environment=CROSSTALK_CONFIG=/etc/app/crosstalk.json
 Environment=XDG_RUNTIME_DIR=/run/user/999
 Environment=PIPEWIRE_RUNTIME_DIR=/run/user/999
