@@ -367,7 +367,7 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
     gainNodesRef.current.clear()
     analyserNodesRef.current.clear()
 
-    setIceState('closed')
+    setIceState('new')
     setStats(EMPTY_STATS)
     setChannels([])
     setMicLevel(0)
@@ -421,7 +421,8 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
     return () => {
       disconnect()
     }
-  }, [disconnect])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return {
     iceState,
