@@ -26,7 +26,7 @@ SERVICE_FILE="${SCRIPT_DIR}/deploy/app.service"
 SSH="ssh -o ConnectTimeout=5 root@${BOARD_IP}"
 SCP="scp -o ConnectTimeout=5"
 
-K2B_SOURCE="${K2B_SOURCE:-alsa_input.platform-snd_aloop.0.analog-stereo}"
+K2B_SOURCE="${K2B_SOURCE:-alsa_output.platform-snd_aloop.0.analog-stereo.monitor}"
 K2B_SINK="${K2B_SINK:-alsa_output.platform-snd_aloop.0.analog-stereo}"
 LOG_LEVEL="${K2B_LOG_LEVEL:-debug}"
 

@@ -46,7 +46,7 @@ PW_CONFIG="$PROJECT_ROOT/test/playwright/playwright.config.ts"
 PW_SPEC="$PROJECT_ROOT/test/playwright/specs/golden-audio.spec.ts"
 
 # K2B PipeWire / ALSA names
-K2B_SOURCE="alsa_input.platform-snd_aloop.0.analog-stereo"
+K2B_SOURCE="alsa_output.platform-snd_aloop.0.analog-stereo.monitor"
 K2B_SINK="alsa_output.platform-snd_aloop.0.analog-stereo"
 
 # Binaries
