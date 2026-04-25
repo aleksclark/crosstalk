@@ -30,6 +30,7 @@ type Client struct {
 	backoffFactor  float64
 
 	// State
+	ctx       context.Context
 	connected bool
 	stopped   bool
 
@@ -129,6 +130,10 @@ func NewClient(cfg *crosstalk.Config, pwSvc crosstalk.PipeWireService, opts ...C
 // It handles connection, reconnection with exponential backoff, and
 // sending capabilities.
 func (c *Client) Run(ctx context.Context) error {
+	c.mu.Lock()
+	c.ctx = ctx
+	c.mu.Unlock()
+
 	attempt := 0
 
 	for {
@@ -429,11 +434,7 @@ func (c *Client) handleBindChannel(conn ConnectionInterface, bind *BindChannelMs
 
 	switch bind.Direction {
 	case DirectionSource:
-		// TODO: Wire PipeWire source → Opus encoder → RTP → track.
-		// For now, add the track to the PeerConnection so the server
-		// can set up the forwarding pipeline. Actual audio capture from
-		// PipeWire will be wired in a later phase.
-		_, err := conn.AddTrack(bind.ChannelID, bind.TrackID, bind.LocalName, bind.Direction)
+		bt, err := conn.AddTrack(bind.ChannelID, bind.TrackID, bind.LocalName, bind.Direction)
 		if err != nil {
 			slog.Error("failed to add source track",
 				"channel_id", bind.ChannelID,
@@ -442,6 +443,38 @@ func (c *Client) handleBindChannel(conn ConnectionInterface, bind *BindChannelMs
 			conn.SendChannelStatus(bind.ChannelID, crosstalkv1.ChannelState_CHANNEL_ERROR, err.Error(), 0)
 			return
 		}
+
+		// Start audio capture: ffmpeg reads from PipeWire/PulseAudio,
+		// encodes Opus, and sends RTP to a local UDP port. A goroutine
+		// forwards those packets to the WebRTC track.
+		c.mu.Lock()
+		ctx := c.ctx
+		c.mu.Unlock()
+
+		sourceName := c.config.SourceName
+		if sourceName == "" {
+			sourceName = bind.LocalName
+		}
+
+		stopCapture, captureErr := startCapture(ctx, sourceName, bt.Track)
+		if captureErr != nil {
+			slog.Warn("audio capture failed to start (track is silent)",
+				"channel_id", bind.ChannelID,
+				"source", sourceName,
+				"error", captureErr,
+			)
+		} else {
+			// Chain capture shutdown into the bound track's stop function
+			// so unbinding (or connection close) also kills ffmpeg.
+			prevStop := bt.stopFn
+			bt.stopFn = func() {
+				stopCapture()
+				if prevStop != nil {
+					prevStop()
+				}
+			}
+		}
+
 		conn.SendChannelStatus(bind.ChannelID, crosstalkv1.ChannelState_CHANNEL_ACTIVE, "", 0)
 
 	case DirectionSink:
