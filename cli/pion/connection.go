@@ -440,6 +440,35 @@ func (c *Connection) readSignalingLoop(ctx context.Context) error {
 			}
 			answerReceived = true
 
+		case "offer":
+			slog.Info("received renegotiation offer from server")
+			offer := webrtc.SessionDescription{
+				Type: webrtc.SDPTypeOffer,
+				SDP:  msg.SDP,
+			}
+			if err := pc.SetRemoteDescription(offer); err != nil {
+				slog.Error("failed to set renegotiation offer", "error", err)
+				continue
+			}
+			answer, err := pc.CreateAnswer(nil)
+			if err != nil {
+				slog.Error("failed to create renegotiation answer", "error", err)
+				continue
+			}
+			if err := pc.SetLocalDescription(answer); err != nil {
+				slog.Error("failed to set local description for renegotiation", "error", err)
+				continue
+			}
+			answerMsg := crosstalk.SignalingMessage{
+				Type: "answer",
+				SDP:  answer.SDP,
+			}
+			if err := c.sendSignaling(ctx, answerMsg); err != nil {
+				slog.Error("failed to send renegotiation answer", "error", err)
+				continue
+			}
+			slog.Info("sent renegotiation answer")
+
 		case "ice":
 			if len(msg.Candidate) == 0 || string(msg.Candidate) == "null" {
 				continue
