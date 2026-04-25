@@ -358,20 +358,36 @@ test.describe("Golden Audio — Full Admin UI Flow", () => {
       `su - ${K2B_USER} -c 'XDG_RUNTIME_DIR=/run/user/${K2B_UID} nohup ffmpeg -re -i /tmp/test-tone.wav -t 6 -f pulse default > /tmp/ffmpeg-play.log 2>&1 &'`,
     );
 
+    // Give ffmpeg on K2B 2 seconds to start up and begin playing the tone
+    // through PipeWire → ALSA loopback → ct-client capture → WebRTC.
+    await page.waitForTimeout(2_000);
+
     // ════════════════════════════════════════════════════════════════════════
-    //  STEP 11: Capture received audio in the Playwright browser
+    //  STEP 11: Capture and VERIFY received audio in the Playwright browser
     // ════════════════════════════════════════════════════════════════════════
     //
     // The browser is connected as "translator". Audio from the K2B studio
-    // role arrives as a WebRTC remote audio track. We capture it using the
-    // Web Audio API + MediaRecorder.
+    // role arrives as a WebRTC remote audio track. We capture it using
+    // MediaRecorder AND simultaneously measure audio energy using the
+    // Web Audio API AnalyserNode.
     //
     // This proves the COMPLETE audio pipeline works:
     //   Physical hardware → real network → real SFU → real browser
+    //
+    // Two independent checks:
+    //   A) MediaRecorder produces a WebM file >5KB (real Opus, not just a
+    //      container header with DTX silence frames).
+    //   B) AnalyserNode detects non-silent audio energy during the capture
+    //      window — at least one sample period must show RMS above a floor.
 
-    const audioBase64: string = await page.evaluate(
+    const captureResult = await page.evaluate(
       async (durationMs: number) => {
-        return new Promise<string>((resolve, reject) => {
+        return new Promise<{
+          audioBase64: string;
+          peakRms: number;
+          energySamples: number;
+          nonSilentSamples: number;
+        }>((resolve, reject) => {
           try {
             // Find any audio/video element with a remote MediaStream.
             let stream: MediaStream | null = null;
@@ -396,6 +412,7 @@ test.describe("Golden Audio — Full Admin UI Flow", () => {
               return;
             }
 
+            // ── MediaRecorder: captures the raw WebM/Opus bytes ──
             const audioStream = new MediaStream(audioTracks);
             const recorder = new MediaRecorder(audioStream, {
               mimeType: "audio/webm;codecs=opus",
@@ -404,7 +421,41 @@ test.describe("Golden Audio — Full Admin UI Flow", () => {
             recorder.ondataavailable = (e) => {
               if (e.data.size > 0) chunks.push(e.data);
             };
+
+            // ── AnalyserNode: measures audio energy in real time ──
+            // This catches the case where MediaRecorder produces a
+            // technically-valid WebM with only DTX silence frames.
+            const ctx = new AudioContext({ sampleRate: 48000 });
+            const source = ctx.createMediaStreamSource(audioStream);
+            const analyser = ctx.createAnalyser();
+            analyser.fftSize = 2048;
+            source.connect(analyser);
+            // Don't connect to destination — we only need analysis.
+
+            const timeDomainBuf = new Float32Array(analyser.fftSize);
+            let peakRms = 0;
+            let energySamples = 0;
+            let nonSilentSamples = 0;
+            // Silence threshold: -60 dBFS ≈ 0.001 RMS.  Any real audio
+            // (even a quiet 1kHz tone through WebRTC) will exceed this.
+            const silenceFloor = 0.001;
+
+            const energyInterval = setInterval(() => {
+              analyser.getFloatTimeDomainData(timeDomainBuf);
+              let sumSq = 0;
+              for (let i = 0; i < timeDomainBuf.length; i++) {
+                sumSq += timeDomainBuf[i] * timeDomainBuf[i];
+              }
+              const rms = Math.sqrt(sumSq / timeDomainBuf.length);
+              energySamples++;
+              if (rms > silenceFloor) nonSilentSamples++;
+              if (rms > peakRms) peakRms = rms;
+            }, 100); // sample every 100ms
+
             recorder.onstop = async () => {
+              clearInterval(energyInterval);
+              ctx.close();
+
               const blob = new Blob(chunks, { type: "audio/webm" });
               const buffer = await blob.arrayBuffer();
               const bytes = new Uint8Array(buffer);
@@ -412,8 +463,14 @@ test.describe("Golden Audio — Full Admin UI Flow", () => {
               for (let i = 0; i < bytes.length; i++) {
                 binary += String.fromCharCode(bytes[i]);
               }
-              resolve(btoa(binary));
+              resolve({
+                audioBase64: btoa(binary),
+                peakRms,
+                energySamples,
+                nonSilentSamples,
+              });
             };
+
             recorder.start();
             setTimeout(() => recorder.stop(), durationMs);
           } catch (err) {
@@ -426,19 +483,40 @@ test.describe("Golden Audio — Full Admin UI Flow", () => {
 
     // Write captured audio to disk for the orchestrator to compare
     // against the reference tone using cross-correlation.
-    const audioBuffer = Buffer.from(audioBase64, "base64");
+    const audioBuffer = Buffer.from(captureResult.audioBase64, "base64");
     const captureDir = path.dirname(CAPTURE_PATH);
     if (!fs.existsSync(captureDir)) {
       fs.mkdirSync(captureDir, { recursive: true });
     }
     fs.writeFileSync(CAPTURE_PATH, audioBuffer);
 
-    // Sanity check: the captured file should be non-trivial. A real audio
-    // recording of 7s of Opus in WebM should be well over 1KB.
+    // ── Assertion A: File size ─────────────────────────────────────────
+    // 7 seconds of Opus at 64kbps ≈ 56KB.  Even with aggressive VBR and
+    // silence compression, any recording that contains real audio must
+    // exceed 5KB.  A WebM header with only DTX silence frames is ~2KB.
     expect(
       audioBuffer.length,
-      "Captured audio must be non-trivial (>1KB)",
-    ).toBeGreaterThan(1000);
+      `Captured audio must be non-trivial (>5KB), got ${audioBuffer.length} bytes — ` +
+        "this likely means the K2B audio capture pipeline is sending silence",
+    ).toBeGreaterThan(5000);
+
+    // ── Assertion B: Audio energy ──────────────────────────────────────
+    // The AnalyserNode sampled RMS energy every 100ms during the capture.
+    // At least one sample must exceed the silence floor (-60 dBFS).
+    // A 1kHz tone at any audible level will blow past this threshold.
+    expect(
+      captureResult.peakRms,
+      `Peak RMS was ${captureResult.peakRms.toFixed(6)} — no audio energy detected. ` +
+        `Sampled ${captureResult.energySamples} times, ` +
+        `${captureResult.nonSilentSamples} above silence floor. ` +
+        "The K2B→Browser audio path is not delivering real audio.",
+    ).toBeGreaterThan(0.001);
+
+    expect(
+      captureResult.nonSilentSamples,
+      `Only ${captureResult.nonSilentSamples}/${captureResult.energySamples} ` +
+        "energy samples were non-silent — expected at least 10 (≈1 second of audio)",
+    ).toBeGreaterThanOrEqual(10);
 
     // Kill the ffmpeg playback on K2B (cleanup).
     sshNoFail("pkill -x ffmpeg");
