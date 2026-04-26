@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/oklog/ulid/v2"
-	"github.com/pion/webrtc/v4"
 
 	crosstalk "github.com/aleksclark/crosstalk/server"
 	crosstalkv1 "github.com/aleksclark/crosstalk/proto/gen/go/crosstalk/v1"
@@ -460,8 +459,12 @@ func (o *Orchestrator) startRecording(ls *LiveSession, lb *LiveBinding) {
 		stopOnce.Do(func() { close(done) })
 	}
 
-	lb.SourcePeer.pc.OnTrack(func(remoteTrack *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
-		go func() {
+	go func() {
+		select {
+		case <-done:
+			return
+		case ev := <-lb.SourcePeer.trackCh:
+			remoteTrack := ev.track
 			for {
 				select {
 				case <-done:
@@ -483,8 +486,8 @@ func (o *Orchestrator) startRecording(ls *LiveSession, lb *LiveBinding) {
 						"channel", lb.ChannelID, "err", writeErr)
 				}
 			}
-		}()
-	})
+		}
+	}()
 
 	slog.Info("orchestrator: started recording",
 		"channel", lb.ChannelID, "path", filePath)

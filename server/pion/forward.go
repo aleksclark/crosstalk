@@ -83,18 +83,22 @@ func ForwardTrack(sourcePeer, sinkPeer *PeerConn, trackLabel string) (stop func(
 		}
 	}()
 
-	// Register OnTrack on the source peer to capture the incoming audio track.
-	// When the source client adds a track matching our stream/track ID, we
-	// start forwarding RTP packets to the local track.
-	sourcePeer.pc.OnTrack(func(remoteTrack *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		slog.Debug("forward: received remote track",
-			"track", trackLabel,
-			"remote_id", remoteTrack.ID(),
-			"remote_stream", remoteTrack.StreamID(),
-			"codec", remoteTrack.Codec().MimeType)
+	// Wait for the source peer to send a remote track, then forward RTP
+	// packets to the local track on the sink side.
+	go func() {
+		select {
+		case <-done:
+			return
+		case ev := <-sourcePeer.trackCh:
+			remoteTrack := ev.track
+			slog.Info("forward: source track arrived, starting relay",
+				"track", trackLabel,
+				"remote_id", remoteTrack.ID(),
+				"remote_stream", remoteTrack.StreamID(),
+				"codec", remoteTrack.Codec().MimeType,
+				"source_peer", sourcePeer.ID,
+				"sink_peer", sinkPeer.ID)
 
-		// Forward RTP packets from the remote track to the local track.
-		go func() {
 			buf := make([]byte, 1500)
 			for {
 				select {
@@ -119,8 +123,8 @@ func ForwardTrack(sourcePeer, sinkPeer *PeerConn, trackLabel string) (stop func(
 						"track", trackLabel, "err", writeErr)
 				}
 			}
-		}()
-	})
+		}
+	}()
 
 	return stopFn, nil
 }

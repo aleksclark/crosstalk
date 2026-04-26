@@ -36,6 +36,8 @@ type Connection struct {
 	onBindChannel func(*BindChannelMsg)
 	// onUnbindChannel is called when an UnbindChannel message is received.
 	onUnbindChannel func(*UnbindChannelMsg)
+	// onTrack is called when a remote audio track is received.
+	onTrack func(*webrtc.TrackRemote, *webrtc.RTPReceiver)
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -87,6 +89,13 @@ func WithOnBindChannel(fn func(*BindChannelMsg)) ConnectionOption {
 func WithOnUnbindChannel(fn func(*UnbindChannelMsg)) ConnectionOption {
 	return func(c *Connection) {
 		c.onUnbindChannel = fn
+	}
+}
+
+// WithOnTrack sets the callback for incoming remote tracks.
+func WithOnTrack(fn func(*webrtc.TrackRemote, *webrtc.RTPReceiver)) ConnectionOption {
+	return func(c *Connection) {
+		c.onTrack = fn
 	}
 }
 
@@ -152,6 +161,18 @@ func (c *Connection) Connect(ctx context.Context) error {
 		slog.Info("ICE connection state changed", "state", state.String())
 		if c.onConnectionStateChange != nil {
 			c.onConnectionStateChange(state)
+		}
+	})
+
+	// Handle incoming remote tracks (audio from server)
+	pc.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
+		slog.Info("remote track received",
+			"track_id", track.ID(),
+			"kind", track.Kind(),
+			"codec", track.Codec().MimeType,
+		)
+		if c.onTrack != nil {
+			c.onTrack(track, receiver)
 		}
 	})
 

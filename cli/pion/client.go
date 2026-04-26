@@ -478,15 +478,48 @@ func (c *Client) handleBindChannel(conn ConnectionInterface, bind *BindChannelMs
 		conn.SendChannelStatus(bind.ChannelID, crosstalkv1.ChannelState_CHANNEL_ACTIVE, "", 0)
 
 	case DirectionSink:
-		// TODO: Wire incoming RTP → Opus decoder → PipeWire sink.
-		// The server adds the track to this peer's connection; the
-		// OnTrack handler (to be wired in a later phase) will receive
-		// the remote track and route audio to the named PipeWire sink.
-		slog.Info("sink binding acknowledged, awaiting incoming track",
+		c.mu.Lock()
+		ctx := c.ctx
+		c.mu.Unlock()
+
+		sinkName := c.config.SinkName
+		if sinkName == "" {
+			sinkName = bind.LocalName
+		}
+
+		slog.Info("sink binding: registering for incoming track",
 			"channel_id", bind.ChannelID,
-			"local_name", bind.LocalName,
+			"sink", sinkName,
 		)
-		conn.SendChannelStatus(bind.ChannelID, crosstalkv1.ChannelState_CHANNEL_BINDING, "", 0)
+
+		conn.SendChannelStatus(bind.ChannelID, crosstalkv1.ChannelState_CHANNEL_ACTIVE, "", 0)
+
+		if realConn, ok := conn.(*Connection); ok {
+			channelID := bind.ChannelID
+			prevOnTrack := realConn.onTrack
+			realConn.onTrack = func(track *webrtc.TrackRemote, recv *webrtc.RTPReceiver) {
+				slog.Info("sink: remote track arrived, starting playback",
+					"channel_id", channelID,
+					"track_id", track.ID(),
+					"codec", track.Codec().MimeType,
+					"sink", sinkName,
+				)
+
+				go func() {
+					if err := PlaybackSink(ctx, sinkName, track); err != nil {
+						if ctx.Err() == nil {
+							slog.Error("sink playback failed",
+								"channel_id", channelID,
+								"error", err,
+							)
+							conn.SendChannelStatus(channelID, crosstalkv1.ChannelState_CHANNEL_ERROR, err.Error(), 0)
+						}
+					}
+				}()
+
+				realConn.onTrack = prevOnTrack
+			}
+		}
 
 	default:
 		slog.Warn("unknown bind direction", "direction", bind.Direction)

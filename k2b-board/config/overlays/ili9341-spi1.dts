@@ -1,0 +1,62 @@
+/dts-v1/;
+/plugin/;
+
+/ {
+	compatible = "allwinner,sun50i-h616", "allwinner,sun50i-h618";
+
+	fragment@0 {
+		target = <&spi1>;
+		__overlay__ {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "okay";
+
+			/delete-node/ spidev@1;
+
+			ili9341: ili9341@1 {
+				compatible = "adafruit,yx240qv29", "ilitek,ili9341";
+				reg = <1>;
+				spi-max-frequency = <32000000>;
+				rotate = <90>;
+				bgr;
+				fps = <30>;
+				buswidth = <8>;
+				/* PH4 = DC, PH2 = RESET (port H = 7) */
+				dc-gpios = <&pio 7 4 0>;
+				reset-gpios = <&pio 7 2 0>;
+				backlight = <&backlight>;
+			};
+		};
+	};
+
+	fragment@1 {
+		target-path = "/";
+		__overlay__ {
+			backlight: backlight {
+				compatible = "pwm-backlight";
+				pwms = <&pwm 1 1000000 0>;
+				brightness-levels = <0 16 32 64 128 192 255>;
+				default-brightness-level = <6>;
+			};
+		};
+	};
+
+	fragment@2 {
+		target = <&pwm>;
+		__overlay__ {
+			pinctrl-names = "default";
+			pinctrl-0 = <&pwm1_ph_pin>;
+			status = "okay";
+		};
+	};
+
+	fragment@3 {
+		target = <&pio>;
+		__overlay__ {
+			pwm1_ph_pin: pwm1-ph-pin {
+				pins = "PH3";
+				function = "pwm1";
+			};
+		};
+	};
+};

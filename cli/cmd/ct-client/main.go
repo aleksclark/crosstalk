@@ -7,18 +7,25 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	crosstalkv1 "github.com/aleksclark/crosstalk/proto/gen/go/crosstalk/v1"
 
+	"github.com/aleksclark/crosstalk/cli/display"
 	"github.com/aleksclark/crosstalk/cli/pion"
 	"github.com/aleksclark/crosstalk/cli/pipewire"
+)
+
+const (
+	defaultSPIDevice = "/dev/spidev0.1"
+	defaultDCGPIO    = 71  // PC7
+	defaultRSTGPIO   = 76  // PC12
 )
 
 func main() {
 	flag.Parse()
 
-	// Initial logger (will be reconfigured after config load)
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	}))
@@ -33,13 +40,11 @@ func main() {
 }
 
 func run() error {
-	// 1. Load config
 	cfg, err := loadConfig()
 	if err != nil {
 		return err
 	}
 
-	// 2. Reconfigure logger with config log level
 	level := parseSlogLevel(cfg.LogLevel)
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: level,
@@ -53,14 +58,9 @@ func run() error {
 		"sink_name", cfg.SinkName,
 	)
 
-	// 3. Create PipeWire service
-	pwSvc := pipewire.NewService(cfg.SourceName, cfg.SinkName)
-
-	// 4. Create and run client
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Handle shutdown signals
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
@@ -69,12 +69,40 @@ func run() error {
 		cancel()
 	}()
 
-	client := pion.NewClient(cfg, pwSvc,
+	var disp *display.Service
+	if useDisplay() {
+		spiPath := os.Getenv("DISPLAY_SPI_DEVICE")
+		if spiPath == "" {
+			spiPath = defaultSPIDevice
+		}
+		disp = display.NewService(spiPath, defaultDCGPIO, defaultRSTGPIO)
+		disp.SetAudioDevices(cfg.SourceName, cfg.SinkName)
+		disp.Status().SetServer(cfg.ServerURL, "connecting")
+
+		go func() {
+			if err := disp.Run(ctx); err != nil {
+				slog.Error("display service failed", "error", err)
+			}
+		}()
+	}
+
+	pwSvc := pipewire.NewService(cfg.SourceName, cfg.SinkName)
+
+	clientOpts := []pion.ClientOption{
 		pion.WithClientOnConnected(func() {
 			slog.Info("connected to server")
+			if disp != nil {
+				disp.Status().SetControlState("connected")
+			}
 		}),
 		pion.WithClientOnDisconnected(func() {
 			slog.Warn("disconnected from server")
+			if disp != nil {
+				disp.Status().SetControlState("disconnected")
+				disp.Status().SetChannels(nil)
+				disp.Status().SetSession("", "", false)
+				disp.Status().SetVU(0, 0)
+			}
 		}),
 		pion.WithClientOnWelcome(func(w *crosstalkv1.Welcome) {
 			slog.Info("welcome received",
@@ -82,7 +110,23 @@ func run() error {
 				"server_version", w.GetServerVersion(),
 			)
 		}),
-	)
+		pion.WithOnBindChannelClient(func(bind *pion.BindChannelMsg) {
+			if disp != nil {
+				disp.Status().UpsertChannel(display.ChannelInfo{
+					ID:        bind.ChannelID,
+					Direction: string(bind.Direction),
+					Codec:     "opus",
+					State:     "active",
+				})
+			}
+		}),
+	}
 
+	client := pion.NewClient(cfg, pwSvc, clientOpts...)
 	return client.Run(ctx)
+}
+
+func useDisplay() bool {
+	v := os.Getenv("USE_DISPLAY")
+	return strings.EqualFold(v, "true") || v == "1"
 }

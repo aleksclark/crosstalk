@@ -80,7 +80,7 @@ func TestClient_HandleBindChannel_Sink(t *testing.T) {
 	mc.mu.Unlock()
 	require.Len(t, statuses, 1)
 	assert.Equal(t, "ch-2", statuses[0].ChannelID)
-	assert.Equal(t, crosstalkv1.ChannelState_CHANNEL_BINDING, statuses[0].State)
+	assert.Equal(t, crosstalkv1.ChannelState_CHANNEL_ACTIVE, statuses[0].State)
 }
 
 func TestClient_HandleBindChannel_AddTrackError(t *testing.T) {

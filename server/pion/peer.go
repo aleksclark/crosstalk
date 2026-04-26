@@ -83,9 +83,25 @@ func (pm *PeerManager) CreatePeerConnection() (*PeerConn, error) {
 	}
 
 	conn := &PeerConn{
-		ID: ulid.Make().String(),
-		pc: pc,
+		ID:      ulid.Make().String(),
+		pc:      pc,
+		trackCh: make(chan trackEvent, 8),
 	}
+
+	// Buffer incoming tracks so ForwardTrack never misses one.
+	pc.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
+		slog.Info("peer: remote track received",
+			"peer", conn.ID,
+			"track_id", track.ID(),
+			"stream_id", track.StreamID(),
+			"codec", track.Codec().MimeType)
+		select {
+		case conn.trackCh <- trackEvent{track: track, receiver: receiver}:
+		default:
+			slog.Warn("peer: track channel full, dropping track",
+				"peer", conn.ID, "track_id", track.ID())
+		}
+	})
 
 	// Monitor ICE connection state and log transitions. On disconnected,
 	// failed, or closed states, remove the peer from the registry to free
@@ -179,6 +195,12 @@ func (pm *PeerManager) ListPeerInfo() []crosstalk.PeerInfo {
 
 // PeerConn wraps a Pion [webrtc.PeerConnection] with a unique ID and a
 // server-owned control data channel.
+
+type trackEvent struct {
+	track    *webrtc.TrackRemote
+	receiver *webrtc.RTPReceiver
+}
+
 type PeerConn struct {
 	// ID is a ULID that uniquely identifies this peer connection.
 	ID string
@@ -218,6 +240,11 @@ type PeerConn struct {
 	// client must renegotiate. Set by the signaling layer before any bindings
 	// are activated.
 	onNegotiationNeeded func(offer webrtc.SessionDescription)
+
+	// trackCh receives remote tracks as they arrive via OnTrack. ForwardTrack
+	// reads from this channel so it never misses a track that arrived before
+	// the forwarding was set up.
+	trackCh chan trackEvent
 }
 
 // OnICEConnectionStateChange registers a callback invoked when the ICE
