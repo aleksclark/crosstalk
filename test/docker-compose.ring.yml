@@ -1,0 +1,37 @@
+networks:
+  ring-net:
+    driver: bridge
+
+volumes:
+  server-data:
+
+services:
+  server:
+    build:
+      context: ..
+      dockerfile: test/Dockerfile.server
+    environment:
+      - CROSSTALK_CONFIG=/app/test.json
+      - CROSSTALK_TEST_MODE=1
+    volumes:
+      - server-data:/data
+    networks:
+      ring-net:
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/ || exit 1"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+
+  ring-test:
+    build:
+      context: ..
+      dockerfile: test/Dockerfile.ring
+    depends_on:
+      server:
+        condition: service_healthy
+    environment:
+      - CT_SERVER_URL=http://server:8080
+    networks:
+      ring-net:

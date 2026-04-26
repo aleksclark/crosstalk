@@ -183,6 +183,15 @@ tasks:
     cmds:
       - dev/scripts/k2b-test.sh
 
+  test:ring:
+    desc: Run ring-topology SFU forwarding e2e test (Docker)
+    cmds:
+      - echo "=== Building ring test environment ==="
+      - docker compose -f test/docker-compose.ring.yml build
+      - echo "=== Starting ring test ==="
+      - docker compose -f test/docker-compose.ring.yml up --abort-on-container-exit --exit-code-from ring-test
+      - defer: docker compose -f test/docker-compose.ring.yml down -v
+
   # ── Utility ──────────────────────────────────────────────
   clean:
     desc: Remove build artifacts
