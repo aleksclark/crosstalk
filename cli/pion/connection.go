@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	crosstalk "github.com/aleksclark/crosstalk/cli"
 	"github.com/pion/webrtc/v4"
@@ -334,6 +335,11 @@ func (c *Connection) AddTrack(channelID, trackID, localName string, dir Directio
 		"direction", dir,
 	)
 
+	// Trigger client-side renegotiation so the server learns about the
+	// new send track. Without this, the track is added to the local
+	// PeerConnection but the remote SDP doesn't include it.
+	go c.renegotiate()
+
 	return bt, nil
 }
 
@@ -392,6 +398,53 @@ func (c *Connection) Close() error {
 		c.wsConn.Close(websocket.StatusNormalClosure, "closing")
 	}
 	return nil
+}
+
+// renegotiate creates a new SDP offer and sends it to the server so the
+// remote peer learns about tracks added after the initial negotiation.
+func (c *Connection) renegotiate() {
+	c.mu.Lock()
+	pc := c.peerConn
+	c.mu.Unlock()
+
+	if pc == nil {
+		return
+	}
+
+	// Wait for stable signaling state — a renegotiation from the server may
+	// be in progress.
+	for i := 0; i < 50; i++ {
+		if pc.SignalingState() == webrtc.SignalingStateStable {
+			break
+		}
+		slog.Debug("renegotiate: waiting for stable signaling state",
+			"state", pc.SignalingState().String())
+		select {
+		case <-c.ctx.Done():
+			return
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+
+	offer, err := pc.CreateOffer(nil)
+	if err != nil {
+		slog.Error("renegotiate: create offer failed", "error", err)
+		return
+	}
+	if err := pc.SetLocalDescription(offer); err != nil {
+		slog.Error("renegotiate: set local description failed", "error", err)
+		return
+	}
+
+	msg := crosstalk.SignalingMessage{
+		Type: "offer",
+		SDP:  offer.SDP,
+	}
+	if err := c.sendSignaling(c.ctx, msg); err != nil {
+		slog.Error("renegotiate: send offer failed", "error", err)
+		return
+	}
+	slog.Info("renegotiate: sent client renegotiation offer")
 }
 
 // ConnectionState returns the current ICE connection state.
