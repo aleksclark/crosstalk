@@ -187,6 +187,7 @@ func PlaybackSink(ctx context.Context, sinkName string, remoteTrack *webrtc.Trac
 
 	// pw-cat reads raw PCM from stdin and plays to the named sink.
 	pwArgs := []string{
+		"-p",
 		"--format=s16",
 		"--rate=48000",
 		"--channels=1",
