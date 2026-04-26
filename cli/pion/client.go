@@ -444,34 +444,40 @@ func (c *Client) handleBindChannel(conn ConnectionInterface, bind *BindChannelMs
 			return
 		}
 
-		// Start audio capture: ffmpeg reads from PipeWire/PulseAudio,
-		// encodes Opus, and sends RTP to a local UDP port. A goroutine
-		// forwards those packets to the WebRTC track.
+		// Start audio capture: pw-record reads from PipeWire source,
+		// ffmpeg encodes to Opus, and RTP packets are written to the
+		// WebRTC track.
 		c.mu.Lock()
 		ctx := c.ctx
 		c.mu.Unlock()
+
+		if ctx == nil {
+			ctx = context.Background()
+		}
 
 		sourceName := c.config.SourceName
 		if sourceName == "" {
 			sourceName = bind.LocalName
 		}
 
-		stopCapture, captureErr := startCapture(ctx, sourceName, bt.Track)
-		if captureErr != nil {
-			slog.Warn("audio capture failed to start (track is silent)",
-				"channel_id", bind.ChannelID,
-				"source", sourceName,
-				"error", captureErr,
-			)
-		} else {
-			// Chain capture shutdown into the bound track's stop function
-			// so unbinding (or connection close) also kills ffmpeg.
-			prevStop := bt.stopFn
-			bt.stopFn = func() {
-				stopCapture()
-				if prevStop != nil {
-					prevStop()
+		captureCtx, captureCancel := context.WithCancel(ctx)
+		go func() {
+			if err := CaptureSource(captureCtx, sourceName, bt.Track); err != nil {
+				if captureCtx.Err() == nil {
+					slog.Error("audio capture failed",
+						"channel_id", bind.ChannelID,
+						"source", sourceName,
+						"error", err,
+					)
 				}
+			}
+		}()
+
+		prevStop := bt.stopFn
+		bt.stopFn = func() {
+			captureCancel()
+			if prevStop != nil {
+				prevStop()
 			}
 		}
 
