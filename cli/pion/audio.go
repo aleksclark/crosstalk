@@ -12,8 +12,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/aleksclark/crosstalk/cli/display"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
+)
+
+var (
+	InputMeter  = display.NewLevelMeter(0.85)
+	OutputMeter = display.NewLevelMeter(0.85)
 )
 
 const (
@@ -107,7 +113,7 @@ func CaptureSource(ctx context.Context, sourceName string, track *webrtc.TrackLo
 		}
 	}()
 
-	// Goroutine: pipe pw-record PCM → ffmpeg stdin
+	// Goroutine: pipe pw-record PCM → ffmpeg stdin, tee through input meter
 	go func() {
 		defer ffStdin.Close()
 		buf := make([]byte, pcmFrameBytes)
@@ -116,6 +122,7 @@ func CaptureSource(ctx context.Context, sourceName string, track *webrtc.TrackLo
 			if err != nil {
 				return
 			}
+			InputMeter.Write(buf[:n])
 			if _, err := ffStdin.Write(buf[:n]); err != nil {
 				return
 			}
@@ -185,19 +192,24 @@ func PlaybackSink(ctx context.Context, sinkName string, remoteTrack *webrtc.Trac
 	// Write SDP for ffmpeg's RTP demuxer
 	sdp := fmt.Sprintf("v=0\no=- 0 0 IN IP4 127.0.0.1\ns=-\nc=IN IP4 127.0.0.1\nt=0 0\nm=audio %s RTP/AVP 111\na=rtpmap:111 opus/48000/2\n", port)
 
-	// pw-cat reads raw PCM from stdin and plays to the named sink.
-	pwArgs := []string{
-		"-p",
-		"--format=s16",
-		"--rate=48000",
-		"--channels=1",
+	// Play PCM to the output device. Use aplay for ALSA hw: devices or
+	// PipeWire audiocodec sinks (PipeWire's resampler distorts on H618).
+	// Fall back to pw-cat for other PipeWire sinks.
+	var pwCmd *exec.Cmd
+	if strings.HasPrefix(sinkName, "hw:") || strings.HasPrefix(sinkName, "plughw:") {
+		pwCmd = exec.CommandContext(ctx, "aplay",
+			"-D", sinkName, "-f", "S16_LE", "-r", "48000", "-c", "2", "-t", "raw", "-")
+	} else if strings.Contains(sinkName, "5096000.codec") {
+		pwCmd = exec.CommandContext(ctx, "aplay",
+			"-D", "plughw:1,0", "-f", "S16_LE", "-r", "48000", "-c", "2", "-t", "raw", "-")
+	} else {
+		pwArgs := []string{"-p", "--format=s16", "--rate=48000", "--channels=2"}
+		if sinkName != "" {
+			pwArgs = append(pwArgs, "--target="+sinkName)
+		}
+		pwArgs = append(pwArgs, "-")
+		pwCmd = exec.CommandContext(ctx, "pw-cat", pwArgs...)
 	}
-	if sinkName != "" {
-		pwArgs = append(pwArgs, "--target="+sinkName)
-	}
-	pwArgs = append(pwArgs, "-") // read from stdin
-
-	pwCmd := exec.CommandContext(ctx, "pw-cat", pwArgs...)
 	pcmPipe, err := pwCmd.StdinPipe()
 	if err != nil {
 		return fmt.Errorf("pw-cat stdin: %w", err)
@@ -213,7 +225,7 @@ func PlaybackSink(ctx context.Context, sinkName string, remoteTrack *webrtc.Trac
 		"-hide_banner", "-loglevel", "info",
 		"-protocol_whitelist", "pipe,file,udp,rtp",
 		"-f", "sdp", "-i", "pipe:0",
-		"-f", "s16le", "-ar", "48000", "-ac", "1",
+		"-f", "s16le", "-ar", "48000", "-ac", "2",
 		"pipe:1",
 	}
 
@@ -246,10 +258,11 @@ func PlaybackSink(ctx context.Context, sinkName string, remoteTrack *webrtc.Trac
 		}
 	}()
 
-	// Goroutine: pipe ffmpeg PCM stdout → pw-cat stdin
+	// Goroutine: pipe ffmpeg PCM stdout → aplay/pw-cat stdin, tee through output meter
 	go func() {
-		io.Copy(pcmPipe, ffStdout) //nolint:errcheck
-		pcmPipe.Close()            //nolint:errcheck
+		w := io.MultiWriter(pcmPipe, OutputMeter)
+		io.Copy(w, ffStdout) //nolint:errcheck
+		pcmPipe.Close()      //nolint:errcheck
 	}()
 
 	// Give ffmpeg time to parse SDP and bind the UDP port.

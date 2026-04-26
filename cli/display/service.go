@@ -15,19 +15,17 @@ const (
 // frames, and flushing them to the SPI display.
 type Service struct {
 	status     *Status
-	vu         *VUMonitor
 	spiPath    string
 	dcGPIO     int
 	rstGPIO    int
-	sourceName string
-	sinkName   string
+	inMeter    *LevelMeter
+	outMeter   *LevelMeter
 }
 
 // NewService creates a display service.
 func NewService(spiPath string, dcGPIO, rstGPIO int) *Service {
 	s := &Service{
 		status:  &Status{},
-		vu:      NewVUMonitor(),
 		spiPath: spiPath,
 		dcGPIO:  dcGPIO,
 		rstGPIO: rstGPIO,
@@ -36,10 +34,10 @@ func NewService(spiPath string, dcGPIO, rstGPIO int) *Service {
 	return s
 }
 
-// SetAudioDevices configures the PipeWire device names for VU monitoring.
-func (s *Service) SetAudioDevices(source, sink string) {
-	s.sourceName = source
-	s.sinkName = sink
+// SetLevelMeters sets the in-process PCM level meters for VU display.
+func (s *Service) SetLevelMeters(in, out *LevelMeter) {
+	s.inMeter = in
+	s.outMeter = out
 }
 
 // Status returns the shared status object for external code to update.
@@ -69,8 +67,6 @@ func (s *Service) Run(ctx context.Context) error {
 
 	s.probeNetwork()
 
-	go s.vu.Run(ctx, s.sourceName, s.sinkName)
-
 	renderTicker := time.NewTicker(renderInterval)
 	defer renderTicker.Stop()
 
@@ -93,7 +89,13 @@ func (s *Service) Run(ctx context.Context) error {
 			s.probeNetwork()
 
 		case <-renderTicker.C:
-			in, out := s.vu.Levels()
+			var in, out float64
+			if s.inMeter != nil {
+				in = s.inMeter.Level()
+			}
+			if s.outMeter != nil {
+				out = s.outMeter.Level()
+			}
 			s.status.SetVU(in, out)
 
 			snap := s.status.Snapshot()

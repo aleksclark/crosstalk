@@ -76,7 +76,7 @@ func run() error {
 			spiPath = defaultSPIDevice
 		}
 		disp = display.NewService(spiPath, defaultDCGPIO, defaultRSTGPIO)
-		disp.SetAudioDevices(cfg.SourceName, cfg.SinkName)
+		disp.SetLevelMeters(pion.InputMeter, pion.OutputMeter)
 		disp.Status().SetServer(cfg.ServerURL, "connecting")
 
 		go func() {
