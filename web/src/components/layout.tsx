@@ -7,6 +7,7 @@ const navItems = [
   { label: 'Dashboard', path: '/dashboard' },
   { label: 'Templates', path: '/templates' },
   { label: 'Sessions', path: '/sessions' },
+  { label: 'Settings', path: '/settings' },
 ]
 
 export function Layout({ children }: { children: React.ReactNode }) {

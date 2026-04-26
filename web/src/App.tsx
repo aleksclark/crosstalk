@@ -9,6 +9,7 @@ import { TemplateEditorPage } from '@/pages/TemplateEditorPage'
 import { SessionListPage } from '@/pages/SessionListPage'
 import { SessionDetailPage } from '@/pages/SessionDetailPage'
 import { SessionConnectPage } from '@/pages/SessionConnectPage'
+import { SettingsPage } from '@/pages/SettingsPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth()
@@ -50,6 +51,10 @@ function AppRoutes() {
       <Route
         path="/sessions/:id/connect"
         element={<ProtectedRoute><SessionConnectPage /></ProtectedRoute>}
+      />
+      <Route
+        path="/settings"
+        element={<ProtectedRoute><SettingsPage /></ProtectedRoute>}
       />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
