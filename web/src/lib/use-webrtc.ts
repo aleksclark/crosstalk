@@ -300,6 +300,23 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
 
     pc.ontrack = handleTrack
 
+    let initialOfferSent = false
+    pc.onnegotiationneeded = async () => {
+      if (!initialOfferSent) return
+      try {
+        if (pc.signalingState !== 'stable') {
+          addLog('debug', 'webrtc', `Renegotiation deferred (state: ${pc.signalingState})`)
+          return
+        }
+        const offer = await pc.createOffer()
+        await pc.setLocalDescription(offer)
+        sendSignal({ type: 'offer', sdp: offer.sdp })
+        addLog('debug', 'webrtc', 'Sent renegotiation offer (track added)')
+      } catch (err) {
+        addLog('error', 'webrtc', `Renegotiation failed: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    }
+
     ws.onopen = async () => {
       addLog('info', 'system', 'WebSocket connected, creating offer...')
 
@@ -312,6 +329,7 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
         const offer = await pc.createOffer()
         await pc.setLocalDescription(offer)
         sendSignal({ type: 'offer', sdp: offer.sdp })
+        initialOfferSent = true
       } catch (err) {
         addLog('error', 'webrtc', `Failed to create offer: ${err instanceof Error ? err.message : String(err)}`)
       }
