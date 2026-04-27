@@ -159,6 +159,14 @@ Three-tier testing strategy with an emphasis on proving real functionality, not 
 | 7.2 | [Integration Tests](testing/integration-tests.md) | 0 | |
 | 7.3 | [E2E / Golden Tests](testing/e2e-golden.md) | 0 | |
 
+### [8. Broadcast Listeners](broadcast/overview.md) `confidence: 0`
+
+Public, unauthenticated broadcast listeners — QR code generation, receive-only WebRTC, broadcast tokens, listener count tracking, and the public listener page.
+
+| § | Section | Confidence | Notes |
+|---|---------|------------|-------|
+| 8.1 | [Overview](broadcast/overview.md) | 0 | Initial design, no code yet |
+
 ---
 
 ## Tech Stack Summary
