@@ -47,7 +47,15 @@ type LiveSession struct {
 	Template  *crosstalk.SessionTemplate
 	Clients   map[string]*LiveClient  // keyed by peer ID
 	Bindings  map[string]*LiveBinding // keyed by channel ID
+	Listeners map[string]*ListenerEntry // keyed by peer ID (broadcast listeners)
 	StartedAt time.Time               // when the first client joined
+}
+
+// ListenerEntry tracks a broadcast listener peer and its active forwarding
+// stop functions (one per broadcast binding being forwarded to this listener).
+type ListenerEntry struct {
+	Peer          *PeerConn
+	StopForwards  map[string]func() // keyed by binding channel ID
 }
 
 // LiveClient tracks a connected client's role and peer.
@@ -119,6 +127,7 @@ func (o *Orchestrator) JoinSession(peer *PeerConn, sessionID, role string) error
 			Template:  tmpl,
 			Clients:   make(map[string]*LiveClient),
 			Bindings:  make(map[string]*LiveBinding),
+			Listeners: make(map[string]*ListenerEntry),
 			StartedAt: time.Now(),
 		}
 		o.sessions[sessionID] = ls
@@ -193,8 +202,8 @@ func (o *Orchestrator) LeaveSession(peer *PeerConn) {
 	// Re-evaluate bindings — some may need to be deactivated.
 	o.evaluateBindings(ls)
 
-	// Clean up empty sessions.
-	if len(ls.Clients) == 0 {
+	// Clean up empty sessions (no clients and no listeners).
+	if len(ls.Clients) == 0 && len(ls.Listeners) == 0 {
 		delete(o.sessions, sessionID)
 	}
 }
@@ -253,6 +262,16 @@ func (o *Orchestrator) EndSession(sessionID string) {
 	for _, c := range ls.Clients {
 		sendSessionEvent(c.Peer, crosstalkv1.SessionEventType_SESSION_ENDED,
 			sessionID, "session ended")
+	}
+
+	// Close all broadcast listener connections.
+	for listenerID, entry := range ls.Listeners {
+		for _, stop := range entry.StopForwards {
+			stop()
+		}
+		entry.Peer.Close() //nolint:errcheck
+		slog.Debug("orchestrator: closed broadcast listener on session end",
+			"peer", listenerID, "session", sessionID)
 	}
 
 	delete(o.sessions, sessionID)
@@ -373,6 +392,18 @@ func (o *Orchestrator) activateBinding(ls *LiveSession, b crosstalk.ActiveBindin
 
 	case "record":
 		o.startRecording(ls, lb)
+
+	case "broadcast":
+		// Forward broadcast audio to all connected listeners.
+		for listenerID, entry := range ls.Listeners {
+			stop, fwdErr := ForwardTrack(sourcePeer, entry.Peer, channelID)
+			if fwdErr != nil {
+				slog.Error("orchestrator: forward broadcast to listener failed",
+					"channel", channelID, "listener", listenerID, "err", fwdErr)
+				continue
+			}
+			entry.StopForwards[channelID] = stop
+		}
 	}
 
 	ls.Bindings[channelID] = lb
@@ -387,6 +418,16 @@ func (o *Orchestrator) activateBinding(ls *LiveSession, b crosstalk.ActiveBindin
 func (o *Orchestrator) deactivateBinding(ls *LiveSession, channelID string, lb *LiveBinding) {
 	if lb.stopForward != nil {
 		lb.stopForward()
+	}
+
+	// Stop broadcast forwarding to all listeners for this binding.
+	if lb.Binding.SinkType == "broadcast" {
+		for _, entry := range ls.Listeners {
+			if stop, ok := entry.StopForwards[channelID]; ok {
+				stop()
+				delete(entry.StopForwards, channelID)
+			}
+		}
 	}
 
 	// Close recorder if active.
@@ -528,6 +569,132 @@ func (o *Orchestrator) RecordingStatus(sessionID string) *crosstalk.RecordingInf
 		}
 	}
 	return info
+}
+
+// AddListener adds a broadcast listener peer to the given session. If
+// broadcast bindings are already active, forwarding to this listener starts
+// immediately. Must be called with the orchestrator mutex NOT held.
+func (o *Orchestrator) AddListener(peer *PeerConn, sessionID string) error {
+	// Look up the session.
+	session, err := o.SessionService.FindSessionByID(sessionID)
+	if err != nil || session == nil {
+		return fmt.Errorf("session not found: %s", sessionID)
+	}
+	if session.Status == crosstalk.SessionEnded {
+		return fmt.Errorf("session already ended: %s", sessionID)
+	}
+
+	// Look up the template.
+	tmpl, err := o.SessionTemplateService.FindTemplateByID(session.TemplateID)
+	if err != nil || tmpl == nil {
+		return fmt.Errorf("template not found for session %s", sessionID)
+	}
+
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	// Get or create the live session.
+	ls := o.sessions[sessionID]
+	if ls == nil {
+		ls = &LiveSession{
+			Session:   session,
+			Template:  tmpl,
+			Clients:   make(map[string]*LiveClient),
+			Bindings:  make(map[string]*LiveBinding),
+			Listeners: make(map[string]*ListenerEntry),
+			StartedAt: time.Now(),
+		}
+		o.sessions[sessionID] = ls
+	}
+
+	entry := &ListenerEntry{
+		Peer:         peer,
+		StopForwards: make(map[string]func()),
+	}
+	ls.Listeners[peer.ID] = entry
+
+	// Store session membership on the peer.
+	peer.mu.Lock()
+	peer.SessionID = sessionID
+	peer.Role = "__listener"
+	peer.mu.Unlock()
+
+	slog.Info("orchestrator: broadcast listener added",
+		"peer", peer.ID, "session", sessionID,
+		"listener_count", len(ls.Listeners))
+
+	// Forward all active broadcast bindings to the new listener.
+	for channelID, lb := range ls.Bindings {
+		if lb.Binding.SinkType != "broadcast" {
+			continue
+		}
+		stop, fwdErr := ForwardTrack(lb.SourcePeer, peer, channelID)
+		if fwdErr != nil {
+			slog.Error("orchestrator: forward broadcast to new listener failed",
+				"channel", channelID, "listener", peer.ID, "err", fwdErr)
+			continue
+		}
+		entry.StopForwards[channelID] = stop
+	}
+
+	// Notify all authenticated peers about the listener count change.
+	countMsg := fmt.Sprintf("listener_count:%d", len(ls.Listeners))
+	for _, c := range ls.Clients {
+		sendSessionEvent(c.Peer, crosstalkv1.SessionEventType_SESSION_LISTENER_COUNT_CHANGED,
+			sessionID, countMsg)
+	}
+
+	return nil
+}
+
+// RemoveListener removes a broadcast listener from its session and stops
+// all forwarding to it. Must be called with the orchestrator mutex NOT held.
+func (o *Orchestrator) RemoveListener(peerID string) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	// Find the session containing this listener.
+	for sessionID, ls := range o.sessions {
+		entry, ok := ls.Listeners[peerID]
+		if !ok {
+			continue
+		}
+
+		// Stop all forwards to this listener.
+		for _, stop := range entry.StopForwards {
+			stop()
+		}
+
+		delete(ls.Listeners, peerID)
+
+		slog.Info("orchestrator: broadcast listener removed",
+			"peer", peerID, "session", sessionID,
+			"listener_count", len(ls.Listeners))
+
+		// Notify all authenticated peers about the listener count change.
+		countMsg := fmt.Sprintf("listener_count:%d", len(ls.Listeners))
+		for _, c := range ls.Clients {
+			sendSessionEvent(c.Peer, crosstalkv1.SessionEventType_SESSION_LISTENER_COUNT_CHANGED,
+				sessionID, countMsg)
+		}
+
+		// Clean up empty sessions.
+		if len(ls.Clients) == 0 && len(ls.Listeners) == 0 {
+			delete(o.sessions, sessionID)
+		}
+		return
+	}
+}
+
+// ListenerCount returns the number of broadcast listeners for the given session.
+func (o *Orchestrator) ListenerCount(sessionID string) int {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	ls := o.sessions[sessionID]
+	if ls == nil {
+		return 0
+	}
+	return len(ls.Listeners)
 }
 
 // sendBindChannel sends a BindChannel control message to a peer.

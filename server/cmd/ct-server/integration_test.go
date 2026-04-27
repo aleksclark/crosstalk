@@ -17,6 +17,7 @@ import (
 	"time"
 
 	crosstalk "github.com/aleksclark/crosstalk/server"
+	"github.com/aleksclark/crosstalk/server/broadcast"
 	cthttp "github.com/aleksclark/crosstalk/server/http"
 	ctpion "github.com/aleksclark/crosstalk/server/pion"
 	ctws "github.com/aleksclark/crosstalk/server/ws"
@@ -88,17 +89,28 @@ func testServerFull(t *testing.T, opts testServerOpts) (baseURL, seedToken strin
 		ServerVersion:  "test",
 	}
 
+	broadcastStore := broadcast.NewTokenStore("test-broadcast-secret", 15*time.Minute)
+	t.Cleanup(func() { broadcastStore.Stop() })
+
+	broadcastSigHandler := &ctws.BroadcastSignalingHandler{
+		BroadcastTokenStore: broadcastStore,
+		PeerManager:         pm,
+		Orchestrator:        orch,
+	}
+
 	handler := &cthttp.Handler{
-		UserService:            userService,
-		TokenService:           tokenService,
-		SessionTemplateService: templateService,
-		SessionService:         sessionService,
-		Config:                 crosstalk.DefaultConfig(),
-		WebFS:                  webFS,
-		SignalingHandler:       &sigHandler,
-		Orchestrator:           orch,
-		TestMode:               true,
-		DB:                     db.DB,
+		UserService:               userService,
+		TokenService:              tokenService,
+		SessionTemplateService:    templateService,
+		SessionService:            sessionService,
+		Config:                    crosstalk.DefaultConfig(),
+		WebFS:                     webFS,
+		SignalingHandler:          &sigHandler,
+		BroadcastSignalingHandler: broadcastSigHandler,
+		Orchestrator:              orch,
+		BroadcastTokenStore:       broadcastStore,
+		TestMode:                  true,
+		DB:                        db.DB,
 	}
 
 	// Pick a random available port.

@@ -167,6 +167,7 @@ func TestGetSession(t *testing.T) {
 type mockOrchestrator struct {
 	endSessionFn      func(string)
 	recordingStatusFn func(string) *crosstalk.RecordingInfo
+	listenerCountFn   func(string) int
 }
 
 func (m *mockOrchestrator) EndSession(sessionID string) {
@@ -184,6 +185,13 @@ func (m *mockOrchestrator) RecordingStatus(sessionID string) *crosstalk.Recordin
 
 func (m *mockOrchestrator) AssignSession(peerID, sessionID, role string) error {
 	return nil
+}
+
+func (m *mockOrchestrator) ListenerCount(sessionID string) int {
+	if m.listenerCountFn != nil {
+		return m.listenerCountFn(sessionID)
+	}
+	return 0
 }
 
 func TestGetSession_WithRecordingStatus(t *testing.T) {

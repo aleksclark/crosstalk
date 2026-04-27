@@ -17,6 +17,7 @@ import (
 	"time"
 
 	crosstalk "github.com/aleksclark/crosstalk/server"
+	"github.com/aleksclark/crosstalk/server/broadcast"
 	cthttp "github.com/aleksclark/crosstalk/server/http"
 	ctpion "github.com/aleksclark/crosstalk/server/pion"
 	ctws "github.com/aleksclark/crosstalk/server/ws"
@@ -111,21 +112,39 @@ func run() error {
 		slog.Warn("test mode enabled — test-only endpoints are active")
 	}
 
+	// Create broadcast token store.
+	var broadcastTTL time.Duration
+	if d, err := time.ParseDuration(cfg.Auth.BroadcastTokenLifetime); err == nil {
+		broadcastTTL = d
+	} else {
+		broadcastTTL = 15 * time.Minute
+	}
+	broadcastStore := broadcast.NewTokenStore(cfg.Auth.SessionSecret, broadcastTTL)
+	defer broadcastStore.Stop()
+
+	broadcastSigHandler := &ctws.BroadcastSignalingHandler{
+		BroadcastTokenStore: broadcastStore,
+		PeerManager:         pm,
+		Orchestrator:        orch,
+	}
+
 	// Create HTTP handler with all services injected.
 	handler := &cthttp.Handler{
-		UserService:            userService,
-		TokenService:           tokenService,
-		SessionTemplateService: templateService,
-		SessionService:         sessionService,
-		Config:                 cfg,
-		WebFS:                  webFS,
-		DevMode:                cfg.Web.DevMode,
-		DevProxyURL:            cfg.Web.DevProxyURL,
-		SignalingHandler:       &sigHandler,
-		Orchestrator:           orch,
-		PeerLister:             pm,
-		TestMode:               testMode,
-		DB:                     db.DB,
+		UserService:               userService,
+		TokenService:              tokenService,
+		SessionTemplateService:    templateService,
+		SessionService:            sessionService,
+		Config:                    cfg,
+		WebFS:                     webFS,
+		DevMode:                   cfg.Web.DevMode,
+		DevProxyURL:               cfg.Web.DevProxyURL,
+		SignalingHandler:          &sigHandler,
+		BroadcastSignalingHandler: broadcastSigHandler,
+		Orchestrator:              orch,
+		PeerLister:                pm,
+		BroadcastTokenStore:       broadcastStore,
+		TestMode:                  testMode,
+		DB:                        db.DB,
 	}
 
 	// Build the HTTP server.
