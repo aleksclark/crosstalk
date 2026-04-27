@@ -42,11 +42,10 @@ if [ "$AUDIO_MODE" = "loopback" ]; then
     K2B_SOURCE="${K2B_SOURCE:-alsa_output.platform-snd_aloop.0.analog-stereo.monitor}"
     K2B_SINK="${K2B_SINK:-alsa_output.platform-snd_aloop.0.analog-stereo}"
 else
-    # Physical audio: audiocodec (TRRS headphone out), ahub1 I2S (capture)
-    # The audiocodec card must be set to pro-audio profile for playback.
-    # The ahub1 card must be set to pro-audio for capture.
-    K2B_SOURCE="${K2B_SOURCE:-alsa_input.platform-soc_ahub1_mach.pro-input-0}"
-    K2B_SINK="${K2B_SINK:-alsa_output.platform-5096000.codec.pro-output-0}"
+    # Physical audio via USB adapter (C-Media, ALSA card 3) or onboard codec.
+    # Use ALSA hw: devices directly to bypass PipeWire resampler distortion.
+    K2B_SOURCE="${K2B_SOURCE:-hw:3,0}"
+    K2B_SINK="${K2B_SINK:-hw:3,0}"
 fi
 
 echo "=== Deploying ct-client to K2B at ${BOARD_IP} ==="
