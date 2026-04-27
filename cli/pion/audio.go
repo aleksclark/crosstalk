@@ -40,7 +40,7 @@ func CaptureSource(ctx context.Context, sourceName string, track *webrtc.TrackLo
 	// Capture raw PCM from the audio source. Use arecord for ALSA hw: devices,
 	// pw-record for PipeWire nodes.
 	var pwCmd *exec.Cmd
-	if strings.HasPrefix(sourceName, "hw:") {
+	if strings.HasPrefix(sourceName, "hw:") || strings.HasPrefix(sourceName, "plughw:") {
 		pwCmd = exec.CommandContext(ctx, "arecord",
 			"-D", sourceName,
 			"-f", "S16_LE", "-r", "48000", "-c", "1",
@@ -196,12 +196,13 @@ func PlaybackSink(ctx context.Context, sinkName string, remoteTrack *webrtc.Trac
 	// PipeWire audiocodec sinks (PipeWire's resampler distorts on H618).
 	// Fall back to pw-cat for other PipeWire sinks.
 	var pwCmd *exec.Cmd
-	if strings.HasPrefix(sinkName, "hw:") || strings.HasPrefix(sinkName, "plughw:") {
+	if strings.HasPrefix(sinkName, "hw:") || strings.HasPrefix(sinkName, "plughw:") || strings.Contains(sinkName, "5096000.codec") {
+		alsaDev := sinkName
+		if strings.Contains(sinkName, "5096000.codec") {
+			alsaDev = "plughw:1,0"
+		}
 		pwCmd = exec.CommandContext(ctx, "aplay",
-			"-D", sinkName, "-f", "S16_LE", "-r", "48000", "-c", "2", "-t", "raw", "-")
-	} else if strings.Contains(sinkName, "5096000.codec") {
-		pwCmd = exec.CommandContext(ctx, "aplay",
-			"-D", "plughw:1,0", "-f", "S16_LE", "-r", "48000", "-c", "2", "-t", "raw", "-")
+			"-D", alsaDev, "-f", "S16_LE", "-r", "48000", "-c", "2", "-t", "raw", "-")
 	} else {
 		pwArgs := []string{"-p", "--format=s16", "--rate=48000", "--channels=2"}
 		if sinkName != "" {

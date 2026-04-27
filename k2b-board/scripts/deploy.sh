@@ -42,10 +42,10 @@ if [ "$AUDIO_MODE" = "loopback" ]; then
     K2B_SOURCE="${K2B_SOURCE:-alsa_output.platform-snd_aloop.0.analog-stereo.monitor}"
     K2B_SINK="${K2B_SINK:-alsa_output.platform-snd_aloop.0.analog-stereo}"
 else
-    # Physical audio via USB adapter (C-Media, ALSA card 3) or onboard codec.
-    # Use ALSA hw: devices directly to bypass PipeWire resampler distortion.
-    K2B_SOURCE="${K2B_SOURCE:-hw:3,0}"
-    K2B_SINK="${K2B_SINK:-hw:3,0}"
+    # Physical audio via USB adapter (C-Media, ALSA card 3).
+    # Use plughw: for format conversion and full-duplex concurrent access.
+    K2B_SOURCE="${K2B_SOURCE:-plughw:3,0}"
+    K2B_SINK="${K2B_SINK:-plughw:3,0}"
 fi
 
 echo "=== Deploying ct-client to K2B at ${BOARD_IP} ==="
