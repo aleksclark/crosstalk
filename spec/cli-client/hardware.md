@@ -10,8 +10,30 @@ The primary deployment target for the CLI client is the [KickPi K2B](https://www
 
 - ARM-based SBC
 - TRRS 3.5mm audio jack (combined mic input + headphone output)
+- MSP2401 ILI9341 SPI LCD (320×240) for status display
 - Ethernet connectivity
 - Runs Armbian Linux with PipeWire for audio
+
+## Display
+
+MSP2401 ILI9341 LCD connected to SPI1, driven by the kernel tinydrm `ili9341` driver as a framebuffer (`/dev/fb1`). PWM backlight on PH3.
+
+### Boot Sequence
+
+```
+Kernel → loads ili9341 tinydrm → /dev/fb1 appears
+       → ct-splash.service writes splash image to /dev/fb1
+       → app.service starts ct-client
+       → ct-client mmaps /dev/fb1 for live status display
+```
+
+### Display Provisioning
+
+```bash
+k2b-board/scripts/provision-display-fb.sh <board-ip>
+```
+
+This installs the DT overlay, configures the ili9341 kernel module, sets up fbcon, and installs the boot splash service.
 
 ## Audio Path
 
@@ -31,8 +53,11 @@ Existing infrastructure in `k2b-board/`:
 - `scripts/build-image.sh` — build Armbian image with CrossTalk overlay
 - `scripts/deploy.sh` — deploy CLI binary to device
 - `scripts/provision-k2b.sh` — first-time device setup
+- `scripts/provision-display-fb.sh` — set up ILI9341 as kernel framebuffer
 - `scripts/setup-loopback.sh` — create PipeWire loopback for testing
 - `deploy/app.service` — systemd service unit for the CLI client
+- `deploy/ct-splash.service` — early boot splash on the LCD
+- `deploy/ct-splash.sh` — splash image writer
 
 ### Deployment Flow
 

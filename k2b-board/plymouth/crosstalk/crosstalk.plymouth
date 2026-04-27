@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=CrossTalk
+Description=CrossTalk boot splash for K2B devices
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/crosstalk
+ScriptFile=/usr/share/plymouth/themes/crosstalk/crosstalk.script

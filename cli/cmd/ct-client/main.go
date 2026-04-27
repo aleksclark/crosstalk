@@ -17,11 +17,7 @@ import (
 	"github.com/aleksclark/crosstalk/cli/pipewire"
 )
 
-const (
-	defaultSPIDevice = "/dev/spidev0.1"
-	defaultDCGPIO    = 71  // PC7
-	defaultRSTGPIO   = 76  // PC12
-)
+
 
 func main() {
 	flag.Parse()
@@ -71,11 +67,8 @@ func run() error {
 
 	var disp *display.Service
 	if useDisplay() {
-		spiPath := os.Getenv("DISPLAY_SPI_DEVICE")
-		if spiPath == "" {
-			spiPath = defaultSPIDevice
-		}
-		disp = display.NewService(spiPath, defaultDCGPIO, defaultRSTGPIO)
+		fbPath := os.Getenv("DISPLAY_FB_DEVICE")
+		disp = display.NewService(fbPath)
 		disp.SetLevelMeters(pion.InputMeter, pion.OutputMeter)
 		disp.Status().SetServer(cfg.ServerURL, "connecting")
 

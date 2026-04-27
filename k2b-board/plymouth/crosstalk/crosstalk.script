@@ -1,0 +1,52 @@
+# Plymouth script theme for CrossTalk K2B splash screen.
+# Displays a centered logo on a dark background with a simple
+# progress spinner beneath it.
+
+# ── Background ───────────────────────────────────────────────
+Window.SetBackgroundTopColor(0.07, 0.07, 0.10);
+Window.SetBackgroundBottomColor(0.04, 0.04, 0.06);
+
+# ── Logo ─────────────────────────────────────────────────────
+logo.image = Image("splash.png");
+logo.sprite = Sprite(logo.image);
+logo.sprite.SetX(Window.GetWidth() / 2 - logo.image.GetWidth() / 2);
+logo.sprite.SetY(Window.GetHeight() / 2 - logo.image.GetHeight() / 2 - 40);
+logo.sprite.SetZ(10);
+
+# ── Status text ──────────────────────────────────────────────
+status_text.sprite = Sprite();
+status_text.sprite.SetPosition(Window.GetWidth() / 2, Window.GetHeight() / 2 + logo.image.GetHeight() / 2 + 20, 10);
+
+fun status_callback(text) {
+    img = Image.Text(text, 0.6, 0.6, 0.7, "Sans 14");
+    status_text.sprite.SetImage(img);
+    status_text.sprite.SetX(Window.GetWidth() / 2 - img.GetWidth() / 2);
+}
+Plymouth.SetUpdateStatusFunction(status_callback);
+
+# ── Progress spinner (simple dot animation) ──────────────────
+spinner_count = 0;
+spinner_x = Window.GetWidth() / 2;
+spinner_y = Window.GetHeight() / 2 + logo.image.GetHeight() / 2 + 60;
+
+fun refresh_callback() {
+    spinner_count++;
+    dots = "";
+    n = (spinner_count / 8) % 4;
+    for (i = 0; i < n; i++) {
+        dots += " · ";
+    }
+    img = Image.Text(dots, 0.5, 0.5, 0.6, "Sans 18");
+    spinner_sprite.SetImage(img);
+    spinner_sprite.SetX(spinner_x - img.GetWidth() / 2);
+}
+
+spinner_sprite = Sprite();
+spinner_sprite.SetPosition(spinner_x, spinner_y, 10);
+Plymouth.SetRefreshFunction(refresh_callback);
+
+# ── Boot messages (hide kernel/systemd noise) ────────────────
+fun message_callback(text, isMessageAnUpdate) {
+    # Suppress boot messages — we show status via the status callback
+}
+Plymouth.SetMessageFunction(message_callback);

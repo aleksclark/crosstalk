@@ -14,16 +14,19 @@
 			/delete-node/ spidev@1;
 
 			ili9341: ili9341@1 {
-				compatible = "adafruit,yx240qv29", "ilitek,ili9341";
+				compatible = "adafruit,yx240qv29";
 				reg = <1>;
 				spi-max-frequency = <32000000>;
-				rotate = <90>;
-				bgr;
-				fps = <30>;
-				buswidth = <8>;
-				/* PH4 = DC, PH2 = RESET (port H = 7) */
-				dc-gpios = <&pio 7 4 0>;
-				reset-gpios = <&pio 7 2 0>;
+				rotation = <90>;
+				/*
+				 * Wiring (20-pin header):
+				 *   DC/RS  → pin 14 = GPIO_PC7  = port C (2), pin 7
+				 *   RESET  → pin 12 = GPIO_PC12 = port C (2), pin 12
+				 *
+				 * &pio bank: A=0 B=1 C=2 D=3 E=4 F=5 G=6 H=7
+				 */
+				dc-gpios = <&pio 2 7 0>;
+				reset-gpios = <&pio 2 12 0>;
 				backlight = <&backlight>;
 			};
 		};

@@ -12,23 +12,19 @@ const (
 )
 
 // Service manages the display lifecycle: probing network, rendering
-// frames, and flushing them to the SPI display.
+// frames, and flushing them to the framebuffer.
 type Service struct {
-	status     *Status
-	spiPath    string
-	dcGPIO     int
-	rstGPIO    int
-	inMeter    *LevelMeter
-	outMeter   *LevelMeter
+	status  *Status
+	fbPath  string
+	inMeter  *LevelMeter
+	outMeter *LevelMeter
 }
 
-// NewService creates a display service.
-func NewService(spiPath string, dcGPIO, rstGPIO int) *Service {
+// NewService creates a display service. Pass an empty fbPath to auto-detect.
+func NewService(fbPath string) *Service {
 	s := &Service{
-		status:  &Status{},
-		spiPath: spiPath,
-		dcGPIO:  dcGPIO,
-		rstGPIO: rstGPIO,
+		status: &Status{},
+		fbPath: fbPath,
 	}
 	s.status.SetControlState("disconnected")
 	return s
@@ -48,14 +44,14 @@ func (s *Service) Status() *Status {
 // Run opens the display and starts rendering. It blocks until the
 // context is cancelled.
 func (s *Service) Run(ctx context.Context) error {
-	disp, err := OpenDisplay(s.spiPath, s.dcGPIO, s.rstGPIO)
+	disp, err := OpenDisplay(s.fbPath)
 	if err != nil {
 		return err
 	}
 	defer disp.Close()
 
 	w, h := disp.Size()
-	slog.Info("display opened", "spi", s.spiPath, "width", w, "height", h)
+	slog.Info("display opened", "fb", s.fbPath, "width", w, "height", h)
 
 	bl, err := OpenBacklight()
 	if err != nil {

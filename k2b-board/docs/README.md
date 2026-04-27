@@ -44,11 +44,44 @@ plughw:Loopback,0,0  <-->  plughw:Loopback,1,0   (audio path 1)
 plughw:Loopback,0,1  <-->  plughw:Loopback,1,1   (audio path 2)
 ```
 
+## Display
+
+MSP2401 ILI9341 SPI LCD (320×240, RGB565) connected to SPI1 on the 20-pin header.
+
+### Wiring
+| MSP2401 | K2B Pin | Signal       | GPIO   |
+|---------|---------|--------------|--------|
+| VCC     | 2       | VCC_3V3      |        |
+| GND     | 6       | GND          |        |
+| SCK     | 13      | SPI1_CLK     | PH6    |
+| SDI     | 9       | SPI1_MOSI    | PH7    |
+| CS      | 7       | SPI1_CS1     | PH9    |
+| DC/RS   | 14      | GPIO_PC7     | gpio71 |
+| RESET   | 12      | GPIO_PC12    | gpio76 |
+| LED     | PWM1    | GPIO_PH3     |        |
+
+### Driver Stack
+- **Kernel driver**: tinydrm `ili9341` module (`compatible = "adafruit,yx240qv29"`)
+- **Device tree overlay**: `config/overlays/ili9341-spi1.dts` → `/boot/overlay-user/ili9341-spi1.dtbo`
+- **Framebuffer**: `/dev/fb1` (fb0 = HDMI), RGB565 16bpp, 320×240
+- **Backlight**: PWM via `/sys/class/backlight/` (pwm-backlight node in DT)
+- **Console**: fbcon maps to fb1 (`fbcon=map:1 fbcon=font:VGA8x8`)
+
+### Boot Sequence
+1. Kernel loads ili9341 tinydrm module → creates `/dev/fb1`
+2. `ct-splash.service` (sysinit.target) → writes "CROSSTALK" splash to fb1
+3. `app.service` (multi-user.target) → ct-client takes over fb1 for status display
+
+### Provisioning
+```bash
+k2b-board/scripts/provision-display-fb.sh <board-ip>
+```
+
 ## Application Service
-- Binary: `/usr/local/bin/app` (aarch64 static)
-- Config: `/etc/app/config.toml`
+- Binary: `/usr/local/bin/ct-client` (aarch64 static)
+- Config: `/etc/app/crosstalk.json`
 - Systemd: `/etc/systemd/system/app.service`
-- Runs as user `app`, group `audio`
+- Runs as user `streamlate`, groups `audio`, `video`
 - Restart: `sudo systemctl restart app`
 
 ## Image Build

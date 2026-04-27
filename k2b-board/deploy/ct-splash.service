@@ -1,0 +1,15 @@
+[Unit]
+Description=CrossTalk Boot Splash
+DefaultDependencies=no
+After=systemd-modules-load.service
+Before=sysinit.target app.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ct-splash.sh
+RemainAfterExit=yes
+StandardOutput=null
+StandardError=journal
+
+[Install]
+WantedBy=sysinit.target
