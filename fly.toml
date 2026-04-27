@@ -1,0 +1,37 @@
+app = "crosstalk"
+primary_region = "iad"
+
+[build]
+  dockerfile = "deploy/Dockerfile"
+
+[env]
+  CROSSTALK_CONFIG = "/data/config.json"
+  FLY_UDP_BIND_HOST = "fly-global-services"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 500
+    soft_limit = 400
+
+[[services]]
+  protocol = "udp"
+  internal_port = 5000
+
+  [[services.ports]]
+    port = 5000
+
+[mounts]
+  source = "crosstalk_data"
+  destination = "/data"
+
+[[vm]]
+  memory = "1gb"
+  cpu_kind = "shared"
+  cpus = 2

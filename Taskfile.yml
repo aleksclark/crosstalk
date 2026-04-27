@@ -193,6 +193,22 @@ tasks:
       - defer: docker compose -f test/docker-compose.ring.yml down -v
 
   # ── Utility ──────────────────────────────────────────────
+
+  deploy:fly:
+    desc: Deploy server to Fly.io
+    cmds:
+      - task: build:web
+      - fly deploy
+
+  deploy:fly:setup:
+    desc: First-time Fly.io setup (create app, volume, IP)
+    cmds:
+      - fly apps create crosstalk || true
+      - fly ips allocate-v4
+      - fly volumes create crosstalk_data --size 1 --region iad
+      - fly secrets set CT_SESSION_SECRET=$(openssl rand -hex 32)
+      - echo "Now run 'task deploy:fly' to deploy"
+
   clean:
     desc: Remove build artifacts
     cmds:

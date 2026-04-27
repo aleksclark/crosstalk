@@ -3,9 +3,12 @@ package pion
 import (
 	"fmt"
 	"log/slog"
+	"net"
+	"os"
 	"sync"
 
 	"github.com/oklog/ulid/v2"
+	"github.com/pion/ice/v4"
 	"github.com/pion/webrtc/v4"
 	"google.golang.org/protobuf/proto"
 
@@ -28,6 +31,9 @@ type PeerManager struct {
 }
 
 // NewPeerManager returns a PeerManager configured with STUN/TURN servers from cfg.
+// When cfg.UDPMuxPort > 0, all ICE traffic is multiplexed through a single UDP
+// port — required on Fly.io. The bind address defaults to 0.0.0.0 but can be
+// overridden via FLY_UDP_BIND_HOST (must be "fly-global-services" on Fly.io).
 func NewPeerManager(cfg crosstalk.WebRTCConfig) *PeerManager {
 	servers := make([]webrtc.ICEServer, 0, 2)
 
@@ -46,10 +52,43 @@ func NewPeerManager(cfg crosstalk.WebRTCConfig) *PeerManager {
 		})
 	}
 
-	return &PeerManager{
+	pm := &PeerManager{
 		iceServers: servers,
 		peers:      make(map[string]*PeerConn),
 	}
+
+	if cfg.UDPMuxPort > 0 {
+		bindHost := "0.0.0.0"
+		if h := os.Getenv("FLY_UDP_BIND_HOST"); h != "" {
+			bindHost = h
+		}
+
+		addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", bindHost, cfg.UDPMuxPort))
+		if err != nil {
+			slog.Error("failed to resolve UDP mux address", "error", err)
+		} else {
+			conn, err := net.ListenUDP("udp", addr)
+			if err != nil {
+				slog.Error("failed to listen UDP mux", "addr", addr, "error", err)
+			} else {
+				var se webrtc.SettingEngine
+				se.SetICEUDPMux(webrtc.NewICEUDPMux(nil, conn))
+				se.SetICEMulticastDNSMode(ice.MulticastDNSModeDisabled)
+
+				if cfg.PublicIP != "" {
+					se.SetNAT1To1IPs([]string{cfg.PublicIP}, webrtc.ICECandidateTypeHost)
+				}
+
+				pm.api = webrtc.NewAPI(webrtc.WithSettingEngine(se))
+				slog.Info("UDP mux enabled",
+					"bind", addr.String(),
+					"public_ip", cfg.PublicIP,
+				)
+			}
+		}
+	}
+
+	return pm
 }
 
 // NewPeerManagerWithAPI is like NewPeerManager but accepts a custom webrtc.API,

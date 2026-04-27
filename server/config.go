@@ -29,6 +29,14 @@ type Config struct {
 type WebRTCConfig struct {
 	STUNServers []string   `json:"stun_servers"`
 	TURN        TURNConfig `json:"turn"`
+	// PublicIP is the server's public IP advertised in ICE candidates.
+	// Required on Fly.io and other NAT'd environments where the server's
+	// local IP differs from its public IP.
+	PublicIP string `json:"public_ip"`
+	// UDPMuxPort, when set, enables a single-port UDP multiplexer for all
+	// ICE traffic. Required on Fly.io where UDP must bind to a specific
+	// address. On Fly.io set the bind host via FLY_UDP_BIND_HOST env var.
+	UDPMuxPort int `json:"udp_mux_port"`
 }
 
 // TURNConfig holds TURN relay settings.
