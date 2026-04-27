@@ -1,9 +1,7 @@
 import { cn } from '@/lib/utils'
 
-interface BadgeProps {
+interface BadgeProps extends React.HTMLAttributes<HTMLDivElement> {
   variant?: 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning'
-  className?: string
-  children: React.ReactNode
 }
 
 const variantClasses: Record<NonNullable<BadgeProps['variant']>, string> = {
@@ -15,7 +13,7 @@ const variantClasses: Record<NonNullable<BadgeProps['variant']>, string> = {
   warning: 'border-transparent bg-warning text-primary-foreground',
 }
 
-export function Badge({ variant = 'default', className, children }: BadgeProps) {
+export function Badge({ variant = 'default', className, children, ...props }: BadgeProps) {
   return (
     <div
       className={cn(
@@ -23,6 +21,7 @@ export function Badge({ variant = 'default', className, children }: BadgeProps) 
         variantClasses[variant],
         className,
       )}
+      {...props}
     >
       {children}
     </div>
