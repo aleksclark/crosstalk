@@ -137,6 +137,11 @@ export function SessionConnectPage() {
     ? webrtc.logs
     : webrtc.logs.filter((l) => l.severity === logFilter)
 
+  // Use real-time listener count from WebRTC events, falling back to initial session data
+  const listenerCount = webrtc.listenerCount > 0
+    ? webrtc.listenerCount
+    : (session?.listener_count ?? 0)
+
   if (loading || !session) return <div className="text-muted-foreground">Loading...</div>
 
   return (
@@ -150,6 +155,11 @@ export function SessionConnectPage() {
           <Badge variant={webrtc.iceState === 'connected' ? 'success' : webrtc.iceState === 'failed' ? 'destructive' : 'warning'}>
             ICE: {webrtc.iceState}
           </Badge>
+          {listenerCount > 0 && (
+            <Badge variant="secondary" data-testid="listener-count-badge">
+              🔊 {listenerCount} listener{listenerCount !== 1 ? 's' : ''}
+            </Badge>
+          )}
         </div>
         <Button variant="destructive" onClick={handleEndSession} data-testid="end-session-button">
           End Session
