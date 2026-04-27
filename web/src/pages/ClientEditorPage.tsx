@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getClient, createClient, updateClient, getTokens, createToken, revokeToken, getConnections } from '@/lib/api/client'

@@ -1,8 +1,9 @@
-version: "3.8"
-
 networks:
   test-net:
     driver: bridge
+
+volumes:
+  test-data:
 
 services:
   server:
@@ -14,13 +15,16 @@ services:
       - CROSSTALK_TEST_MODE=1
     ports:
       - "18080:8080"
+    volumes:
+      - test-data:/data
     networks:
       test-net:
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/", "||", "true"]
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/ || exit 1"]
       interval: 2s
       timeout: 5s
       retries: 30
+      start_period: 5s
 
   test-runner:
     build:

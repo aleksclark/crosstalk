@@ -68,7 +68,7 @@ export function SettingsPage() {
     try {
       const result = await createToken({ name: newTokenName })
       setCreatedToken(result)
-      setTokens((prev) => [...prev, { id: result.id, name: result.name, created_at: new Date().toISOString() }])
+      setTokens((prev) => [...prev, { id: result.id, name: result.name, created_at: new Date().toISOString(), last_used_at: null }])
       setNewTokenName('')
       setShowCreateToken(false)
     } catch (err) {

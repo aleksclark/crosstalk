@@ -123,17 +123,27 @@ export interface ChannelBinding {
 }
 
 export interface Client {
+  name?: string
   id: string
+  client_id?: string
   role: string
   session: string
+  session_id?: string
   sources: string[]
   sinks: string[]
   codecs: string[]
   status: string
   connected_at: string
+  source_name?: string
+  sink_name?: string
+  created_at?: string
+  [key: string]: unknown
 }
 
+export type ConnectedClient = Client
+
 export interface ServerStatus {
+  connections?: number
   uptime: number
   active_sessions: number
   connected_clients: number
