@@ -376,6 +376,15 @@ func (c *PeerConn) OnICEConnectionStateChange(f func(webrtc.ICEConnectionState))
 // HandleOffer sets the remote offer SDP, creates an answer, sets it as the
 // local description, and returns the answer.
 func (c *PeerConn) HandleOffer(offer webrtc.SessionDescription) (webrtc.SessionDescription, error) {
+	// Handle SDP glare: if the server has a pending local offer, roll it back
+	// before applying the client's offer. The server acts as the "polite" peer.
+	if c.pc.SignalingState() == webrtc.SignalingStateHaveLocalOffer {
+		slog.Info("pion: rolling back local offer to resolve SDP glare", "peer", c.ID)
+		if err := c.pc.SetLocalDescription(webrtc.SessionDescription{Type: webrtc.SDPTypeRollback}); err != nil {
+			return webrtc.SessionDescription{}, fmt.Errorf("pion: rollback local offer: %w", err)
+		}
+	}
+
 	if err := c.pc.SetRemoteDescription(offer); err != nil {
 		return webrtc.SessionDescription{}, fmt.Errorf("pion: set remote description: %w", err)
 	}
@@ -426,6 +435,12 @@ func (c *PeerConn) Negotiate() {
 	slog.Info("pion: negotiate called",
 		"peer", c.ID,
 		"signaling_state", sigState.String())
+
+	if sigState != webrtc.SignalingStateStable {
+		slog.Info("pion: negotiate deferred, not in stable state",
+			"peer", c.ID, "state", sigState.String())
+		return
+	}
 
 	c.mu.Lock()
 	cb := c.onNegotiationNeeded
