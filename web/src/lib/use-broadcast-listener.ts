@@ -35,6 +35,7 @@ export function useBroadcastListener(options: UseBroadcastListenerOptions): UseB
   const audioCtxRef = useRef<AudioContext | null>(null)
   const gainNodeRef = useRef<GainNode | null>(null)
   const audioElRef = useRef<HTMLAudioElement | null>(null)
+  const pendingStreamRef = useRef<MediaStream | null>(null)
   const connectedRef = useRef(false)
   const reachedConnectedRef = useRef(false)
 
@@ -49,16 +50,31 @@ export function useBroadcastListener(options: UseBroadcastListenerOptions): UseB
   }, [])
 
   const togglePlayPause = useCallback(() => {
-    const ctx = audioCtxRef.current
-    if (!ctx) return
+    const stream = pendingStreamRef.current
+    if (!stream) return
 
+    // Create AudioContext on first user gesture (Chrome autoplay policy)
+    if (!audioCtxRef.current) {
+      const ctx = new AudioContext()
+      audioCtxRef.current = ctx
+      const source = ctx.createMediaStreamSource(stream)
+      const gain = ctx.createGain()
+      gain.gain.value = volume
+      source.connect(gain)
+      gain.connect(ctx.destination)
+      gainNodeRef.current = gain
+      void ctx.resume().then(() => setIsPlaying(true))
+      return
+    }
+
+    const ctx = audioCtxRef.current
     if (ctx.state === 'running') {
       void ctx.suspend()
       setIsPlaying(false)
     } else {
       void ctx.resume().then(() => setIsPlaying(true))
     }
-  }, [])
+  }, [volume])
 
   const disconnect = useCallback(() => {
     connectedRef.current = false
@@ -151,29 +167,18 @@ export function useBroadcastListener(options: UseBroadcastListenerOptions): UseB
       pc.ontrack = (event) => {
         if (event.track.kind !== 'audio') return
 
-        // Set up audio context + gain node for volume control
-        const ctx = new AudioContext()
-        audioCtxRef.current = ctx
-
+        // Store the stream for deferred AudioContext creation (user gesture required)
         const stream = event.streams[0] || new MediaStream([event.track])
-        const source = ctx.createMediaStreamSource(stream)
-        const gain = ctx.createGain()
-        gain.gain.value = volume
+        pendingStreamRef.current = stream
 
-        source.connect(gain)
-        gain.connect(ctx.destination)
-        gainNodeRef.current = gain
-
-        // Create a hidden audio element for reliable playback
+        // Create a hidden audio element — autoplay may work for <audio> even
+        // without a gesture on some browsers
         const audioEl = document.createElement('audio')
-        audioEl.srcObject = new MediaStream([event.track])
+        audioEl.srcObject = stream
         audioEl.autoplay = true
         audioEl.style.display = 'none'
         document.body.appendChild(audioEl)
         audioElRef.current = audioEl
-
-        // Resume audio context (may be suspended due to autoplay policy)
-        void ctx.resume().then(() => setIsPlaying(true))
       }
 
       // Handle renegotiation (server-initiated offers)

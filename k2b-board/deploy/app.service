@@ -9,8 +9,14 @@ Wants=network-online.target
 Type=simple
 User=streamlate
 Group=audio
-SupplementaryGroups=video
+SupplementaryGroups=video spi
 ExecStartPre=+/bin/bash -c '\
+  for g in 71 76; do \
+    echo $g > /sys/class/gpio/export 2>/dev/null || true; \
+    echo out > /sys/class/gpio/gpio$g/direction; \
+    chown streamlate /sys/class/gpio/gpio$g/value /sys/class/gpio/gpio$g/direction; \
+  done; \
+  chmod 0660 /dev/spidev0.1; chown root:spi /dev/spidev0.1; \
   sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 pactl set-card-profile alsa_card.platform-5096000.codec pro-audio 2>/dev/null || true; \
   sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 pactl set-card-profile alsa_card.platform-soc_ahub1_mach pro-audio 2>/dev/null || true; \
   amixer -c 1 cset numid=4 on 2>/dev/null || true; \
