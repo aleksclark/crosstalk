@@ -10,6 +10,7 @@ import { SessionListPage } from '@/pages/SessionListPage'
 import { SessionDetailPage } from '@/pages/SessionDetailPage'
 import { SessionConnectPage } from '@/pages/SessionConnectPage'
 import { SettingsPage } from '@/pages/SettingsPage'
+import { ListenerPage } from '@/pages/ListenerPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth()
@@ -27,6 +28,10 @@ function AppRoutes() {
       <Route
         path="/login"
         element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />}
+      />
+      <Route
+        path="/listen/:sessionId"
+        element={<ListenerPage />}
       />
       <Route
         path="/dashboard"

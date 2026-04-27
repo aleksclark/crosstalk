@@ -2,12 +2,13 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getSession, getTemplate, endSession, getConnections, assignSession } from '@/lib/api/client'
 import type { PeerConnection } from '@/lib/api/client'
-import type { SessionDetail, Role } from '@/lib/api/types'
+import type { SessionDetail, Role, Mapping } from '@/lib/api/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Select } from '@/components/ui/select'
+import { BroadcastCard } from '@/components/BroadcastCard'
 
 export function SessionDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -19,6 +20,7 @@ export function SessionDetailPage() {
   const [connectRole, setConnectRole] = useState('')
   const [assignRole, setAssignRole] = useState('studio')
   const [assignError, setAssignError] = useState('')
+  const [templateMappings, setTemplateMappings] = useState<Mapping[]>([])
 
   useEffect(() => {
     if (!id) return
@@ -29,6 +31,7 @@ export function SessionDetailPage() {
           void getTemplate(s.template_id)
             .then((t) => {
               setTemplateRoles(t.roles)
+              setTemplateMappings(t.mappings)
               if (t.roles.length > 0) {
                 setConnectRole(t.roles[0].name)
                 setAssignRole(t.roles[0].name)
@@ -182,6 +185,14 @@ export function SessionDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {session.status !== 'ended' && (
+        <BroadcastCard
+          sessionId={id!}
+          hasBroadcastMapping={templateMappings.some((m) => m.to_type === 'broadcast')}
+          listenerCount={session.listener_count}
+        />
+      )}
 
       <Card>
         <CardHeader>

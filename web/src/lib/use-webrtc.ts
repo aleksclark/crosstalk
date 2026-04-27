@@ -24,6 +24,7 @@ interface UseWebRTCReturn {
   setChannelGain: (channelId: string, gain: number) => void
   setMicStream: (stream: MediaStream | null) => void
   micLevel: number
+  listenerCount: number
 }
 
 const STATS_INTERVAL = 2000
@@ -45,6 +46,7 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
   const [channels, setChannels] = useState<AudioChannel[]>([])
   const [logs, setLogs] = useState<LogEntryMessage[]>([])
   const [micLevel, setMicLevel] = useState(0)
+  const [listenerCount, setListenerCount] = useState(0)
 
   const wsRef = useRef<WebSocket | null>(null)
   const pcRef = useRef<RTCPeerConnection | null>(null)
@@ -167,6 +169,12 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
         if (msg['sessionEvent']) {
           const evt = msg['sessionEvent'] as { type: string; message: string }
           addLog('info', 'session', `${evt.type}: ${evt.message}`)
+          if (evt.type === 'SESSION_LISTENER_COUNT_CHANGED') {
+            const count = parseInt(evt.message.split(':')[1], 10)
+            if (!isNaN(count)) {
+              setListenerCount(count)
+            }
+          }
         }
 
         if (msg['logEntry']) {
@@ -412,6 +420,7 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
     setStats(EMPTY_STATS)
     setChannels([])
     setMicLevel(0)
+    setListenerCount(0)
     addLog('info', 'system', 'Disconnected')
   }, [addLog])
 
@@ -475,5 +484,6 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
     setChannelGain,
     setMicStream,
     micLevel,
+    listenerCount,
   }
 }

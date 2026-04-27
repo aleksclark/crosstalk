@@ -104,6 +104,7 @@ export interface Session {
 export interface SessionDetail extends Session {
   clients: SessionClient[]
   channel_bindings: ChannelBinding[]
+  listener_count?: number
 }
 
 export interface SessionClient {
@@ -157,4 +158,16 @@ export interface SessionCreateRequest {
 export interface ApiError {
   error: string
   message: string
+}
+
+export interface BroadcastTokenResponse {
+  token: string
+  url: string
+  expires_at: string
+}
+
+export interface BroadcastInfo {
+  session_id: string
+  session_name: string
+  ice_servers?: RTCIceServer[]
 }
