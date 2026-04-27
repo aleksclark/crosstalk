@@ -10,8 +10,8 @@ const mockUsers: User[] = [
 ]
 
 const mockTokens: ApiToken[] = [
-  { id: 'tok-1', name: 'CI Pipeline', created_at: '2026-04-21T09:00:00Z' },
-  { id: 'tok-2', name: 'K2B Board', created_at: '2026-04-22T10:00:00Z' },
+  { id: 'tok-1', name: 'CI Pipeline', created_at: '2026-04-21T09:00:00Z', last_used_at: null },
+  { id: 'tok-2', name: 'K2B Board', created_at: '2026-04-22T10:00:00Z', last_used_at: null },
 ]
 
 const mockCreateUser = vi.fn().mockResolvedValue({ id: 'user-3', username: 'newuser', created_at: '2026-04-22T12:00:00Z' })
