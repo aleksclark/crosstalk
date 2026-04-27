@@ -1,4 +1,4 @@
-app = "crosstalk"
+app = "crosstalk-sfu"
 primary_region = "iad"
 
 [build]
