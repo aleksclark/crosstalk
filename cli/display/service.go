@@ -2,6 +2,7 @@ package display
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 )
@@ -12,19 +13,23 @@ const (
 )
 
 // Service manages the display lifecycle: probing network, rendering
-// frames, and flushing them to the framebuffer.
+// frames, and flushing them to the SPI display.
 type Service struct {
-	status  *Status
-	fbPath  string
+	status   *Status
+	spiPath  string
+	dcGPIO   int
+	rstGPIO  int
 	inMeter  *LevelMeter
 	outMeter *LevelMeter
 }
 
-// NewService creates a display service. Pass an empty fbPath to auto-detect.
-func NewService(fbPath string) *Service {
+// NewService creates a display service.
+func NewService(spiPath string, dcGPIO, rstGPIO int) *Service {
 	s := &Service{
-		status: &Status{},
-		fbPath: fbPath,
+		status:  &Status{},
+		spiPath: spiPath,
+		dcGPIO:  dcGPIO,
+		rstGPIO: rstGPIO,
 	}
 	s.status.SetControlState("disconnected")
 	return s
@@ -42,16 +47,34 @@ func (s *Service) Status() *Status {
 }
 
 // Run opens the display and starts rendering. It blocks until the
-// context is cancelled.
+// context is cancelled. Retries opening the SPI device up to 10 times
+// to handle race conditions with fbtft module unloading at boot.
 func (s *Service) Run(ctx context.Context) error {
-	disp, err := OpenDisplay(s.fbPath)
-	if err != nil {
-		return err
+	var disp *Display
+	for attempt := 0; attempt < 10; attempt++ {
+		var err error
+		disp, err = OpenDisplay(s.spiPath, s.dcGPIO, s.rstGPIO)
+		if err == nil {
+			break
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		slog.Warn("display open failed, retrying",
+			"attempt", attempt+1, "error", err)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Duration(attempt+1) * 500 * time.Millisecond):
+		}
+	}
+	if disp == nil {
+		return fmt.Errorf("display open failed after 10 attempts")
 	}
 	defer disp.Close()
 
 	w, h := disp.Size()
-	slog.Info("display opened", "fb", s.fbPath, "width", w, "height", h)
+	slog.Info("display opened", "spi", s.spiPath, "width", w, "height", h)
 
 	bl, err := OpenBacklight()
 	if err != nil {

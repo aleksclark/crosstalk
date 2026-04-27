@@ -10,21 +10,66 @@ Type=simple
 User=streamlate
 Group=audio
 SupplementaryGroups=video spi
+
 ExecStartPre=+/bin/bash -c '\
+  echo "=== Display setup ===" ; \
+  \
+  # Unbind fbtft/ili9341 from SPI device if they grabbed it \
+  for drv in fb_ili9341 panel-ilitek-ili9341 ili9341; do \
+    if [ -e /sys/bus/spi/drivers/$drv/spi0.1 ]; then \
+      echo spi0.1 > /sys/bus/spi/drivers/$drv/unbind 2>/dev/null || true ; \
+      echo "Unbound $drv from spi0.1" ; \
+    fi ; \
+  done ; \
+  \
+  # Force unload fbtft modules \
+  rmmod ili9341 2>/dev/null || true ; \
+  rmmod panel_ilitek_ili9341 2>/dev/null || true ; \
+  rmmod fb_ili9341 2>/dev/null || true ; \
+  rmmod fbtft 2>/dev/null || true ; \
+  rmmod drm_mipi_dbi 2>/dev/null || true ; \
+  \
+  # Ensure spidev is bound \
+  modprobe spidev 2>/dev/null || true ; \
+  if [ ! -e /sys/bus/spi/drivers/spidev/spi0.1 ]; then \
+    echo spidev > /sys/bus/spi/devices/spi0.1/driver_override 2>/dev/null || true ; \
+    echo spi0.1 > /sys/bus/spi/drivers/spidev/bind 2>/dev/null || true ; \
+  fi ; \
+  \
+  # Verify spidev exists \
+  ls /dev/spidev0.1 >/dev/null 2>&1 || echo "WARNING: /dev/spidev0.1 missing" ; \
+  \
+  # Export and configure GPIOs for DC (71/PC7) and RESET (76/PC12) \
   for g in 71 76; do \
-    echo $g > /sys/class/gpio/export 2>/dev/null || true; \
-    echo out > /sys/class/gpio/gpio$g/direction; \
-    chown streamlate /sys/class/gpio/gpio$g/value /sys/class/gpio/gpio$g/direction; \
-  done; \
-  chmod 0660 /dev/spidev0.1; chown root:spi /dev/spidev0.1; \
-  sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 pactl set-card-profile alsa_card.platform-5096000.codec pro-audio 2>/dev/null || true; \
-  sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 pactl set-card-profile alsa_card.platform-soc_ahub1_mach pro-audio 2>/dev/null || true; \
-  amixer -c 1 cset numid=4 on 2>/dev/null || true; \
-  amixer -c 1 cset numid=5 on 2>/dev/null || true; \
-  amixer -c 1 cset numid=6 on 2>/dev/null || true; \
-  amixer -c 1 cset numid=7 on 2>/dev/null || true; \
-  amixer -c 1 cset numid=2 31 2>/dev/null || true; \
-  amixer -c 1 cset numid=3 on 2>/dev/null || true'
+    echo $g > /sys/class/gpio/export 2>/dev/null || true ; \
+    echo out > /sys/class/gpio/gpio$g/direction 2>/dev/null || true ; \
+    chown streamlate /sys/class/gpio/gpio$g/value /sys/class/gpio/gpio$g/direction 2>/dev/null || true ; \
+  done ; \
+  \
+  # Set SPI device permissions \
+  chmod 0660 /dev/spidev0.1 2>/dev/null || true ; \
+  chgrp spi /dev/spidev0.1 2>/dev/null || true ; \
+  \
+  # Ensure spi group exists and user is in it \
+  groupadd -f spi 2>/dev/null || true ; \
+  usermod -aG spi streamlate 2>/dev/null || true ; \
+  \
+  echo "=== Audio setup ===" ; \
+  \
+  # Activate PipeWire audio card profiles \
+  sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 pactl set-card-profile alsa_card.platform-5096000.codec pro-audio 2>/dev/null || true ; \
+  sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 pactl set-card-profile alsa_card.platform-soc_ahub1_mach pro-audio 2>/dev/null || true ; \
+  \
+  # Enable ALSA audiocodec DAC -> LINEOUT mixer path \
+  amixer -c 1 cset numid=4 on 2>/dev/null || true ; \
+  amixer -c 1 cset numid=5 on 2>/dev/null || true ; \
+  amixer -c 1 cset numid=6 on 2>/dev/null || true ; \
+  amixer -c 1 cset numid=7 on 2>/dev/null || true ; \
+  amixer -c 1 cset numid=2 31 2>/dev/null || true ; \
+  amixer -c 1 cset numid=3 on 2>/dev/null || true ; \
+  \
+  echo "=== Setup complete ==="'
+
 ExecStart=/usr/local/bin/ct-client
 Environment=CROSSTALK_CONFIG=/etc/app/crosstalk.json
 Environment=XDG_RUNTIME_DIR=/run/user/999

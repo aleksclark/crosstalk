@@ -67,8 +67,11 @@ func run() error {
 
 	var disp *display.Service
 	if useDisplay() {
-		fbPath := os.Getenv("DISPLAY_FB_DEVICE")
-		disp = display.NewService(fbPath)
+		spiPath := os.Getenv("DISPLAY_SPI_DEVICE")
+		if spiPath == "" {
+			spiPath = "/dev/spidev0.1"
+		}
+		disp = display.NewService(spiPath, 71, 76) // DC=PC7(71), RST=PC12(76)
 		disp.SetLevelMeters(pion.InputMeter, pion.OutputMeter)
 		disp.Status().SetServer(cfg.ServerURL, "connecting")
 
