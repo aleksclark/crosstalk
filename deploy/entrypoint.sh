@@ -2,11 +2,8 @@
 # Generate config from env vars if not already present on the volume.
 CONFIG="/data/config.json"
 if [ ! -f "$CONFIG" ]; then
-  # Discover public IP: try FLY_PUBLIC_IP env, then curl Fly metadata, then empty
-  PUBLIC_IP="${FLY_PUBLIC_IP:-}"
-  if [ -z "$PUBLIC_IP" ] && command -v curl >/dev/null 2>&1; then
-    PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || true)
-  fi
+  # Discover public IP: CT_PUBLIC_IP (set via fly secrets), or empty
+  PUBLIC_IP="${CT_PUBLIC_IP:-}"
 
   cat > "$CONFIG" <<EOF
 {
