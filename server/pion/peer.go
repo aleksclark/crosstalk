@@ -177,6 +177,79 @@ func (pm *PeerManager) CreatePeerConnection() (*PeerConn, error) {
 	return conn, nil
 }
 
+// CreateListenerPeerConnection creates a PeerConnection for a receive-only
+// broadcast listener. Unlike [CreatePeerConnection], it does NOT create the
+// "control" data channel (listeners don't need it) and marks the peer as a
+// listener. The peer is registered in the manager just like regular peers.
+func (pm *PeerManager) CreateListenerPeerConnection() (*PeerConn, error) {
+	rtcCfg := webrtc.Configuration{
+		ICEServers: pm.iceServers,
+	}
+
+	var (
+		pc  *webrtc.PeerConnection
+		err error
+	)
+
+	if pm.api != nil {
+		pc, err = pm.api.NewPeerConnection(rtcCfg)
+	} else {
+		pc, err = webrtc.NewPeerConnection(rtcCfg)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("pion: creating listener peer connection: %w", err)
+	}
+
+	conn := &PeerConn{
+		ID:         ulid.Make().String(),
+		pc:         pc,
+		trackCh:    make(chan trackEvent, 8),
+		IsListener: true,
+	}
+
+	// Buffer incoming tracks (same as regular peers).
+	pc.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
+		slog.Info("peer: remote track received (listener)",
+			"peer", conn.ID,
+			"track_id", track.ID(),
+			"stream_id", track.StreamID(),
+			"codec", track.Codec().MimeType)
+		select {
+		case conn.trackCh <- trackEvent{track: track, receiver: receiver}:
+		default:
+			slog.Warn("peer: track channel full, dropping track (listener)",
+				"peer", conn.ID, "track_id", track.ID())
+		}
+	})
+
+	// Monitor ICE connection state.
+	pc.OnICEConnectionStateChange(func(state webrtc.ICEConnectionState) {
+		logger := slog.With("peer_id", conn.ID, "ice_state", state.String(), "listener", true)
+		switch state {
+		case webrtc.ICEConnectionStateConnected:
+			logger.Info("listener ICE connected")
+		case webrtc.ICEConnectionStateDisconnected:
+			logger.Warn("listener ICE disconnected, removing peer")
+			pm.RemovePeer(conn.ID)
+		case webrtc.ICEConnectionStateFailed:
+			logger.Error("listener ICE failed, removing peer")
+			pm.RemovePeer(conn.ID)
+		case webrtc.ICEConnectionStateClosed:
+			logger.Info("listener ICE closed")
+		default:
+			logger.Debug("listener ICE state change")
+		}
+	})
+
+	// NO control data channel for listeners.
+
+	pm.mu.Lock()
+	pm.peers[conn.ID] = conn
+	pm.mu.Unlock()
+
+	return conn, nil
+}
+
 // RemovePeer closes the peer connection identified by id and removes it from
 // the manager. It is a no-op if the id is not found.
 func (pm *PeerManager) RemovePeer(id string) {
@@ -217,12 +290,16 @@ func (pm *PeerManager) FindPeer(id string) *PeerConn {
 	return pm.peers[id]
 }
 
-// ListPeerInfo returns a summary of all active peers for the REST API.
+// ListPeerInfo returns a summary of all active non-listener peers for the REST API.
+// Broadcast listeners are excluded from the peer list.
 func (pm *PeerManager) ListPeerInfo() []crosstalk.PeerInfo {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 	out := make([]crosstalk.PeerInfo, 0, len(pm.peers))
 	for _, p := range pm.peers {
+		if p.IsListener {
+			continue
+		}
 		out = append(out, crosstalk.PeerInfo{
 			ID:        p.ID,
 			SessionID: p.SessionID,
@@ -274,6 +351,10 @@ type PeerConn struct {
 	// Session membership set by JoinSession.
 	SessionID string
 	Role      string
+
+	// IsListener is true for broadcast listener peers. Listener peers are
+	// receive-only and have no control data channel.
+	IsListener bool
 
 	// onNegotiationNeeded is called when the server adds/removes tracks and the
 	// client must renegotiate. Set by the signaling layer before any bindings

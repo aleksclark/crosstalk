@@ -79,3 +79,64 @@ export async function createSessionViaAPI(
   expect(resp.ok()).toBeTruthy();
   return (await resp.json()) as Record<string, unknown>;
 }
+
+// ── Broadcast Helpers ────────────────────────────────────────────────────
+
+/**
+ * Create a template with a broadcast mapping via the REST API.
+ * By default the template maps "studio:mic → broadcast" and includes
+ * a regular role-to-role mapping so the template has two roles.
+ */
+export async function createBroadcastTemplateViaAPI(
+  request: APIRequestContext,
+  token: string,
+  overrides: Record<string, unknown> = {},
+): Promise<Record<string, unknown>> {
+  return createTemplateViaAPI(request, token, {
+    name: "Broadcast Template",
+    roles: [
+      { name: "studio", multi_client: false },
+      { name: "translator", multi_client: false },
+    ],
+    mappings: [
+      { source: "studio:mic", sink: "broadcast" },
+      { source: "translator:mic", sink: "studio:output" },
+    ],
+    ...overrides,
+  });
+}
+
+/**
+ * Generate a broadcast token for the given session via the REST API.
+ * Returns the full response: { token, url, expires_at }.
+ */
+export async function createBroadcastTokenViaAPI(
+  request: APIRequestContext,
+  token: string,
+  sessionId: string,
+): Promise<{ token: string; url: string; expires_at: string }> {
+  const resp = await request.post(
+    `${BASE_URL}/api/sessions/${sessionId}/broadcast-token`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  expect(resp.ok()).toBeTruthy();
+  return (await resp.json()) as { token: string; url: string; expires_at: string };
+}
+
+/**
+ * Fetch the session detail via the REST API and return listener_count.
+ */
+export async function getSessionListenerCount(
+  request: APIRequestContext,
+  token: string,
+  sessionId: string,
+): Promise<number> {
+  const resp = await request.get(`${BASE_URL}/api/sessions/${sessionId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  expect(resp.ok()).toBeTruthy();
+  const body = (await resp.json()) as Record<string, unknown>;
+  return (body.listener_count as number) ?? 0;
+}

@@ -14,6 +14,21 @@ import (
 	"time"
 )
 
+// BroadcastToken represents a short-lived, session-scoped token that allows
+// unauthenticated listeners to join a broadcast session.
+type BroadcastToken struct {
+	Token     string
+	SessionID string
+	ExpiresAt time.Time
+}
+
+// BroadcastTokenStore manages the lifecycle of broadcast tokens.
+type BroadcastTokenStore interface {
+	CreateBroadcastToken(sessionID string, ttl time.Duration) (*BroadcastToken, error)
+	ValidateBroadcastToken(token string) (*BroadcastToken, error)
+	RevokeBroadcastTokens(sessionID string)
+}
+
 type Client struct {
 	ID         string    `json:"id"`
 	Name       string    `json:"name"`
@@ -152,6 +167,7 @@ type SessionOrchestrator interface {
 	EndSession(sessionID string)
 	RecordingStatus(sessionID string) *RecordingInfo
 	AssignSession(peerID, sessionID, role string) error
+	ListenerCount(sessionID string) int
 }
 
 type PeerInfo struct {

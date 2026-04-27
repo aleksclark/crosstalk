@@ -12,6 +12,8 @@ import type {
   Client,
   ServerStatus,
   ApiMapping,
+  BroadcastTokenResponse,
+  BroadcastInfo,
 } from './types'
 import { mappingToApi, apiToMapping } from './types'
 
@@ -210,6 +212,24 @@ export async function getClient(id: string): Promise<Client> {
 // Server Status
 export async function getServerStatus(): Promise<ServerStatus> {
   return request('/api/status')
+}
+
+// Broadcast
+export async function createBroadcastToken(sessionId: string): Promise<BroadcastTokenResponse> {
+  return request(`/api/sessions/${sessionId}/broadcast-token`, { method: 'POST' })
+}
+
+/** Public endpoint — does not send auth header */
+export async function getBroadcastInfo(sessionId: string): Promise<BroadcastInfo> {
+  const res = await fetch(`/api/sessions/${sessionId}/broadcast`)
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as Record<string, unknown>
+    const msg = (body?.error as Record<string, unknown>)?.message as string
+      ?? (body?.message as string)
+      ?? res.statusText
+    throw new ApiClientError(res.status, msg)
+  }
+  return res.json() as Promise<BroadcastInfo>
 }
 
 export { ApiClientError }

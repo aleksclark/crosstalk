@@ -132,8 +132,12 @@ func TestCreateSession(t *testing.T) {
 }
 
 func TestGetSession(t *testing.T) {
-	h, _, ts, _, sessSvc := newTestHandler(t)
+	h, _, ts, tmplSvc, sessSvc := newTestHandler(t)
 	token := authToken(t, ts)
+
+	tmplSvc.FindTemplateByIDFn = func(id string) (*crosstalk.SessionTemplate, error) {
+		return nil, nil
+	}
 
 	now := time.Now().UTC()
 	sessSvc.FindSessionByIDFn = func(id string) (*crosstalk.Session, error) {
@@ -167,6 +171,7 @@ func TestGetSession(t *testing.T) {
 type mockOrchestrator struct {
 	endSessionFn      func(string)
 	recordingStatusFn func(string) *crosstalk.RecordingInfo
+	listenerCountFn   func(string) int
 }
 
 func (m *mockOrchestrator) EndSession(sessionID string) {
@@ -186,9 +191,20 @@ func (m *mockOrchestrator) AssignSession(peerID, sessionID, role string) error {
 	return nil
 }
 
+func (m *mockOrchestrator) ListenerCount(sessionID string) int {
+	if m.listenerCountFn != nil {
+		return m.listenerCountFn(sessionID)
+	}
+	return 0
+}
+
 func TestGetSession_WithRecordingStatus(t *testing.T) {
-	h, _, ts, _, sessSvc := newTestHandler(t)
+	h, _, ts, tmplSvc, sessSvc := newTestHandler(t)
 	token := authToken(t, ts)
+
+	tmplSvc.FindTemplateByIDFn = func(id string) (*crosstalk.SessionTemplate, error) {
+		return nil, nil
+	}
 
 	orch := &mockOrchestrator{
 		recordingStatusFn: func(id string) *crosstalk.RecordingInfo {

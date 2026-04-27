@@ -123,6 +123,7 @@ enum SessionEventType {
   SESSION_BROADCAST_CLIENT_JOINED = 7;
   SESSION_BROADCAST_CLIENT_LEFT = 8;
   SESSION_ROLE_REJECTED = 9;
+  SESSION_LISTENER_COUNT_CHANGED = 10;
 }
 
 // LogEntry is a structured log message streamed over the control channel.

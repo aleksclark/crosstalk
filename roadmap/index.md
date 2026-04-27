@@ -45,15 +45,22 @@ Phase 1: Server Foundation
     │        │                 │
     │        │                 ├──► Phase 6: Server-Side Recording
     │        │                 │
-    │        │                 └──► Phase 8: Integration Tests
-    │        │                          │
-    │        └──► Phase 4: CLI Client        └──► Phase 9: E2E Golden Tests
+    │        │                 ├──► Phase 8: Integration Tests
+    │        │                 │        │
+    │        │                 │        └──► Phase 9: E2E Golden Tests
+    │        │                 │
+    │        │                 └──► Phase 10: Broadcast Listeners
+    │        │                          (needs Phase 5 + 7 + 8)
+    │        │
+    │        └──► Phase 4: CLI Client
     │                 │
     │                 └──► Phase 5 (needs CLI to join sessions)
     │
     └──► Phase 7: Admin Web UI (can start after Phase 1, parallel with 2-6)
               │
-              └──► Phase 8 + 9 (needs UI for Playwright tests)
+              ├──► Phase 8 + 9 (needs UI for Playwright tests)
+              │
+              └──► Phase 10: Broadcast Listeners (needs UI for QR + listener page)
 ```
 
 ## Phases
@@ -129,3 +136,11 @@ Real audio through real hardware. Admin web → K2B device and K2B device → ad
 **Exit criteria**: `task test:e2e` passes both golden tests:
 1. Browser sends 1kHz tone via session → K2B captures it → cross-correlation > 0.9
 2. K2B plays 1kHz tone → browser captures it → cross-correlation > 0.9
+
+---
+
+### [Phase 10: Public Broadcast Listeners](phase-10-broadcast.md) ⬅ CURRENT
+
+Public, unauthenticated users receive broadcast audio via QR code / link. Broadcast token endpoint, receive-only WebRTC signaling, listener count tracking, QR code UI, public listener page, and integration test.
+
+**Exit criteria**: Playwright test creates a session with `→ broadcast` mapping, generates a broadcast token, opens the public listener page, verifies audio is received and listener count is displayed on the admin connect page.

@@ -49,8 +49,9 @@ type TURNConfig struct {
 
 // AuthConfig holds authentication settings.
 type AuthConfig struct {
-	SessionSecret        string `json:"session_secret"`
-	WebRTCTokenLifetime  string `json:"webrtc_token_lifetime"`
+	SessionSecret          string `json:"session_secret"`
+	WebRTCTokenLifetime    string `json:"webrtc_token_lifetime"`
+	BroadcastTokenLifetime string `json:"broadcast_token_lifetime"`
 }
 
 // WebConfig holds web UI settings.
@@ -76,8 +77,9 @@ func DefaultConfig() Config {
 			},
 		},
 		Auth: AuthConfig{
-			SessionSecret:       "",
-			WebRTCTokenLifetime: "24h",
+			SessionSecret:          "",
+			WebRTCTokenLifetime:    "24h",
+			BroadcastTokenLifetime: "15m",
 		},
 		Web: WebConfig{
 			DevMode:     false,
@@ -140,7 +142,7 @@ var knownWebRTC = []string{"stun_servers", "turn"}
 var knownTURN = []string{"enabled", "server", "username", "credential"}
 
 // knownAuth is the set of recognised keys inside "auth".
-var knownAuth = []string{"session_secret", "webrtc_token_lifetime"}
+var knownAuth = []string{"session_secret", "webrtc_token_lifetime", "broadcast_token_lifetime"}
 
 // knownWeb is the set of recognised keys inside "web".
 var knownWeb = []string{"dev_mode", "dev_proxy_url"}
@@ -223,8 +225,9 @@ var fieldTypes = map[string]jsonType{
 	"webrtc.turn.server":            jsonString,
 	"webrtc.turn.username":          jsonString,
 	"webrtc.turn.credential":        jsonString,
-	"auth.session_secret":           jsonString,
-	"auth.webrtc_token_lifetime":    jsonString,
+	"auth.session_secret":              jsonString,
+	"auth.webrtc_token_lifetime":       jsonString,
+	"auth.broadcast_token_lifetime":    jsonString,
 	"web.dev_mode":                  jsonBool,
 	"web.dev_proxy_url":             jsonString,
 }

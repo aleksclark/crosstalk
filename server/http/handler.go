@@ -4,7 +4,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -36,11 +38,18 @@ type Handler struct {
 	// It handles its own authentication via query parameter tokens.
 	SignalingHandler http.Handler
 
+	// BroadcastSignalingHandler is the WebSocket signaling handler for
+	// broadcast listeners. It authenticates via broadcast token in query param.
+	BroadcastSignalingHandler http.Handler
+
 	// Orchestrator manages live session state. When set, the delete-session
 	// handler notifies connected WebRTC clients before updating the DB.
 	Orchestrator crosstalk.SessionOrchestrator
 
 	PeerLister crosstalk.PeerLister
+
+	// BroadcastTokenStore manages broadcast tokens for public listeners.
+	BroadcastTokenStore crosstalk.BroadcastTokenStore
 
 	// TestMode enables test-only endpoints (e.g. POST /api/test/reset).
 	TestMode bool
@@ -69,9 +78,17 @@ func (h *Handler) Router() *chi.Mux {
 		r.Handle("/ws/signaling", h.SignalingHandler)
 	}
 
+	// Mount broadcast WebSocket signaling endpoint (public, token in query).
+	if h.BroadcastSignalingHandler != nil {
+		r.Handle("/ws/broadcast", h.BroadcastSignalingHandler)
+	}
+
 	r.Route("/api", func(r chi.Router) {
 		// Public: login does not require auth.
 		r.Post("/auth/login", h.handleLogin)
+
+		// Public: broadcast session info (no auth, validated via broadcast token).
+		r.Get("/sessions/{id}/broadcast", h.handleBroadcastInfo)
 
 		// Test-only: reset endpoint truncates all tables.
 		if h.TestMode {
@@ -116,6 +133,9 @@ func (h *Handler) Router() *chi.Mux {
 
 			r.Get("/connections", h.handleListConnections)
 			r.Post("/sessions/{id}/assign", h.handleAssignSession)
+
+			// Broadcast
+			r.Post("/sessions/{id}/broadcast-token", h.handleCreateBroadcastToken)
 
 			// OpenAPI
 			r.Get("/openapi.json", h.handleOpenAPI)
@@ -591,17 +611,18 @@ type sessionClientResponse struct {
 }
 
 type sessionResponse struct {
-	ID           string                   `json:"id"`
-	TemplateID   string                   `json:"template_id"`
-	TemplateName string                   `json:"template_name,omitempty"`
-	Name         string                   `json:"name"`
-	Status       crosstalk.SessionStatus  `json:"status"`
-	ClientCount  int                      `json:"client_count"`
-	TotalRoles   int                      `json:"total_roles"`
-	Clients      []sessionClientResponse   `json:"clients,omitempty"`
-	CreatedAt    time.Time                `json:"created_at"`
-	EndedAt      *time.Time               `json:"ended_at,omitempty"`
-	Recording    *crosstalk.RecordingInfo `json:"recording,omitempty"`
+	ID            string                   `json:"id"`
+	TemplateID    string                   `json:"template_id"`
+	TemplateName  string                   `json:"template_name,omitempty"`
+	Name          string                   `json:"name"`
+	Status        crosstalk.SessionStatus  `json:"status"`
+	ClientCount   int                      `json:"client_count"`
+	ListenerCount int                      `json:"listener_count"`
+	TotalRoles    int                      `json:"total_roles"`
+	Clients       []sessionClientResponse   `json:"clients,omitempty"`
+	CreatedAt     time.Time                `json:"created_at"`
+	EndedAt       *time.Time               `json:"ended_at,omitempty"`
+	Recording     *crosstalk.RecordingInfo `json:"recording,omitempty"`
 }
 
 func (h *Handler) toSessionResponse(s *crosstalk.Session) sessionResponse {
@@ -632,6 +653,9 @@ func (h *Handler) toSessionResponse(s *crosstalk.Session) sessionResponse {
 	}
 	if resp.Clients == nil {
 		resp.Clients = []sessionClientResponse{}
+	}
+	if h.Orchestrator != nil {
+		resp.ListenerCount = h.Orchestrator.ListenerCount(s.ID)
 	}
 	return resp
 }
@@ -772,6 +796,117 @@ func (h *Handler) handleAssignSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "assigned"})
+}
+
+// --- Broadcast token handler ---
+
+// handleCreateBroadcastToken generates a short-lived broadcast token for
+// the given session. The token allows unauthenticated listeners to join
+// the session's broadcast stream.
+//
+// POST /api/sessions/{id}/broadcast-token
+func (h *Handler) handleCreateBroadcastToken(w http.ResponseWriter, r *http.Request) {
+	sessionID := chi.URLParam(r, "id")
+
+	if h.BroadcastTokenStore == nil {
+		writeError(w, http.StatusInternalServerError, "broadcast token store not configured")
+		return
+	}
+
+	// Verify session exists and is not ended.
+	session, err := h.SessionService.FindSessionByID(sessionID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "session not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to find session")
+		return
+	}
+	if session.Status == crosstalk.SessionEnded {
+		writeError(w, http.StatusBadRequest, "session has ended")
+		return
+	}
+
+	// Verify template has at least one broadcast mapping.
+	tmpl, err := h.SessionTemplateService.FindTemplateByID(session.TemplateID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to find session template")
+		return
+	}
+
+	hasBroadcast := false
+	for _, m := range tmpl.Mappings {
+		if m.Sink == "broadcast" {
+			hasBroadcast = true
+			break
+		}
+	}
+	if !hasBroadcast {
+		writeError(w, http.StatusBadRequest, "session template has no broadcast mappings")
+		return
+	}
+
+	// Parse the broadcast token lifetime from config.
+	ttl, err := time.ParseDuration(h.Config.Auth.BroadcastTokenLifetime)
+	if err != nil {
+		ttl = 15 * time.Minute
+	}
+
+	bt, err := h.BroadcastTokenStore.CreateBroadcastToken(sessionID, ttl)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create broadcast token")
+		return
+	}
+
+	// Build the listener URL from the request's Host header.
+	scheme := "https"
+	if r.TLS == nil {
+		scheme = "http"
+	}
+	// Respect X-Forwarded-Proto if present.
+	if fwdProto := r.Header.Get("X-Forwarded-Proto"); fwdProto != "" {
+		scheme = fwdProto
+	}
+	host := r.Host
+	listenURL := fmt.Sprintf("%s://%s/listen/%s?token=%s", scheme, host, sessionID, bt.Token)
+
+	slog.Info("broadcast token created",
+		"session_id", sessionID,
+		"expires_at", bt.ExpiresAt.Format(time.RFC3339),
+	)
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"token":      bt.Token,
+		"url":        listenURL,
+		"expires_at": bt.ExpiresAt.Format(time.RFC3339),
+	})
+}
+
+// handleBroadcastInfo returns public session info for broadcast listeners.
+// This endpoint is public (no auth middleware) — it only requires a valid
+// session ID in the path.
+//
+// GET /api/sessions/{id}/broadcast
+func (h *Handler) handleBroadcastInfo(w http.ResponseWriter, r *http.Request) {
+	sessionID := chi.URLParam(r, "id")
+
+	session, err := h.SessionService.FindSessionByID(sessionID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "session not found")
+		return
+	}
+
+	if session.Status == crosstalk.SessionEnded {
+		writeError(w, http.StatusGone, "session has ended")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"session_id": session.ID,
+		"name":       session.Name,
+		"status":     session.Status,
+	})
 }
 
 // --- OpenAPI handler ---
