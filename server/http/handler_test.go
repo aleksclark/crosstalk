@@ -132,8 +132,12 @@ func TestCreateSession(t *testing.T) {
 }
 
 func TestGetSession(t *testing.T) {
-	h, _, ts, _, sessSvc := newTestHandler(t)
+	h, _, ts, tmplSvc, sessSvc := newTestHandler(t)
 	token := authToken(t, ts)
+
+	tmplSvc.FindTemplateByIDFn = func(id string) (*crosstalk.SessionTemplate, error) {
+		return nil, nil
+	}
 
 	now := time.Now().UTC()
 	sessSvc.FindSessionByIDFn = func(id string) (*crosstalk.Session, error) {
@@ -195,8 +199,12 @@ func (m *mockOrchestrator) ListenerCount(sessionID string) int {
 }
 
 func TestGetSession_WithRecordingStatus(t *testing.T) {
-	h, _, ts, _, sessSvc := newTestHandler(t)
+	h, _, ts, tmplSvc, sessSvc := newTestHandler(t)
 	token := authToken(t, ts)
+
+	tmplSvc.FindTemplateByIDFn = func(id string) (*crosstalk.SessionTemplate, error) {
+		return nil, nil
+	}
 
 	orch := &mockOrchestrator{
 		recordingStatusFn: func(id string) *crosstalk.RecordingInfo {
