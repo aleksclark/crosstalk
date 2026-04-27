@@ -81,7 +81,7 @@ test.describe("Dashboard page", () => {
       timeout: 10000,
     });
 
-    await page.click("text=View");
+    await page.locator("text=View").first().click();
     await expect(page).toHaveURL(/\/sessions\/[^/]+$/, { timeout: 10000 });
   });
 

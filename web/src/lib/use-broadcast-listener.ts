@@ -36,6 +36,7 @@ export function useBroadcastListener(options: UseBroadcastListenerOptions): UseB
   const gainNodeRef = useRef<GainNode | null>(null)
   const audioElRef = useRef<HTMLAudioElement | null>(null)
   const connectedRef = useRef(false)
+  const reachedConnectedRef = useRef(false)
 
   const setVolume = useCallback((v: number) => {
     setVolumeState(v)
@@ -61,6 +62,7 @@ export function useBroadcastListener(options: UseBroadcastListenerOptions): UseB
 
   const disconnect = useCallback(() => {
     connectedRef.current = false
+    reachedConnectedRef.current = false
 
     if (pcRef.current) {
       pcRef.current.close()
@@ -130,6 +132,7 @@ export function useBroadcastListener(options: UseBroadcastListenerOptions): UseB
       pc.oniceconnectionstatechange = () => {
         const state = pc.iceConnectionState
         if (state === 'connected' || state === 'completed') {
+          reachedConnectedRef.current = true
           setStatus('connected')
         } else if (state === 'disconnected' || state === 'closed') {
           setStatus('disconnected')
@@ -233,7 +236,7 @@ export function useBroadcastListener(options: UseBroadcastListenerOptions): UseB
 
       ws.onclose = (event) => {
         // If we never reached connected state, this is likely an auth error
-        if (status === 'loading' || status === 'connecting') {
+        if (!reachedConnectedRef.current) {
           if (event.code === 1008 || event.code === 4001) {
             setError('Invalid or expired link')
           } else {

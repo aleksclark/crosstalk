@@ -77,7 +77,7 @@ test.describe("Peer assignment", () => {
     );
     expect(resp.status()).toBe(400);
     const body = await resp.json();
-    expect(body.error).toContain("peer not found");
+    expect(body.error.message).toContain("peer not found");
   });
 
   test("session detail page shows assign peers card", async ({ page, request }) => {
@@ -92,8 +92,10 @@ test.describe("Peer assignment", () => {
     const session = await sessionResp.json();
 
     await page.goto(`/sessions/${session.id}`);
-    await expect(page.locator("text=Assign Peers")).toBeVisible();
-    await expect(page.locator('[data-testid="assign-role-select"]').first()).toBeVisible();
+    await expect(page.locator("text=Assign Peers")).toBeVisible({ timeout: 10_000 });
+    // Note: assign-role-select only appears when peers are connected to the server.
+    // In headless CI there are no WebRTC peers, so we only verify the card renders.
+    await expect(page.locator("text=No peers connected to server")).toBeVisible();
   });
 
   test("session connect page shows session peers card", async ({ page, request }) => {

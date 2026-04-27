@@ -119,7 +119,7 @@ test.describe("Session list page", () => {
       timeout: 10000,
     });
 
-    await page.click("text=Connect");
+    await page.locator('[data-testid="session-row"] button', { hasText: 'Connect' }).click();
     await expect(page).toHaveURL(
       new RegExp(`/sessions/${session.id}/connect`),
       { timeout: 10000 },

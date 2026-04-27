@@ -903,9 +903,9 @@ func (h *Handler) handleBroadcastInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"session_id": session.ID,
-		"name":       session.Name,
-		"status":     session.Status,
+		"session_id":   session.ID,
+		"session_name": session.Name,
+		"status":       session.Status,
 	})
 }
 

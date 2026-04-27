@@ -90,7 +90,7 @@ test.describe("Template CRUD", () => {
     await page.click('[data-testid="template-row"] >> text=Delete');
 
     // Verify the template is removed from the list.
-    await expect(page.locator("text=To Be Deleted")).not.toBeVisible();
-    await expect(page.locator("text=No templates defined")).toBeVisible();
+    await expect(page.locator("text=To Be Deleted")).not.toBeVisible({ timeout: 10000 });
+    await expect(page.locator("text=No templates defined")).toBeVisible({ timeout: 10000 });
   });
 });

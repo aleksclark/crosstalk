@@ -249,7 +249,7 @@ func TestBroadcastInfo_Success(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	info := apiJSON[map[string]any](t, resp)
 	assert.Equal(t, sessionID, info["session_id"])
-	assert.Equal(t, "Info Session", info["name"])
+	assert.Equal(t, "Info Session", info["session_name"])
 	assert.Equal(t, "waiting", info["status"])
 }
 
