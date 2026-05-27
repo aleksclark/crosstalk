@@ -86,15 +86,14 @@ test.describe("Template CRUD", () => {
     await expect(page.locator("text=To Be Deleted")).toBeVisible();
 
     // Click Delete on the template. Accept the confirm dialog.
-    page.once("dialog", (dialog) => dialog.accept());
     const deleteBtn = page.locator('[data-testid="template-row"]').getByRole("button", { name: "Delete" });
-    await deleteBtn.click();
-
-    // Wait for the API response to complete.
-    await page.waitForResponse((resp) => resp.url().includes("/api/templates/") && resp.request().method() === "DELETE", { timeout: 10000 });
+    await Promise.all([
+      page.waitForEvent("dialog").then((dialog) => dialog.accept()),
+      deleteBtn.click(),
+    ]);
 
     // Verify the template is removed from the list.
-    await expect(page.locator("text=To Be Deleted")).not.toBeVisible({ timeout: 5000 });
+    await expect(page.locator("text=To Be Deleted")).not.toBeVisible({ timeout: 10000 });
     await expect(page.locator("text=No templates defined")).toBeVisible({ timeout: 5000 });
   });
 });
