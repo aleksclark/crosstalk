@@ -12,13 +12,19 @@ const ADMIN_PASSWORD = "admin-password";
 /**
  * Reset the server DB and re-seed admin user.
  * Returns the seed API token for direct API calls.
+ * Retries up to 3 times on failure (handles race with lingering connections).
  */
 export async function resetServer(
   request: APIRequestContext,
 ): Promise<string> {
-  const resp = await request.post(`${BASE_URL}/api/test/reset`);
-  expect(resp.ok()).toBeTruthy();
-  const body = await resp.json();
+  let resp;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    resp = await request.post(`${BASE_URL}/api/test/reset`);
+    if (resp.ok()) break;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  expect(resp!.ok()).toBeTruthy();
+  const body = await resp!.json();
   return body.token as string;
 }
 
