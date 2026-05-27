@@ -121,7 +121,7 @@ test.describe("Session connect page", () => {
     await expect(
       page.locator('[data-testid="incoming-channels"]'),
     ).toBeVisible({ timeout: 10000 });
-    await expect(page.locator("text=Incoming Channels")).toBeVisible();
+    await expect(page.getByText("Incoming Channels", { exact: true })).toBeVisible();
   });
 
   test("should display volume controls section", async ({ page, request }) => {
@@ -130,7 +130,7 @@ test.describe("Session connect page", () => {
     await expect(
       page.locator('[data-testid="volume-controls"]'),
     ).toBeVisible({ timeout: 10000 });
-    await expect(page.locator("text=Volume Controls")).toBeVisible();
+    await expect(page.getByText("Volume Controls", { exact: true })).toBeVisible();
   });
 
   test("should display session logs panel with filter", async ({

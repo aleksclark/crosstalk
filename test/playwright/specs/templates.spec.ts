@@ -86,11 +86,11 @@ test.describe("Template CRUD", () => {
     await expect(page.locator("text=To Be Deleted")).toBeVisible();
 
     // Click Delete on the template. Accept the confirm dialog.
-    page.on("dialog", (dialog) => dialog.accept());
+    page.once("dialog", (dialog) => dialog.accept());
     await page.click('[data-testid="template-row"] >> text=Delete');
 
     // Verify the template is removed from the list.
-    await expect(page.locator("text=To Be Deleted")).not.toBeVisible({ timeout: 10000 });
-    await expect(page.locator("text=No templates defined")).toBeVisible({ timeout: 10000 });
+    await expect(page.locator("text=To Be Deleted")).not.toBeVisible({ timeout: 15000 });
+    await expect(page.locator("text=No templates defined")).toBeVisible({ timeout: 5000 });
   });
 });

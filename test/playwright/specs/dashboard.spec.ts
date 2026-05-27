@@ -81,7 +81,8 @@ test.describe("Dashboard page", () => {
       timeout: 10000,
     });
 
-    await page.locator("text=View").first().click();
+    const viewBtn = page.locator("tr", { hasText: "Viewable Session" }).getByRole("button", { name: "View" });
+    await viewBtn.click();
     await expect(page).toHaveURL(/\/sessions\/[^/]+$/, { timeout: 10000 });
   });
 
