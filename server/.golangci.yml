@@ -1,0 +1,33 @@
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+  settings:
+    errcheck:
+      exclude-functions:
+        - (io.Closer).Close
+        - (*database/sql.Rows).Close
+        - (*database/sql.DB).Close
+        - (*net/http.Server).Shutdown
+        - (*github.com/aleksclark/crosstalk/server/sqlite.DB).Close
+        - (*nhooyr.io/websocket.Conn).Close
+    staticcheck:
+      checks:
+        - "all"
+        - "-SA1019"
+        - "-QF1003"
+        - "-ST1003"
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+          - unused
+
+formatters:
+  enable: []

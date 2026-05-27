@@ -36,7 +36,7 @@ func EmbedHandler(fsys fs.FS) http.Handler {
 			fileServer.ServeHTTP(w, r)
 			return
 		}
-		f.Close()
+		f.Close() //nolint:errcheck
 
 		// File exists — serve it directly.
 		fileServer.ServeHTTP(w, r)

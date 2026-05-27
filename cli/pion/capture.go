@@ -23,6 +23,8 @@ import (
 //
 // Returns a stop function that kills ffmpeg and closes the UDP listener.
 // The stop function is safe to call multiple times.
+//
+//nolint:unused // will be wired in a future phase
 func startCapture(ctx context.Context, sourceName string, track *webrtc.TrackLocalStaticRTP) (stop func(), err error) {
 	if track == nil {
 		return nil, fmt.Errorf("track is nil")
