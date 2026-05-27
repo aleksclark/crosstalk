@@ -2,22 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { DashboardPage } from './DashboardPage'
-import type { Client, Session, SessionTemplate } from '@/lib/api/types'
+import type { Session, SessionTemplate } from '@/lib/api/types'
 
 const mockNavigate = vi.fn()
-
-const mockClients: Client[] = [
-  {
-    id: 'client-1',
-    role: 'translator',
-    session: 'session-1',
-    sources: ['mic'],
-    sinks: ['speakers'],
-    codecs: ['opus'],
-    status: 'connected',
-    connected_at: '2026-04-21T10:00:00Z',
-  },
-]
 
 const mockSessions: Session[] = [
   {
@@ -49,12 +36,10 @@ const mockTemplates: SessionTemplate[] = [
 ]
 
 vi.mock('@/lib/api/client', () => ({
-  getClients: vi.fn((): Promise<Client[]> => Promise.resolve(mockClients)),
   getSessions: () => Promise.resolve(mockSessions),
   getTemplates: () => Promise.resolve(mockTemplates),
-  getServerStatus: () => Promise.resolve({ uptime: 3661, active_sessions: 1, connected_clients: 1, version: 'v0.1.0' }),
+  getServerStatus: () => Promise.resolve({ uptime: 3661, active_sessions: 1, connected_clients: 1, connections: 1, version: 'v0.1.0' }),
   createSession: vi.fn().mockResolvedValue({ id: 'new-session', name: 'Quick Test' }),
-  assignSession: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('@/lib/use-auth', () => ({
@@ -92,7 +77,7 @@ describe('DashboardPage', () => {
     })
   })
 
-  it('renders client table with mock data', async () => {
+  it('renders recent sessions table', async () => {
     render(
       <MemoryRouter>
         <DashboardPage />
@@ -100,14 +85,13 @@ describe('DashboardPage', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByTestId('client-row')).toBeInTheDocument()
-      expect(screen.getByText('client-1')).toBeInTheDocument()
-      expect(screen.getByText('translator')).toBeInTheDocument()
+      expect(screen.getByText('Test Session')).toBeInTheDocument()
+      expect(screen.getByText('active')).toBeInTheDocument()
     })
   })
 
-  it('quick test button creates session, assigns peer, and navigates', async () => {
-    const { createSession, assignSession } = await import('@/lib/api/client')
+  it('quick test button creates session and navigates', async () => {
+    const { createSession } = await import('@/lib/api/client')
 
     render(
       <MemoryRouter>
@@ -125,7 +109,6 @@ describe('DashboardPage', () => {
       expect(createSession).toHaveBeenCalledWith(
         expect.objectContaining({ template_id: 'tmpl-1' }),
       )
-      expect(assignSession).toHaveBeenCalledWith('new-session', { peer_id: 'client-1', role: 'studio' })
       expect(mockNavigate).toHaveBeenCalledWith('/sessions/new-session/connect?role=translator')
     })
   })

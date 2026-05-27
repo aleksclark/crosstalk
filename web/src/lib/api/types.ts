@@ -9,6 +9,7 @@ export interface User {
 export interface ApiToken {
   id: string
   name: string
+  client_id?: string
   created_at: string
   last_used_at: string | null
 }
@@ -123,24 +124,26 @@ export interface ChannelBinding {
 }
 
 export interface Client {
-  name?: string
   id: string
-  client_id?: string
-  role: string
-  session: string
-  session_id?: string
-  sources: string[]
-  sinks: string[]
-  codecs: string[]
-  status: string
-  connected_at: string
-  source_name?: string
-  sink_name?: string
-  created_at?: string
-  [key: string]: unknown
+  name: string
+  owner_id?: string
+  source_name: string
+  sink_name: string
+  created_at: string
+  updated_at?: string
 }
 
-export type ConnectedClient = Client
+export interface ConnectedClient {
+  id: string
+  client_id?: string
+  client_name?: string
+  session_id?: string
+  role?: string
+  connected_at: string
+  sources: Array<{ name: string; type: string }>
+  sinks: Array<{ name: string; type: string }>
+  codecs: string[]
+}
 
 export interface ServerStatus {
   connections?: number

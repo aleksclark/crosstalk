@@ -40,7 +40,7 @@ export function DashboardPage() {
         setSessions(s)
         setTemplates(t)
         setServerStatus(status)
-      } catch {
+      } catch { /* polling errors handled silently */
       } finally {
         if (!cancelled) setLoading(false)
       }

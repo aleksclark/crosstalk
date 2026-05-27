@@ -180,6 +180,11 @@ func TestPeerConnection_DataChannelEcho(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { server.Close() }) //nolint:errcheck
 
+	// Install an echo handler on the server's control data channel.
+	server.OnControlMessage(func(msg []byte) {
+		_ = server.SendControl(msg)
+	})
+
 	client := createClientPC(t)
 
 	// The server creates the "control" data channel during

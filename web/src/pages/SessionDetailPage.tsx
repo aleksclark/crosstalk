@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getSession, getTemplate, endSession, getConnections, assignSession } from '@/lib/api/client'
-import type { PeerConnection } from '@/lib/api/client'
-import type { SessionDetail, Role, Mapping } from '@/lib/api/types'
+import type { SessionDetail, Role, Mapping, ConnectedClient } from '@/lib/api/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
@@ -15,7 +14,7 @@ export function SessionDetailPage() {
   const navigate = useNavigate()
   const [session, setSession] = useState<SessionDetail | null>(null)
   const [loading, setLoading] = useState(true)
-  const [peers, setPeers] = useState<PeerConnection[]>([])
+  const [peers, setPeers] = useState<ConnectedClient[]>([])
   const [templateRoles, setTemplateRoles] = useState<Role[]>([])
   const [connectRole, setConnectRole] = useState('')
   const [assignRole, setAssignRole] = useState('studio')
