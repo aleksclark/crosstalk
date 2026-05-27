@@ -73,8 +73,10 @@ test.describe("Navigation and layout", () => {
     await page.locator('nav >> text=Templates').click();
     await expect(page.locator("h1")).toContainText("Templates", { timeout: 10000 });
 
-    // The active link should have the accent background styling.
     const templatesLink = page.locator('nav a', { hasText: 'Templates' });
-    await expect(templatesLink).toHaveAttribute("class", /bg-accent/, { timeout: 5000 });
+    await expect(templatesLink).toHaveAttribute("aria-current", "page", { timeout: 5000 });
+
+    const dashboardLink = page.locator('nav a', { hasText: 'Dashboard' });
+    await expect(dashboardLink).not.toHaveAttribute("aria-current", "page");
   });
 });

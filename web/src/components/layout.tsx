@@ -28,20 +28,24 @@ export function Layout({ children }: { children: React.ReactNode }) {
             CrossTalk
           </Link>
           <nav className="flex items-center gap-1">
-            {navItems.map((item) => (
-              <Link
-                key={item.path}
-                to={item.path}
-                className={cn(
-                  'px-3 py-2 text-sm rounded-md transition-colors',
-                  location.pathname.startsWith(item.path)
-                    ? 'bg-accent text-accent-foreground'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
-                )}
-              >
-                {item.label}
-              </Link>
-            ))}
+            {navItems.map((item) => {
+              const isActive = location.pathname.startsWith(item.path)
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  aria-current={isActive ? 'page' : undefined}
+                  className={cn(
+                    'px-3 py-2 text-sm rounded-md transition-colors',
+                    isActive
+                      ? 'bg-accent text-accent-foreground'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
+                  )}
+                >
+                  {item.label}
+                </Link>
+              )
+            })}
           </nav>
           <div className="ml-auto flex items-center gap-4">
             <span className="text-sm text-muted-foreground">{user?.username}</span>
