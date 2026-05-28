@@ -70,13 +70,13 @@ test.describe("Navigation and layout", () => {
   });
 
   test("should highlight active nav link", async ({ page }) => {
-    await page.goto("/templates");
+    await page.locator('nav >> text=Templates').click();
     await expect(page.locator("h1")).toContainText("Templates", { timeout: 10000 });
 
-    const templatesLink = page.locator('nav >> text=Templates');
-    await expect(templatesLink).toHaveClass(/bg-accent/, { timeout: 5000 });
+    const templatesLink = page.locator('nav a', { hasText: 'Templates' });
+    await expect(templatesLink).toHaveAttribute("aria-current", "page", { timeout: 5000 });
 
-    const dashboardLink = page.locator('nav >> text=Dashboard');
-    await expect(dashboardLink).not.toHaveClass(/bg-accent/);
+    const dashboardLink = page.locator('nav a', { hasText: 'Dashboard' });
+    await expect(dashboardLink).not.toHaveAttribute("aria-current", "page");
   });
 });

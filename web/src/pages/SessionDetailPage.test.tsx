@@ -25,6 +25,7 @@ vi.mock('@/lib/api/client', () => ({
     ],
   }),
   endSession: vi.fn().mockResolvedValue(undefined),
+  getConnections: vi.fn().mockResolvedValue([]),
 }))
 
 vi.mock('@/lib/use-auth', () => ({

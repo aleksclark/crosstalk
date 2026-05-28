@@ -4,6 +4,8 @@
 package mock
 
 import (
+	"sync"
+
 	crosstalk "github.com/aleksclark/crosstalk/server"
 )
 
@@ -146,6 +148,8 @@ func (s *SessionTemplateService) FindDefaultTemplate() (*crosstalk.SessionTempla
 
 // SessionService is a mock implementation of crosstalk.SessionService.
 type SessionService struct {
+	mu sync.Mutex
+
 	FindSessionByIDFn      func(id string) (*crosstalk.Session, error)
 	FindSessionByIDInvoked bool
 
@@ -162,30 +166,52 @@ type SessionService struct {
 	EndSessionInvoked bool
 }
 
+// SetFindSessionByIDFn safely updates the FindSessionByIDFn mock from tests.
+func (s *SessionService) SetFindSessionByIDFn(fn func(id string) (*crosstalk.Session, error)) {
+	s.mu.Lock()
+	s.FindSessionByIDFn = fn
+	s.mu.Unlock()
+}
+
 func (s *SessionService) FindSessionByID(id string) (*crosstalk.Session, error) {
+	s.mu.Lock()
 	s.FindSessionByIDInvoked = true
-	return s.FindSessionByIDFn(id)
+	fn := s.FindSessionByIDFn
+	s.mu.Unlock()
+	return fn(id)
 }
 
 func (s *SessionService) ListSessions() ([]crosstalk.Session, error) {
+	s.mu.Lock()
 	s.ListSessionsInvoked = true
-	return s.ListSessionsFn()
+	fn := s.ListSessionsFn
+	s.mu.Unlock()
+	return fn()
 }
 
 func (s *SessionService) CreateSession(session *crosstalk.Session) error {
+	s.mu.Lock()
 	s.CreateSessionInvoked = true
-	return s.CreateSessionFn(session)
+	fn := s.CreateSessionFn
+	s.mu.Unlock()
+	return fn(session)
 }
 
 func (s *SessionService) UpdateSessionStatus(id string, status crosstalk.SessionStatus) error {
+	s.mu.Lock()
 	s.UpdateSessionStatusInvoked = true
-	if s.UpdateSessionStatusFn != nil {
-		return s.UpdateSessionStatusFn(id, status)
+	fn := s.UpdateSessionStatusFn
+	s.mu.Unlock()
+	if fn != nil {
+		return fn(id, status)
 	}
 	return nil
 }
 
 func (s *SessionService) EndSession(id string) error {
+	s.mu.Lock()
 	s.EndSessionInvoked = true
-	return s.EndSessionFn(id)
+	fn := s.EndSessionFn
+	s.mu.Unlock()
+	return fn(id)
 }

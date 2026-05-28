@@ -217,7 +217,7 @@ func TestControlHandler_JoinSession_Success(t *testing.T) {
 	env := setupControlTest(t)
 
 	// Configure mock to return a valid session.
-	env.sessions.FindSessionByIDFn = func(id string) (*crosstalk.Session, error) {
+	env.sessions.SetFindSessionByIDFn(func(id string) (*crosstalk.Session, error) {
 		if id == "session-123" {
 			return &crosstalk.Session{
 				ID:     "session-123",
@@ -226,7 +226,7 @@ func TestControlHandler_JoinSession_Success(t *testing.T) {
 			}, nil
 		}
 		return nil, fmt.Errorf("not found")
-	}
+	})
 
 	respCh := make(chan []byte, 1)
 	env.controlDC.OnMessage(func(msg webrtc.DataChannelMessage) {
@@ -269,9 +269,9 @@ func TestControlHandler_JoinSession_NotFound(t *testing.T) {
 	env := setupControlTest(t)
 
 	// Configure mock to return nil (session not found).
-	env.sessions.FindSessionByIDFn = func(id string) (*crosstalk.Session, error) {
+	env.sessions.SetFindSessionByIDFn(func(id string) (*crosstalk.Session, error) {
 		return nil, fmt.Errorf("not found")
-	}
+	})
 
 	respCh := make(chan []byte, 1)
 	env.controlDC.OnMessage(func(msg webrtc.DataChannelMessage) {

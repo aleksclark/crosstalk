@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import { getSession, endSession, getConnections, assignSession } from '@/lib/api/client'
-import type { PeerConnection } from '@/lib/api/client'
 import { useWebRTC } from '@/lib/use-webrtc'
-import type { SessionDetail } from '@/lib/api/types'
+import type { SessionDetail, ConnectedClient } from '@/lib/api/types'
 import type { LogEntryMessage } from '@/lib/webrtc-types'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
@@ -18,7 +17,7 @@ export function SessionConnectPage() {
 
   const [session, setSession] = useState<SessionDetail | null>(null)
   const [loading, setLoading] = useState(true)
-  const [peers, setPeers] = useState<PeerConnection[]>([])
+  const [peers, setPeers] = useState<ConnectedClient[]>([])
   const [assignRole, setAssignRole] = useState('studio')
   const [assignError, setAssignError] = useState('')
 

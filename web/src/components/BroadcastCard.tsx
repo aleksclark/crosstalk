@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import { createBroadcastToken } from '@/lib/api/client'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
@@ -20,33 +20,31 @@ export function BroadcastCard({ sessionId, hasBroadcastMapping, listenerCount = 
   const [copied, setCopied] = useState(false)
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const updateCountdown = useCallback(() => {
-    if (!expiresAt) return
-    const diff = expiresAt.getTime() - Date.now()
-    if (diff <= 0) {
-      setCountdown('Expired')
-      if (countdownRef.current) {
-        clearInterval(countdownRef.current)
-        countdownRef.current = null
-      }
-      return
-    }
-    const minutes = Math.floor(diff / 60000)
-    const seconds = Math.floor((diff % 60000) / 1000)
-    setCountdown(`${minutes}:${seconds.toString().padStart(2, '0')}`)
-  }, [expiresAt])
-
   useEffect(() => {
     if (!expiresAt) return
-    updateCountdown()
-    countdownRef.current = setInterval(updateCountdown, 1000)
+    const tick = () => {
+      const diff = expiresAt.getTime() - Date.now()
+      if (diff <= 0) {
+        setCountdown('Expired')
+        if (countdownRef.current) {
+          clearInterval(countdownRef.current)
+          countdownRef.current = null
+        }
+        return
+      }
+      const minutes = Math.floor(diff / 60000)
+      const seconds = Math.floor((diff % 60000) / 1000)
+      setCountdown(`${minutes}:${seconds.toString().padStart(2, '0')}`)
+    }
+    tick()
+    countdownRef.current = setInterval(tick, 1000)
     return () => {
       if (countdownRef.current) {
         clearInterval(countdownRef.current)
         countdownRef.current = null
       }
     }
-  }, [expiresAt, updateCountdown])
+  }, [expiresAt])
 
   if (!hasBroadcastMapping) return null
 

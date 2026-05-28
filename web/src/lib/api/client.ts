@@ -10,6 +10,7 @@ import type {
   SessionDetail,
   SessionCreateRequest,
   Client,
+  ConnectedClient,
   ServerStatus,
   ApiMapping,
   BroadcastTokenResponse,
@@ -109,7 +110,7 @@ export async function getTokens(): Promise<ApiToken[]> {
   return request('/api/tokens')
 }
 
-export async function createToken(data: { name: string }): Promise<ApiTokenCreated> {
+export async function createToken(data: { name: string; client_id?: string }): Promise<ApiTokenCreated> {
   return request('/api/tokens', { method: 'POST', body: JSON.stringify(data) })
 }
 
@@ -196,7 +197,7 @@ export interface PeerConnection {
   client_id?: string
 }
 
-export async function getConnections(): Promise<PeerConnection[]> {
+export async function getConnections(): Promise<ConnectedClient[]> {
   return request('/api/connections')
 }
 
@@ -207,6 +208,18 @@ export async function getClients(): Promise<Client[]> {
 
 export async function getClient(id: string): Promise<Client> {
   return request(`/api/clients/${id}`)
+}
+
+export async function createClient(data: { name: string; source_name: string; sink_name: string }): Promise<Client> {
+  return request('/api/clients', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function updateClient(id: string, data: { name: string; source_name: string; sink_name: string }): Promise<Client> {
+  return request(`/api/clients/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+}
+
+export async function deleteClient(id: string): Promise<void> {
+  return request(`/api/clients/${id}`, { method: 'DELETE' })
 }
 
 // Server Status

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getClient, createClient, updateClient, getTokens, createToken, revokeToken, getConnections } from '@/lib/api/client'
@@ -85,10 +84,10 @@ export function ClientEditorPage() {
     try {
       const result = await createToken({ name: newTokenName, client_id: id })
       setCreatedToken(result)
-      setTokens((prev) => [...prev, { id: result.id, name: result.name, client_id: id, created_at: new Date().toISOString() }])
+      setTokens((prev) => [...prev, { id: result.id, name: result.name, client_id: id, created_at: new Date().toISOString(), last_used_at: null }])
       setNewTokenName('')
       setShowCreateToken(false)
-    } catch {
+    } catch { /* token creation error handled silently */
     } finally {
       setCreatingToken(false)
     }

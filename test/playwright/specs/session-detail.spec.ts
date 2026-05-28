@@ -84,7 +84,7 @@ test.describe("Session detail page", () => {
 
     await page.goto(`/sessions/${session.id}`);
     await expect(page.locator("h1")).toContainText("Test Session", { timeout: 10_000 });
-    await expect(page.locator("text=Channel Bindings")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Channel Bindings", { exact: true })).toBeVisible({ timeout: 10_000 });
     await expect(page.locator("text=No channel bindings")).toBeVisible();
   });
 
