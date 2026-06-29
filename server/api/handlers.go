@@ -797,3 +797,67 @@ func abcToOut(a crosstalk.ABC) ABCOut {
 		CreatedAt: a.CreatedAt,
 	}
 }
+
+func recordingToOut(r crosstalk.Recording) RecordingOut {
+	return RecordingOut{
+		ID:        r.ID,
+		SessionID: r.SessionID,
+		SourceID:  r.SourceID,
+		ChannelID: r.ChannelID,
+		FilePath:  r.FilePath,
+		StartedAt: r.StartedAt,
+		EndedAt:   r.EndedAt,
+		SizeBytes: r.SizeBytes,
+	}
+}
+
+// --- Recording Handlers ---
+
+func (s *Server) handleListRecordings(ctx context.Context, input *ListRecordingsRequest) (*ListRecordingsResponse, error) {
+	claims, err := s.requireAuth(ctx, input.Authorization)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.requireRole(claims, "admin", "translator"); err != nil {
+		return nil, err
+	}
+
+	if s.services.Recordings == nil {
+		return nil, huma.Error500InternalServerError("recordings service not configured")
+	}
+
+	recordings, err := s.services.Recordings.FindBySession(ctx, input.ID)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to list recordings")
+	}
+
+	resp := &ListRecordingsResponse{}
+	resp.Body.Data = make([]RecordingOut, len(recordings))
+	for i, r := range recordings {
+		resp.Body.Data[i] = recordingToOut(r)
+	}
+	return resp, nil
+}
+
+func (s *Server) handleDownloadRecording(ctx context.Context, input *DownloadRecordingRequest) (*DownloadRecordingResponse, error) {
+	claims, err := s.requireAuth(ctx, input.Authorization)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.requireRole(claims, "admin"); err != nil {
+		return nil, err
+	}
+
+	if s.services.Recordings == nil {
+		return nil, huma.Error500InternalServerError("recordings service not configured")
+	}
+
+	rec, err := s.services.Recordings.FindByID(ctx, input.ID)
+	if err != nil {
+		return nil, huma.Error404NotFound("recording not found")
+	}
+
+	resp := &DownloadRecordingResponse{}
+	resp.Body.FilePath = rec.FilePath
+	return resp, nil
+}

@@ -67,3 +67,12 @@ type RefreshTokenService interface {
 	DeleteByHash(ctx context.Context, hash string) error
 	DeleteByUserID(ctx context.Context, userID string) error
 }
+
+// RecordingService manages recording metadata.
+type RecordingService interface {
+	Create(ctx context.Context, r *Recording) error
+	FindBySession(ctx context.Context, sessionID string) ([]Recording, error)
+	FindByID(ctx context.Context, id string) (*Recording, error)
+	Update(ctx context.Context, r *Recording) error
+	List(ctx context.Context) ([]Recording, error)
+}
