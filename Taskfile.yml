@@ -1,222 +1,66 @@
 version: "3"
 
 vars:
-  K2B_HOST: '{{.K2B_HOST | default "192.168.0.109"}}'
-  SERVER_BIN: bin/ct-server
-  CLI_BIN: bin/ct-client
-  CLI_BIN_ARM64: bin/ct-client-arm64
-
-dotenv: ["dev/.env"]
+  OAPI_CODEGEN: go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.7.1
+  SPEC_FILE: api/openapi.json
 
 tasks:
-  # ── Development ──────────────────────────────────────────
-  dev:
-    desc: Start full dev environment (Vite + server container)
-    deps: [dev:vite, dev:server]
+  # ── API Client Generation ───────────────────────────────────
 
-  dev:vite:
-    desc: Start Vite dev server on host
-    dir: web
+  api:spec:
+    desc: Export OpenAPI spec from server (placeholder - runs server and dumps spec)
     cmds:
-      - pnpm install
-      - pnpm dev --host 0.0.0.0
+      - echo "TODO - start server and fetch /api/openapi.json to {{.SPEC_FILE}}"
+      - echo "For now, the spec is hand-maintained at {{.SPEC_FILE}}"
 
-  dev:server:
-    desc: Start server container via Docker Compose
+  api:generate:
+    desc: Regenerate all API clients from the OpenAPI spec
     cmds:
-      - docker compose -f dev/docker-compose.yml up -d
+      - task: api:generate:ts
+      - task: api:generate:go
 
-  dev:down:
-    desc: Stop dev environment
-    cmds:
-      - docker compose -f dev/docker-compose.yml down
-
-  dev:reset:
-    desc: Stop dev environment and wipe volumes
-    cmds:
-      - docker compose -f dev/docker-compose.yml down -v
-
-  # ── Build ────────────────────────────────────────────────
-  build:
-    desc: Full production build (web + server with embedded UI)
-    cmds:
-      - task: build:web
-      - task: build:server
-
-  build:web:
-    desc: Build web UI for production
-    dir: web
-    cmds:
-      - pnpm install --frozen-lockfile
-      - pnpm build
+  api:generate:ts:
+    desc: Generate TypeScript types and client from OpenAPI spec
+    dir: packages/api-client
     sources:
-      - src/**/*
-      - package.json
+      - ../../{{.SPEC_FILE}}
     generates:
-      - dist/**/*
-
-  build:server:
-    desc: Build server binary
-    dir: server
+      - src/types.ts
     cmds:
-      - go build -o ../{{.SERVER_BIN}} ./cmd/ct-server
+      - pnpm openapi-typescript ../../{{.SPEC_FILE}} -o src/types.ts
+    preconditions:
+      - sh: test -f ../../{{.SPEC_FILE}}
+        msg: "OpenAPI spec not found at {{.SPEC_FILE}}. Run 'task api:spec' first."
+
+  api:generate:go:
+    desc: Generate Go client from OpenAPI spec
+    dir: client
     sources:
-      - "**/*.go"
-      - ../web/dist/**/*
+      - ../{{.SPEC_FILE}}
+      - oapi-codegen.yaml
     generates:
-      - "../{{.SERVER_BIN}}"
-
-  build:cli:
-    desc: Build CLI client binary
-    dir: cli
+      - client.gen.go
     cmds:
-      - go build -o ../{{.CLI_BIN}} ./cmd/ct-client
+      - "{{.OAPI_CODEGEN}} --config oapi-codegen.yaml ../{{.SPEC_FILE}}"
+      - go mod tidy
+    preconditions:
+      - sh: test -f ../{{.SPEC_FILE}}
+        msg: "OpenAPI spec not found at {{.SPEC_FILE}}. Run 'task api:spec' first."
 
-  build:cli-arm64:
-    desc: Cross-compile CLI client for ARM64 (K2B)
-    dir: cli
-    env:
-      GOOS: linux
-      GOARCH: arm64
+  api:validate:
+    desc: Verify generated clients compile
     cmds:
-      - go build -o ../{{.CLI_BIN_ARM64}} ./cmd/ct-client
+      - task: api:validate:ts
+      - task: api:validate:go
 
-  # ── Code Generation ──────────────────────────────────────
-  generate:
-    desc: Run all code generation
+  api:validate:ts:
+    desc: Typecheck the generated TypeScript client
+    dir: packages/api-client
     cmds:
-      - task: generate:proto
+      - npx tsc --noEmit
 
-  generate:proto:
-    desc: Generate Go types from Protobuf
+  api:validate:go:
+    desc: Build-check the generated Go client
+    dir: client
     cmds:
-      - mkdir -p proto/gen/go/crosstalk/v1
-      - >-
-        protoc
-        --go_out=proto/gen/go --go_opt=paths=source_relative
-        -I proto
-        proto/crosstalk/v1/*.proto
-    sources:
-      - proto/crosstalk/v1/*.proto
-    generates:
-      - proto/gen/go/**/*
-
-  # ── Lint ─────────────────────────────────────────────────
-  lint:
-    desc: Run all linters
-    cmds:
-      - task: lint:go
-      - task: lint:web
-
-  lint:go:
-    desc: Run golangci-lint on Go code
-    cmds:
-      - cd server && golangci-lint run ./...
-      - cd cli && golangci-lint run ./...
-
-  lint:web:
-    desc: Run ESLint + TypeScript type-check
-    dir: web
-    cmds:
-      - pnpm run lint
-      - pnpm run typecheck
-
-  # ── Test ─────────────────────────────────────────────────
-  test:
-    desc: Run all tests (unit)
-    cmds:
-      - task: test:unit
-
-  test:unit:
-    desc: Run all unit tests
-    cmds:
-      - task: test:unit:go
-      - task: test:unit:web
-
-  test:unit:go:
-    desc: Run Go unit tests
-    cmds:
-      - cd server && go test ./...
-      - cd cli && go test ./...
-
-  test:unit:web:
-    desc: Run TypeScript unit tests
-    dir: web
-    cmds:
-      - pnpm test run
-
-  test:integration:
-    desc: Run integration tests (Go in-process + Docker-based Playwright)
-    cmds:
-      - echo "=== Running Go integration tests (in-process, real SQLite + Pion) ==="
-      - cd server && go test -count=1 -timeout 120s -v ./cmd/ct-server/... -run TestIntegration
-      - echo "=== Go integration tests passed ==="
-      - echo ""
-      - echo "=== Building Docker integration environment ==="
-      - docker compose -f test/docker-compose.integration.yml build
-      - echo "=== Starting Docker integration environment ==="
-      - docker compose -f test/docker-compose.integration.yml up -d --wait
-      - defer: docker compose -f test/docker-compose.integration.yml down -v
-      - echo "=== Running Playwright browser tests ==="
-      - docker compose -f test/docker-compose.integration.yml run --rm test-runner
-      - echo "=== All integration tests passed ==="
-
-  test:e2e:
-    desc: Run E2E golden tests (requires K2B board)
-    cmds:
-      - dev/scripts/run-e2e-tests.sh
-
-  # ── Deploy ───────────────────────────────────────────────
-  deploy:k2b:
-    desc: Build and deploy CLI to K2B board
-    cmds:
-      - task: build:cli-arm64
-      - k2b-board/scripts/deploy.sh {{.K2B_HOST}} {{.CLI_BIN_ARM64}}
-
-  deploy:k2b:watch:
-    desc: Watch CLI source, auto-build and deploy to K2B on change
-    cmds:
-      - dev/scripts/watch-deploy-k2b.sh
-
-  deploy:k2b:test:
-    desc: Run audio test harness on K2B
-    cmds:
-      - dev/scripts/k2b-test.sh
-
-  test:ring:
-    desc: Run ring-topology SFU forwarding e2e test (Docker)
-    cmds:
-      - echo "=== Building ring test environment ==="
-      - docker compose -f test/docker-compose.ring.yml build
-      - echo "=== Starting ring test ==="
-      - docker compose -f test/docker-compose.ring.yml up --abort-on-container-exit --exit-code-from ring-test
-      - defer: docker compose -f test/docker-compose.ring.yml down -v
-
-  # ── Utility ──────────────────────────────────────────────
-
-  deploy:fly:
-    desc: Deploy server to Fly.io
-    cmds:
-      - task: build:web
-      - fly deploy
-
-  deploy:fly:setup:
-    desc: First-time Fly.io setup (create app, volume, IP)
-    cmds:
-      - fly apps create crosstalk || true
-      - fly ips allocate-v4
-      - fly volumes create crosstalk_data --size 1 --region iad
-      - fly secrets set CT_SESSION_SECRET=$(openssl rand -hex 32)
-      - echo "Now run 'task deploy:fly' to deploy"
-
-  clean:
-    desc: Remove build artifacts
-    cmds:
-      - rm -rf bin/ web/dist/
-
-  setup:
-    desc: Install all dependencies
-    cmds:
-      - cd server && go mod download
-      - cd cli && go mod download
-      - cd web && pnpm install
+      - go build ./...

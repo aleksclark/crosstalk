@@ -1,0 +1,12 @@
+{
+  "name": "crosstalk",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "api:generate:ts": "pnpm --filter @crosstalk/api-client generate"
+  },
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=10"
+  }
+}
