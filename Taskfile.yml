@@ -5,6 +5,59 @@ vars:
   SPEC_FILE: api/openapi.json
 
 tasks:
+  # ── Test Tasks ─────────────────────────────────────────────────
+
+  test:unit:go:
+    desc: Run Go unit tests for server and cli
+    cmds:
+      - cd server && go test ./...
+      - cd cli && go test ./...
+
+  test:unit:ts:
+    desc: Run TypeScript type checking on all apps
+    cmds:
+      - pnpm --filter './web' exec tsc --noEmit
+      - pnpm --filter './packages/*' exec tsc --noEmit
+    ignore_error: true
+
+  test:integration:
+    desc: Run integration tests (in-process Go server + real SQLite)
+    cmds:
+      - cd server && go test ./cmd/ct-server/ -run Integration -v -count=1
+
+  test:all:
+    desc: Run all tests (unit + integration)
+    cmds:
+      - task: test:unit:go
+      - task: test:unit:ts
+      - task: test:integration
+
+  # ── Build Tasks ────────────────────────────────────────────────
+
+  build:server:
+    desc: Build server binary
+    cmds:
+      - cd server && CGO_ENABLED=1 go build -o ../bin/ct-server ./cmd/ct-server
+
+  build:cli:
+    desc: Build CLI binary
+    cmds:
+      - cd cli && CGO_ENABLED=1 go build -o ../bin/ct-client ./cmd/ct-client
+
+  # ── Lint Tasks ─────────────────────────────────────────────────
+
+  lint:go:
+    desc: Run golangci-lint on server and cli
+    cmds:
+      - cd server && golangci-lint run ./...
+      - cd cli && golangci-lint run ./...
+
+  lint:web:
+    desc: ESLint + typecheck on web
+    cmds:
+      - pnpm --filter './web' exec tsc --noEmit
+      - pnpm --filter './web' exec eslint .
+
   # ── API Client Generation ───────────────────────────────────
 
   api:spec:

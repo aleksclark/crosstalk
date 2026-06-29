@@ -1,0 +1,20 @@
+version: "3.8"
+
+services:
+  server:
+    build:
+      context: ..
+      dockerfile: test/Dockerfile.server
+    ports:
+      - "8080:8080"
+    environment:
+      CT_ADDR: ":8080"
+      CT_DB_PATH: ":memory:"
+      CT_JWT_SECRET: "test-secret-do-not-use-in-production"
+      CT_ADMIN_PASSWORD: "admin123"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/api/openapi.json"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
