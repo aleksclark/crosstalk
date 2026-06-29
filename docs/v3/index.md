@@ -68,6 +68,6 @@ These components are solid and can be carried forward with minimal changes:
 | 09 | [09-translator-app.md](09-translator-app.md) | Translator Frontend App | ✅ |
 | 10 | [10-admin-app.md](10-admin-app.md) | Admin Frontend App | ✅ |
 | 11 | [11-broadcast-app.md](11-broadcast-app.md) | Broadcast Listener App | ✅ |
-| 12 | [12-integration-testing.md](12-integration-testing.md) | Integration & E2E Testing | ⬜ |
+| 12 | [12-integration-testing.md](12-integration-testing.md) | Integration & E2E Testing | ✅ |
 
 Status legend: ⬜ Not started | 🔨 In progress | ✅ Complete
