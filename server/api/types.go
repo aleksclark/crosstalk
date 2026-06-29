@@ -462,3 +462,38 @@ type WebRTCTokenResponse struct {
 		ExpiresAt time.Time `json:"expires_at" doc:"Token expiration time"`
 	}
 }
+
+// --- Recordings ---
+
+type RecordingOut struct {
+	ID        string     `json:"id" doc:"Recording ULID"`
+	SessionID string     `json:"session_id" doc:"Session ID"`
+	SourceID  *string    `json:"source_id,omitempty" doc:"Source ID (if source recording)"`
+	ChannelID *string    `json:"channel_id,omitempty" doc:"Channel ID (if channel recording)"`
+	FilePath  string     `json:"file_path" doc:"Relative file path"`
+	StartedAt time.Time  `json:"started_at" doc:"Recording start time"`
+	EndedAt   *time.Time `json:"ended_at,omitempty" doc:"Recording end time"`
+	SizeBytes int64      `json:"size_bytes" doc:"File size in bytes"`
+}
+
+type ListRecordingsRequest struct {
+	Authorization string `header:"Authorization" doc:"Bearer token"`
+	ID            string `path:"id" doc:"Session ID"`
+}
+
+type ListRecordingsResponse struct {
+	Body struct {
+		Data []RecordingOut `json:"data"`
+	}
+}
+
+type DownloadRecordingRequest struct {
+	Authorization string `header:"Authorization" doc:"Bearer token"`
+	ID            string `path:"id" doc:"Recording ID"`
+}
+
+type DownloadRecordingResponse struct {
+	Body struct {
+		FilePath string `json:"file_path" doc:"Absolute file path for download"`
+	}
+}

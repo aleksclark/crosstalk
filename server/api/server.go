@@ -19,14 +19,16 @@ import (
 
 // Services holds all service dependencies for the API.
 type Services struct {
-	Sessions      crosstalk.SessionService
-	Channels      crosstalk.ChannelService
-	Sources       crosstalk.SourceService
-	Mix           crosstalk.MixService
-	ABCs          crosstalk.ABCService
-	Users         crosstalk.UserService
-	RefreshTokens crosstalk.RefreshTokenService
-	Auth          *auth.Service
+	Sessions       crosstalk.SessionService
+	Channels       crosstalk.ChannelService
+	Sources        crosstalk.SourceService
+	Mix            crosstalk.MixService
+	ABCs           crosstalk.ABCService
+	Users          crosstalk.UserService
+	RefreshTokens  crosstalk.RefreshTokenService
+	Recordings     crosstalk.RecordingService
+	Auth           *auth.Service
+	RecordingsPath string // base path for recording files
 }
 
 // Config holds API configuration.
@@ -377,6 +379,25 @@ func (s *Server) registerRoutes() {
 		Tags:        []string{"WebRTC"},
 		Security:    []map[string][]string{{"bearerAuth": {}}},
 	}, s.handleWebRTCToken)
+
+	// Recordings
+	huma.Register(s.api, huma.Operation{
+		OperationID: "list-session-recordings",
+		Method:      http.MethodGet,
+		Path:        "/api/sessions/{id}/recordings",
+		Summary:     "List recordings for a session",
+		Tags:        []string{"Recordings"},
+		Security:    []map[string][]string{{"bearerAuth": {}}},
+	}, s.handleListRecordings)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "get-recording-download",
+		Method:      http.MethodGet,
+		Path:        "/api/recordings/{id}/download",
+		Summary:     "Get recording file download path",
+		Tags:        []string{"Recordings"},
+		Security:    []map[string][]string{{"bearerAuth": {}}},
+	}, s.handleDownloadRecording)
 }
 
 // requireAuth validates the JWT from the Authorization header.
