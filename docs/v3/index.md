@@ -62,12 +62,12 @@ These components are solid and can be carried forward with minimal changes:
 | 03 | [03-data-model.md](03-data-model.md) | Data Model (Sessions, Channels, Sources) | ✅ |
 | 04 | [04-client-codegen.md](04-client-codegen.md) | TypeScript + Go Client Generation | ✅ |
 | 05 | [05-webrtc-foundation.md](05-webrtc-foundation.md) | WebRTC Foundation & Debug Logging | ✅ |
-| 06 | [06-session-orchestration.md](06-session-orchestration.md) | Session Orchestration & Channel Mixing | ⬜ |
-| 07 | [07-abc-management.md](07-abc-management.md) | Audio Booth Connector (ABC) Management | ⬜ |
-| 08 | [08-recording.md](08-recording.md) | Per-Source + Per-Channel Recording | ⬜ |
-| 09 | [09-translator-app.md](09-translator-app.md) | Translator Frontend App | ⬜ |
-| 10 | [10-admin-app.md](10-admin-app.md) | Admin Frontend App | ⬜ |
-| 11 | [11-broadcast-app.md](11-broadcast-app.md) | Broadcast Listener App | ⬜ |
+| 06 | [06-session-orchestration.md](06-session-orchestration.md) | Session Orchestration & Channel Mixing | ✅ |
+| 07 | [07-abc-management.md](07-abc-management.md) | Audio Booth Connector (ABC) Management | ✅ |
+| 08 | [08-recording.md](08-recording.md) | Per-Source + Per-Channel Recording | ✅ |
+| 09 | [09-translator-app.md](09-translator-app.md) | Translator Frontend App | ✅ |
+| 10 | [10-admin-app.md](10-admin-app.md) | Admin Frontend App | ✅ |
+| 11 | [11-broadcast-app.md](11-broadcast-app.md) | Broadcast Listener App | ✅ |
 | 12 | [12-integration-testing.md](12-integration-testing.md) | Integration & E2E Testing | ⬜ |
 
 Status legend: ⬜ Not started | 🔨 In progress | ✅ Complete
