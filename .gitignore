@@ -38,3 +38,4 @@ k2b-board/image/*.img*
 !Dockerfile.test
 *.out
 server/ct-server
+node_modules/
