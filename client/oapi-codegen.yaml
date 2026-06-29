@@ -1,0 +1,10 @@
+# oapi-codegen configuration for CrossTalk Go client
+# See: https://github.com/oapi-codegen/oapi-codegen#configuration
+package: client
+output: client.gen.go
+generate:
+  client: true
+  models: true
+  embedded-spec: false
+output-options:
+  skip-prune: false
