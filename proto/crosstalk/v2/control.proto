@@ -1,0 +1,86 @@
+syntax = "proto3";
+
+package crosstalk.v2;
+
+option go_package = "github.com/aleksclark/crosstalk/proto/gen/go/crosstalk/v2;crosstalkv2";
+
+// ControlMessage wraps all messages on the v3 WebRTC control data channel.
+// Uses oneof for type-safe message dispatch.
+message ControlMessage {
+  oneof payload {
+    // Client → Server
+    Hello hello = 1;
+    SourceStatus source_status = 2;
+
+    // Server → Client
+    Welcome welcome = 10;
+    MixUpdate mix_update = 11;
+    RestartCommand restart = 12;
+    SessionAssignment session_assignment = 13;
+
+    // Bidirectional
+    LogEntry log_entry = 20;
+    PingPong ping = 21;
+  }
+}
+
+// Hello is sent by the client immediately after the control channel opens.
+message Hello {
+  string client_type = 1;  // "abc", "translator", "admin"
+  string client_name = 2;
+  repeated AudioCapability capabilities = 3;
+}
+
+// AudioCapability describes a client's audio codec support.
+message AudioCapability {
+  string codec = 1;        // e.g., "opus/48000/2"
+  int32 channels = 2;
+  int32 sample_rate = 3;
+}
+
+// Welcome is sent by the server after receiving Hello.
+message Welcome {
+  string peer_id = 1;
+  string server_version = 2;
+  string assigned_session_id = 3;  // pre-assigned for ABCs
+}
+
+// MixUpdate tells the client about a change in the audio mix.
+message MixUpdate {
+  string channel_id = 1;
+  string source_id = 2;
+  bool muted = 3;
+  float level = 4;
+}
+
+// RestartCommand instructs the client to restart its connection.
+message RestartCommand {
+  string reason = 1;
+}
+
+// SessionAssignment informs the client of its role in a session.
+message SessionAssignment {
+  string session_id = 1;
+  string role = 2;  // what this client is in the session
+}
+
+// SourceStatus reports the state of a client audio source.
+message SourceStatus {
+  string source_name = 1;
+  bool active = 2;
+  float peak_level = 3;  // 0.0-1.0
+}
+
+// LogEntry is a structured log message exchanged over the control channel.
+message LogEntry {
+  int64 timestamp = 1;
+  string severity = 2;
+  string source = 3;
+  string message = 4;
+  map<string, string> fields = 5;
+}
+
+// PingPong is used for latency measurement on the control channel.
+message PingPong {
+  int64 sent_at = 1;
+}
