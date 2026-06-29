@@ -10,8 +10,8 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/oklog/ulid/v2"
 
-	crosstalk "github.com/nicosql/crosstalk/server"
-	"github.com/nicosql/crosstalk/server/auth"
+	crosstalk "github.com/aleksclark/crosstalk/server"
+	"github.com/aleksclark/crosstalk/server/auth"
 )
 
 // --- Auth Handlers ---

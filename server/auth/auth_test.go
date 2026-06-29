@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	crosstalk "github.com/nicosql/crosstalk/server"
-	"github.com/nicosql/crosstalk/server/auth"
-	"github.com/nicosql/crosstalk/server/sqlite"
+	crosstalk "github.com/aleksclark/crosstalk/server"
+	"github.com/aleksclark/crosstalk/server/auth"
+	"github.com/aleksclark/crosstalk/server/sqlite"
 )
 
 func setupAuth(t *testing.T) (*auth.Service, crosstalk.UserService) {

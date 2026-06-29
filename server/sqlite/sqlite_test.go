@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	crosstalk "github.com/nicosql/crosstalk/server"
-	"github.com/nicosql/crosstalk/server/sqlite"
+	crosstalk "github.com/aleksclark/crosstalk/server"
+	"github.com/aleksclark/crosstalk/server/sqlite"
 )
 
 func testDB(t *testing.T) *sqlite.DB {

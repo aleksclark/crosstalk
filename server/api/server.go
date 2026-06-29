@@ -13,8 +13,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
-	crosstalk "github.com/nicosql/crosstalk/server"
-	"github.com/nicosql/crosstalk/server/auth"
+	crosstalk "github.com/aleksclark/crosstalk/server"
+	"github.com/aleksclark/crosstalk/server/auth"
 )
 
 // Services holds all service dependencies for the API.

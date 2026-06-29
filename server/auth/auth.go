@@ -12,7 +12,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	"golang.org/x/crypto/bcrypt"
 
-	crosstalk "github.com/nicosql/crosstalk/server"
+	crosstalk "github.com/aleksclark/crosstalk/server"
 )
 
 // Claims represents the JWT claims used by CrossTalk.

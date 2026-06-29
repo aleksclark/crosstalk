@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	crosstalk "github.com/nicosql/crosstalk/server"
+	crosstalk "github.com/aleksclark/crosstalk/server"
 )
 
 // SessionStore implements crosstalk.SessionService.

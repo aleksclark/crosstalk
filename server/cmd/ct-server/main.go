@@ -11,11 +11,11 @@ import (
 
 	"github.com/oklog/ulid/v2"
 
-	"github.com/nicosql/crosstalk/server/api"
-	"github.com/nicosql/crosstalk/server/auth"
-	"github.com/nicosql/crosstalk/server/sqlite"
+	"github.com/aleksclark/crosstalk/server/api"
+	"github.com/aleksclark/crosstalk/server/auth"
+	"github.com/aleksclark/crosstalk/server/sqlite"
 
-	crosstalk "github.com/nicosql/crosstalk/server"
+	crosstalk "github.com/aleksclark/crosstalk/server"
 )
 
 func main() {

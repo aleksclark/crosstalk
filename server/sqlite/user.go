@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	crosstalk "github.com/nicosql/crosstalk/server"
+	crosstalk "github.com/aleksclark/crosstalk/server"
 )
 
 // UserStore implements crosstalk.UserService.

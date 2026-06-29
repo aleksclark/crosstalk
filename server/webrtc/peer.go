@@ -14,7 +14,6 @@ import (
 	"github.com/pion/ice/v4"
 	"github.com/pion/webrtc/v4"
 
-	crosstalk "github.com/aleksclark/crosstalk/server"
 )
 
 // PeerState summarizes a peer's current connection state.
@@ -279,8 +278,8 @@ type ICEConfig struct {
 	UDPMuxPort  int
 }
 
-// NewPeerManager creates a PeerManager from server config.
-func NewPeerManager(cfg crosstalk.WebRTCConfig) *PeerManager {
+// NewPeerManager creates a PeerManager from ICE config.
+func NewPeerManager(cfg ICEConfig) *PeerManager {
 	servers := make([]webrtc.ICEServer, 0, 2)
 
 	if len(cfg.STUNServers) > 0 {
@@ -289,11 +288,11 @@ func NewPeerManager(cfg crosstalk.WebRTCConfig) *PeerManager {
 		})
 	}
 
-	if cfg.TURN.Enabled && cfg.TURN.Server != "" {
+	if cfg.TURNServer != "" {
 		servers = append(servers, webrtc.ICEServer{
-			URLs:           []string{cfg.TURN.Server},
-			Username:       cfg.TURN.Username,
-			Credential:     cfg.TURN.Credential,
+			URLs:           []string{cfg.TURNServer},
+			Username:       cfg.TURNUser,
+			Credential:     cfg.TURNCred,
 			CredentialType: webrtc.ICECredentialTypePassword,
 		})
 	}

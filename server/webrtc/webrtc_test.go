@@ -16,7 +16,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"nhooyr.io/websocket"
 
-	crosstalkv2 "github.com/aleksclark/crosstalk/proto/gen/go/crosstalk/v2"
+	crosstalkv2 "github.com/aleksclark/crosstalk/server/proto/v2"
 )
 
 // testAPI returns a webrtc.API with mDNS disabled (avoids multicast in CI).

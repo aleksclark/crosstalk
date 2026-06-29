@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	crosstalk "github.com/nicosql/crosstalk/server"
+	crosstalk "github.com/aleksclark/crosstalk/server"
 	"github.com/oklog/ulid/v2"
 )
 

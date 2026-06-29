@@ -15,10 +15,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	crosstalk "github.com/nicosql/crosstalk/server"
-	"github.com/nicosql/crosstalk/server/api"
-	"github.com/nicosql/crosstalk/server/auth"
-	"github.com/nicosql/crosstalk/server/sqlite"
+	crosstalk "github.com/aleksclark/crosstalk/server"
+	"github.com/aleksclark/crosstalk/server/api"
+	"github.com/aleksclark/crosstalk/server/auth"
+	"github.com/aleksclark/crosstalk/server/sqlite"
 )
 
 func setupTestServer(t *testing.T) (*httptest.Server, *auth.Service, crosstalk.UserService) {
