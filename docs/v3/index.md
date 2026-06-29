@@ -57,11 +57,11 @@ These components are solid and can be carried forward with minimal changes:
 
 | # | File | Title | Status |
 |---|------|-------|--------|
-| 01 | [01-api-contract.md](01-api-contract.md) | API Contract & OpenAPI Generation | ⬜ |
-| 02 | [02-auth-rbac.md](02-auth-rbac.md) | JWT Auth & Simplified RBAC | ⬜ |
-| 03 | [03-data-model.md](03-data-model.md) | Data Model (Sessions, Channels, Sources) | ⬜ |
-| 04 | [04-client-codegen.md](04-client-codegen.md) | TypeScript + Go Client Generation | ⬜ |
-| 05 | [05-webrtc-foundation.md](05-webrtc-foundation.md) | WebRTC Foundation & Debug Logging | ⬜ |
+| 01 | [01-api-contract.md](01-api-contract.md) | API Contract & OpenAPI Generation | ✅ |
+| 02 | [02-auth-rbac.md](02-auth-rbac.md) | JWT Auth & Simplified RBAC | ✅ |
+| 03 | [03-data-model.md](03-data-model.md) | Data Model (Sessions, Channels, Sources) | ✅ |
+| 04 | [04-client-codegen.md](04-client-codegen.md) | TypeScript + Go Client Generation | ✅ |
+| 05 | [05-webrtc-foundation.md](05-webrtc-foundation.md) | WebRTC Foundation & Debug Logging | ✅ |
 | 06 | [06-session-orchestration.md](06-session-orchestration.md) | Session Orchestration & Channel Mixing | ⬜ |
 | 07 | [07-abc-management.md](07-abc-management.md) | Audio Booth Connector (ABC) Management | ⬜ |
 | 08 | [08-recording.md](08-recording.md) | Per-Source + Per-Channel Recording | ⬜ |
