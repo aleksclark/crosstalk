@@ -133,7 +133,7 @@ func (s *UserStore) AssignSessions(ctx context.Context, translatorID string, ses
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Clear existing assignments
 	if _, err := tx.ExecContext(ctx, "DELETE FROM translator_sessions WHERE translator_id = ?", translatorID); err != nil {
