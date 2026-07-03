@@ -39,3 +39,6 @@ k2b-board/image/*.img*
 *.out
 server/ct-server
 node_modules/
+
+# Embedded SPA build output (built in deploy/Dockerfile; placeholder index.html tracked)
+server/web/*/assets/

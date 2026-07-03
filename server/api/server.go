@@ -4,6 +4,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -29,12 +30,15 @@ type Services struct {
 	Recordings     crosstalk.RecordingService
 	Auth           *auth.Service
 	RecordingsPath string // base path for recording files
+	// WebApps maps a URL path prefix ("/admin") to a filesystem serving that
+	// SPA's build output. Registered with history-API fallback.
+	WebApps map[string]fs.FS
 }
 
 // Config holds API configuration.
 type Config struct {
-	Addr       string
-	JWTSecret  string
+	Addr      string
+	JWTSecret string
 }
 
 // Server holds the HTTP server and dependencies.
@@ -77,6 +81,7 @@ func NewServer(cfg Config, svc Services, log *slog.Logger) *Server {
 	}
 
 	s.registerRoutes()
+	s.mountWebApps()
 	return s
 }
 

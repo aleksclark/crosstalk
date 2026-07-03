@@ -28,6 +28,24 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 const STORAGE_KEY = "crosstalk_auth";
 
+interface JwtClaims {
+  sub?: string;
+  role?: string;
+}
+
+// decodeJwt reads the (unverified) payload of a JWT. The server verifies the
+// signature; the client only needs the role/subject to drive UI state.
+function decodeJwt(token: string): JwtClaims | null {
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return null;
+    const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
+    return JSON.parse(json) as JwtClaims;
+  } catch {
+    return null;
+  }
+}
+
 function loadAuthState(): AuthState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -83,9 +101,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       );
     }
 
-    const user = data.user || null;
     const token = data.access_token;
     const refreshToken = data.refresh_token;
+
+    // The login response returns only tokens; derive the user (role) from the
+    // JWT so route guards that require an admin role work.
+    const claims = decodeJwt(token);
+    const user: User | null =
+      data.user ||
+      (claims
+        ? ({
+            id: claims.sub ?? "",
+            username,
+            role: (claims.role as User["role"]) ?? "translator",
+            created_at: "",
+          } as User)
+        : null);
 
     setState({
       user,

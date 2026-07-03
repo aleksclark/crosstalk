@@ -1,0 +1,26 @@
+# Node deps — reinstalled fresh in the webbuild stage
+**/node_modules
+
+# Build outputs
+bin/
+web/dist/
+apps/*/dist/
+server/web/*/assets/
+
+# Local server binary
+server/ct-server
+
+# VCS / editor / OS
+.git
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Large board images
+k2b-board/image/*.img*
+
+# Local databases
+*.db
+*.db-wal
+*.db-shm

@@ -14,6 +14,7 @@ import (
 	"github.com/aleksclark/crosstalk/server/api"
 	"github.com/aleksclark/crosstalk/server/auth"
 	"github.com/aleksclark/crosstalk/server/sqlite"
+	"github.com/aleksclark/crosstalk/server/web"
 
 	crosstalk "github.com/aleksclark/crosstalk/server"
 )
@@ -71,6 +72,14 @@ func main() {
 		RefreshTokens: refreshTokenStore,
 		Auth:          authService,
 	}
+
+	// Embedded frontend SPAs (served at /admin, /broadcast, /translator).
+	webApps, err := web.Apps()
+	if err != nil {
+		log.Error("failed to load embedded web apps", "error", err)
+		os.Exit(1)
+	}
+	svc.WebApps = webApps
 
 	apiCfg := api.Config{
 		Addr:      addr,
