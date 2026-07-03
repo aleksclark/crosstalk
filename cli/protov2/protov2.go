@@ -339,7 +339,7 @@ func appendBytesField(data []byte, fieldNum int, value []byte) []byte {
 }
 
 func appendVarintField(data []byte, fieldNum int, value uint64) []byte {
-	tag := uint64(fieldNum<<3) | 0
+	tag := uint64(fieldNum << 3)
 	data = appendRawVarint(data, tag)
 	data = appendRawVarint(data, value)
 	return data
