@@ -376,7 +376,7 @@ func (pm *PeerManager) CreatePeerConnection() (*PeerConn, error) {
 	// Create control data channel.
 	dc, err := pc.CreateDataChannel("control", &webrtc.DataChannelInit{})
 	if err != nil {
-		pc.Close()
+		_ = pc.Close()
 		return nil, fmt.Errorf("webrtc: creating control data channel: %w", err)
 	}
 	conn.control = dc
@@ -492,7 +492,7 @@ func (pm *PeerManager) RemovePeer(id string) {
 	pm.mu.Unlock()
 
 	if ok {
-		conn.Close()
+		_ = conn.Close()
 	}
 }
 

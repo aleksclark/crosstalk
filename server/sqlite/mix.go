@@ -41,7 +41,7 @@ func (s *MixStore) SetMix(ctx context.Context, channelID string, entries []cross
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Upsert each entry
 	for _, e := range entries {

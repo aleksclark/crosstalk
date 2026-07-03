@@ -55,7 +55,7 @@ func serveFileWithFallback(w http.ResponseWriter, req *http.Request, fsys fs.FS,
 			return
 		}
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	st, err := f.Stat()
 	if err != nil {
