@@ -41,7 +41,7 @@ func (h *DebugHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleListPeers returns all active peers with their connection state.
+// HandleListPeers returns all active peers with their connection state.
 func (h *DebugHandler) HandleListPeers(w http.ResponseWriter, _ *http.Request) {
 	states := h.PeerManager.PeerStates()
 	writeJSON(w, http.StatusOK, map[string]any{
