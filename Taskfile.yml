@@ -21,7 +21,9 @@ tasks:
     ignore_error: true
 
   test:integration:
-    desc: Run integration tests (in-process Go server + real SQLite)
+    desc: Run integration + audio-flow tests (in-process Go server + real PostgreSQL)
+    env:
+      CT_TEST_DATABASE_URL: '{{.CT_TEST_DATABASE_URL | default "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"}}'
     cmds:
       - cd server && go test ./cmd/ct-server/ -run Integration -v -count=1
 
@@ -37,7 +39,7 @@ tasks:
   build:server:
     desc: Build server binary
     cmds:
-      - cd server && CGO_ENABLED=1 go build -o ../bin/ct-server ./cmd/ct-server
+      - cd server && CGO_ENABLED=0 go build -o ../bin/ct-server ./cmd/ct-server
 
   build:cli:
     desc: Build CLI binary

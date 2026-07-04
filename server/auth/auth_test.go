@@ -2,8 +2,6 @@ package auth_test
 
 import (
 	"context"
-	"log/slog"
-	"os"
 	"testing"
 	"time"
 
@@ -13,18 +11,16 @@ import (
 
 	crosstalk "github.com/aleksclark/crosstalk/server"
 	"github.com/aleksclark/crosstalk/server/auth"
-	"github.com/aleksclark/crosstalk/server/sqlite"
+	"github.com/aleksclark/crosstalk/server/pgtest"
+	"github.com/aleksclark/crosstalk/server/postgres"
 )
 
 func setupAuth(t *testing.T) (*auth.Service, crosstalk.UserService) {
 	t.Helper()
-	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	db, err := sqlite.Open(":memory:", log)
-	require.NoError(t, err)
-	t.Cleanup(func() { db.Close() })
+	db := pgtest.New(t)
 
-	users := sqlite.NewUserStore(db)
-	refreshTokens := sqlite.NewRefreshTokenStore(db)
+	users := postgres.NewUserStore(db)
+	refreshTokens := postgres.NewRefreshTokenStore(db)
 
 	cfg := auth.Config{
 		Secret:          "test-secret",

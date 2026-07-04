@@ -1,0 +1,52 @@
+# Local development stack for CrossTalk.
+#
+#   docker compose up --build
+#
+# Brings up PostgreSQL and the ct-server (with hot rebuild of the Go binary on
+# container start; bind-mounts ./server and ./proto for fast iteration).
+#
+# The server serves the REST API and the embedded admin/translator/broadcast
+# SPAs at http://localhost:8080. Default admin credentials: admin / admin
+# (override with CT_ADMIN_PASSWORD).
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: crosstalk
+    ports:
+      - "${CT_PG_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d crosstalk"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  server:
+    build:
+      context: .
+      dockerfile: dev/Dockerfile.server
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./server:/app/server
+      - ./proto:/app/proto
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    ports:
+      - "8080:8080"
+      - "5000:5000/udp"
+    environment:
+      CT_ADDR: ":8080"
+      CT_DATABASE_URL: "postgres://postgres:postgres@postgres:5432/crosstalk?sslmode=disable"
+      CT_JWT_SECRET: "dev-secret-change-me"
+      CT_ADMIN_PASSWORD: "admin"
+
+volumes:
+  pgdata:
+  go-mod-cache:
+  go-build-cache:

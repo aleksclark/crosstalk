@@ -1,11 +1,12 @@
-package sqlite
+package postgres
 
 import (
 	"context"
 	"fmt"
 
-	crosstalk "github.com/aleksclark/crosstalk/server"
 	"github.com/oklog/ulid/v2"
+
+	crosstalk "github.com/aleksclark/crosstalk/server"
 )
 
 // MixStore implements crosstalk.MixService.
@@ -18,22 +19,16 @@ func NewMixStore(db *DB) *MixStore {
 }
 
 func (s *MixStore) GetMix(ctx context.Context, channelID string) ([]crosstalk.MixEntry, error) {
-	rows, err := s.db.QueryContext(ctx,
-		"SELECT id, channel_id, source_id, muted, level FROM channel_mix WHERE channel_id = ?", channelID)
+	var models []mixModel
+	err := s.db.NewSelect().Model(&models).Where("channel_id = ?", channelID).Scan(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var entries []crosstalk.MixEntry
-	for rows.Next() {
-		var e crosstalk.MixEntry
-		if err := rows.Scan(&e.ID, &e.ChannelID, &e.SourceID, &e.Muted, &e.Level); err != nil {
-			return nil, err
-		}
-		entries = append(entries, e)
+	out := make([]crosstalk.MixEntry, 0, len(models))
+	for i := range models {
+		out = append(out, models[i].toDomain())
 	}
-	return entries, rows.Err()
+	return out, nil
 }
 
 func (s *MixStore) SetMix(ctx context.Context, channelID string, entries []crosstalk.MixEntry) error {
@@ -43,7 +38,6 @@ func (s *MixStore) SetMix(ctx context.Context, channelID string, entries []cross
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Upsert each entry
 	for _, e := range entries {
 		if e.ID == "" {
 			e.ID = ulid.Make().String()
@@ -54,10 +48,18 @@ func (s *MixStore) SetMix(ctx context.Context, channelID string, entries []cross
 		if e.ChannelID != channelID {
 			return fmt.Errorf("mix entry channel_id mismatch: got %s, want %s", e.ChannelID, channelID)
 		}
-		_, err := tx.ExecContext(ctx,
-			`INSERT INTO channel_mix (id, channel_id, source_id, muted, level) VALUES (?, ?, ?, ?, ?)
-			 ON CONFLICT(channel_id, source_id) DO UPDATE SET muted = excluded.muted, level = excluded.level`,
-			e.ID, e.ChannelID, e.SourceID, e.Muted, e.Level)
+		m := &mixModel{
+			ID:        e.ID,
+			ChannelID: e.ChannelID,
+			SourceID:  e.SourceID,
+			Muted:     e.Muted,
+			Level:     e.Level,
+		}
+		_, err := tx.NewInsert().Model(m).
+			On("CONFLICT (channel_id, source_id) DO UPDATE").
+			Set("muted = EXCLUDED.muted").
+			Set("level = EXCLUDED.level").
+			Exec(ctx)
 		if err != nil {
 			return err
 		}

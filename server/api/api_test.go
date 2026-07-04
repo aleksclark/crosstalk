@@ -18,23 +18,22 @@ import (
 	crosstalk "github.com/aleksclark/crosstalk/server"
 	"github.com/aleksclark/crosstalk/server/api"
 	"github.com/aleksclark/crosstalk/server/auth"
-	"github.com/aleksclark/crosstalk/server/sqlite"
+	"github.com/aleksclark/crosstalk/server/pgtest"
+	"github.com/aleksclark/crosstalk/server/postgres"
 )
 
 func setupTestServer(t *testing.T) (*httptest.Server, *auth.Service, crosstalk.UserService) {
 	t.Helper()
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	db, err := sqlite.Open(":memory:", log)
-	require.NoError(t, err)
-	t.Cleanup(func() { db.Close() })
+	db := pgtest.New(t)
 
-	sessionStore := sqlite.NewSessionStore(db)
-	channelStore := sqlite.NewChannelStore(db)
-	sourceStore := sqlite.NewSourceStore(db)
-	mixStore := sqlite.NewMixStore(db)
-	abcStore := sqlite.NewABCStore(db)
-	userStore := sqlite.NewUserStore(db)
-	refreshTokenStore := sqlite.NewRefreshTokenStore(db)
+	sessionStore := postgres.NewSessionStore(db)
+	channelStore := postgres.NewChannelStore(db)
+	sourceStore := postgres.NewSourceStore(db)
+	mixStore := postgres.NewMixStore(db)
+	abcStore := postgres.NewABCStore(db)
+	userStore := postgres.NewUserStore(db)
+	refreshTokenStore := postgres.NewRefreshTokenStore(db)
 
 	authCfg := auth.Config{
 		Secret:          "test-secret",

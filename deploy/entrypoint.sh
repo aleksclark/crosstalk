@@ -1,30 +1,13 @@
 #!/bin/sh
-# Generate config from env vars if not already present on the volume.
-CONFIG="/data/config.json"
-if [ ! -f "$CONFIG" ]; then
-  # Discover public IP: CT_PUBLIC_IP (set via fly secrets), or empty
-  PUBLIC_IP="${CT_PUBLIC_IP:-}"
+# CrossTalk server entrypoint. Configuration is entirely env-driven (see
+# server/cmd/ct-server/main.go). This script only fills in sensible defaults.
+set -e
 
-  cat > "$CONFIG" <<EOF
-{
-  "listen": ":8080",
-  "db_path": "/data/crosstalk.db",
-  "recording_path": "/data/recordings",
-  "log_level": "${CT_LOG_LEVEL:-info}",
-  "webrtc": {
-    "stun_servers": ["stun:stun.l.google.com:19302"],
-    "udp_mux_port": 5000,
-    "public_ip": "${PUBLIC_IP}"
-  },
-  "auth": {
-    "session_secret": "${CT_SESSION_SECRET:-change-me-in-production}"
-  },
-  "web": {
-    "dev_mode": false
-  }
-}
-EOF
-  echo "Generated config at $CONFIG (public_ip=${PUBLIC_IP})"
-fi
+: "${CT_ADDR:=:8080}"
+: "${CT_DATABASE_URL:=postgres://postgres:postgres@postgres:5432/crosstalk?sslmode=disable}"
+: "${CT_JWT_SECRET:=change-me-in-production}"
 
-exec ct-server --config "$CONFIG"
+export CT_ADDR CT_DATABASE_URL CT_JWT_SECRET
+
+echo "Starting ct-server addr=${CT_ADDR} db=${CT_DATABASE_URL%%\?*}"
+exec ct-server

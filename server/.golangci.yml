@@ -14,7 +14,7 @@ linters:
         - (*database/sql.Rows).Close
         - (*database/sql.DB).Close
         - (*net/http.Server).Shutdown
-        - (*github.com/aleksclark/crosstalk/server/sqlite.DB).Close
+        - (*github.com/aleksclark/crosstalk/server/postgres.DB).Close
         - (*nhooyr.io/websocket.Conn).Close
     staticcheck:
       checks:

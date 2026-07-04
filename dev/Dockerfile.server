@@ -1,11 +1,9 @@
 FROM golang:1.25-bookworm
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    sqlite3 \
-    && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
 
 RUN mkdir -p /app/bin
 
-CMD ["sh", "-c", "cd /app/server && go build -o /app/bin/ct-server ./cmd/ct-server && exec /app/bin/ct-server"]
+# Pure-Go build (PostgreSQL via Bun, no CGO required). Rebuilds on start for
+# fast local iteration when the source is bind-mounted.
+CMD ["sh", "-c", "cd /app/server && CGO_ENABLED=0 go build -o /app/bin/ct-server ./cmd/ct-server && exec /app/bin/ct-server"]

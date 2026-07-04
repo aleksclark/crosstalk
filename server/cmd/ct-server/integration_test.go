@@ -19,12 +19,14 @@ import (
 	crosstalk "github.com/aleksclark/crosstalk/server"
 	"github.com/aleksclark/crosstalk/server/api"
 	"github.com/aleksclark/crosstalk/server/auth"
-	"github.com/aleksclark/crosstalk/server/sqlite"
+	"github.com/aleksclark/crosstalk/server/pgtest"
+	"github.com/aleksclark/crosstalk/server/postgres"
 )
 
 // testEnv holds a fully wired integration test environment.
 type testEnv struct {
 	server  *httptest.Server
+	db      *postgres.DB
 	users   crosstalk.UserService
 	abcs    crosstalk.ABCService
 	sources crosstalk.SourceService
@@ -34,18 +36,16 @@ func setupIntegrationServer(t *testing.T) *testEnv {
 	t.Helper()
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
-	db, err := sqlite.Open(":memory:", log)
-	require.NoError(t, err)
-	t.Cleanup(func() { db.Close() })
+	db := pgtest.New(t)
 
-	sessionStore := sqlite.NewSessionStore(db)
-	channelStore := sqlite.NewChannelStore(db)
-	sourceStore := sqlite.NewSourceStore(db)
-	mixStore := sqlite.NewMixStore(db)
-	abcStore := sqlite.NewABCStore(db)
-	userStore := sqlite.NewUserStore(db)
-	refreshTokenStore := sqlite.NewRefreshTokenStore(db)
-	recordingStore := sqlite.NewRecordingStore(db)
+	sessionStore := postgres.NewSessionStore(db)
+	channelStore := postgres.NewChannelStore(db)
+	sourceStore := postgres.NewSourceStore(db)
+	mixStore := postgres.NewMixStore(db)
+	abcStore := postgres.NewABCStore(db)
+	userStore := postgres.NewUserStore(db)
+	refreshTokenStore := postgres.NewRefreshTokenStore(db)
+	recordingStore := postgres.NewRecordingStore(db)
 
 	authCfg := auth.Config{
 		Secret:          "integration-test-secret",
@@ -73,6 +73,7 @@ func setupIntegrationServer(t *testing.T) *testEnv {
 
 	return &testEnv{
 		server:  ts,
+		db:      db,
 		users:   userStore,
 		abcs:    abcStore,
 		sources: sourceStore,

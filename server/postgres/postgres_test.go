@@ -1,9 +1,7 @@
-package sqlite_test
+package postgres_test
 
 import (
 	"context"
-	"log/slog"
-	"os"
 	"testing"
 
 	"github.com/oklog/ulid/v2"
@@ -11,24 +9,15 @@ import (
 	"github.com/stretchr/testify/require"
 
 	crosstalk "github.com/aleksclark/crosstalk/server"
-	"github.com/aleksclark/crosstalk/server/sqlite"
+	"github.com/aleksclark/crosstalk/server/pgtest"
+	"github.com/aleksclark/crosstalk/server/postgres"
 )
 
-func testDB(t *testing.T) *sqlite.DB {
-	t.Helper()
-	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	db, err := sqlite.Open(":memory:", log)
-	require.NoError(t, err)
-	t.Cleanup(func() { db.Close() })
-	return db
-}
-
 func TestSessionStore_CRUD(t *testing.T) {
-	db := testDB(t)
-	store := sqlite.NewSessionStore(db)
+	db := pgtest.New(t)
+	store := postgres.NewSessionStore(db)
 	ctx := context.Background()
 
-	// Create
 	sess := &crosstalk.Session{
 		ID:          ulid.Make().String(),
 		Name:        "Test Session",
@@ -39,18 +28,15 @@ func TestSessionStore_CRUD(t *testing.T) {
 	assert.NotEmpty(t, sess.BroadcastToken)
 	assert.False(t, sess.CreatedAt.IsZero())
 
-	// Get
 	got, err := store.Get(ctx, sess.ID)
 	require.NoError(t, err)
 	assert.Equal(t, sess.Name, got.Name)
 	assert.Equal(t, sess.Description, got.Description)
 
-	// List
 	list, err := store.List(ctx)
 	require.NoError(t, err)
 	assert.Len(t, list, 1)
 
-	// Update
 	sess.Name = "Updated Session"
 	err = store.Update(ctx, sess)
 	require.NoError(t, err)
@@ -58,18 +44,15 @@ func TestSessionStore_CRUD(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "Updated Session", got.Name)
 
-	// GetByBroadcastToken
 	got, err = store.GetByBroadcastToken(ctx, sess.BroadcastToken)
 	require.NoError(t, err)
 	assert.Equal(t, sess.ID, got.ID)
 
-	// RegenerateBroadcastToken
 	newToken, err := store.RegenerateBroadcastToken(ctx, sess.ID)
 	require.NoError(t, err)
 	assert.NotEmpty(t, newToken)
 	assert.NotEqual(t, sess.BroadcastToken, newToken)
 
-	// Delete
 	err = store.Delete(ctx, sess.ID)
 	require.NoError(t, err)
 	_, err = store.Get(ctx, sess.ID)
@@ -77,16 +60,14 @@ func TestSessionStore_CRUD(t *testing.T) {
 }
 
 func TestChannelStore_CRUD(t *testing.T) {
-	db := testDB(t)
-	sessionStore := sqlite.NewSessionStore(db)
-	store := sqlite.NewChannelStore(db)
+	db := pgtest.New(t)
+	sessionStore := postgres.NewSessionStore(db)
+	store := postgres.NewChannelStore(db)
 	ctx := context.Background()
 
-	// Create session first
 	sess := &crosstalk.Session{ID: ulid.Make().String(), Name: "Test"}
 	require.NoError(t, sessionStore.Create(ctx, sess))
 
-	// Create channel
 	ch := &crosstalk.Channel{
 		ID:        ulid.Make().String(),
 		SessionID: sess.ID,
@@ -96,18 +77,15 @@ func TestChannelStore_CRUD(t *testing.T) {
 	err := store.Create(ctx, ch)
 	require.NoError(t, err)
 
-	// Get
 	got, err := store.Get(ctx, ch.ID)
 	require.NoError(t, err)
 	assert.Equal(t, ch.Name, got.Name)
 	assert.Equal(t, crosstalk.ChannelFeed, got.Type)
 
-	// List
 	list, err := store.List(ctx, sess.ID)
 	require.NoError(t, err)
 	assert.Len(t, list, 1)
 
-	// Update
 	ch.Name = "Updated Feed"
 	err = store.Update(ctx, ch)
 	require.NoError(t, err)
@@ -115,7 +93,6 @@ func TestChannelStore_CRUD(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "Updated Feed", got.Name)
 
-	// Delete
 	err = store.Delete(ctx, ch.ID)
 	require.NoError(t, err)
 	_, err = store.Get(ctx, ch.ID)
@@ -123,9 +100,9 @@ func TestChannelStore_CRUD(t *testing.T) {
 }
 
 func TestSourceStore_CRUD(t *testing.T) {
-	db := testDB(t)
-	sessionStore := sqlite.NewSessionStore(db)
-	store := sqlite.NewSourceStore(db)
+	db := pgtest.New(t)
+	sessionStore := postgres.NewSessionStore(db)
+	store := postgres.NewSourceStore(db)
 	ctx := context.Background()
 
 	sess := &crosstalk.Session{ID: ulid.Make().String(), Name: "Test"}
@@ -147,12 +124,10 @@ func TestSourceStore_CRUD(t *testing.T) {
 	assert.Equal(t, crosstalk.OriginABC, got.Origin)
 	assert.True(t, got.Connected)
 
-	// List
 	list, err := store.List(ctx, sess.ID)
 	require.NoError(t, err)
 	assert.Len(t, list, 1)
 
-	// Update (disconnect)
 	src.Connected = false
 	peerID := "peer-123"
 	src.PeerID = &peerID
@@ -164,17 +139,16 @@ func TestSourceStore_CRUD(t *testing.T) {
 	assert.NotNil(t, got.PeerID)
 	assert.Equal(t, "peer-123", *got.PeerID)
 
-	// Delete
 	err = store.Delete(ctx, src.ID)
 	require.NoError(t, err)
 }
 
 func TestMixStore(t *testing.T) {
-	db := testDB(t)
-	sessionStore := sqlite.NewSessionStore(db)
-	channelStore := sqlite.NewChannelStore(db)
-	sourceStore := sqlite.NewSourceStore(db)
-	store := sqlite.NewMixStore(db)
+	db := pgtest.New(t)
+	sessionStore := postgres.NewSessionStore(db)
+	channelStore := postgres.NewChannelStore(db)
+	sourceStore := postgres.NewSourceStore(db)
+	store := postgres.NewMixStore(db)
 	ctx := context.Background()
 
 	sess := &crosstalk.Session{ID: ulid.Make().String(), Name: "Test"}
@@ -186,14 +160,12 @@ func TestMixStore(t *testing.T) {
 	src := &crosstalk.Source{ID: ulid.Make().String(), SessionID: sess.ID, Name: "Mic 1", Origin: crosstalk.OriginABC}
 	require.NoError(t, sourceStore.Create(ctx, src))
 
-	// Set mix
 	entries := []crosstalk.MixEntry{
 		{ChannelID: ch.ID, SourceID: src.ID, Muted: false, Level: 0.8},
 	}
 	err := store.SetMix(ctx, ch.ID, entries)
 	require.NoError(t, err)
 
-	// Get mix
 	got, err := store.GetMix(ctx, ch.ID)
 	require.NoError(t, err)
 	require.Len(t, got, 1)
@@ -201,7 +173,6 @@ func TestMixStore(t *testing.T) {
 	assert.Equal(t, 0.8, got[0].Level)
 	assert.False(t, got[0].Muted)
 
-	// Update mix (mute)
 	entries[0].Muted = true
 	entries[0].Level = 1.5
 	err = store.SetMix(ctx, ch.ID, entries)
@@ -214,8 +185,8 @@ func TestMixStore(t *testing.T) {
 }
 
 func TestABCStore_CRUD(t *testing.T) {
-	db := testDB(t)
-	store := sqlite.NewABCStore(db)
+	db := pgtest.New(t)
+	store := postgres.NewABCStore(db)
 	ctx := context.Background()
 
 	abc := &crosstalk.ABC{
@@ -226,22 +197,18 @@ func TestABCStore_CRUD(t *testing.T) {
 	err := store.Create(ctx, abc)
 	require.NoError(t, err)
 
-	// Get
 	got, err := store.Get(ctx, abc.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "Booth A", got.Name)
 
-	// GetByTokenHash
 	got, err = store.GetByTokenHash(ctx, "abc123hash")
 	require.NoError(t, err)
 	assert.Equal(t, abc.ID, got.ID)
 
-	// List
 	list, err := store.List(ctx)
 	require.NoError(t, err)
 	assert.Len(t, list, 1)
 
-	// Update
 	abc.Name = "Booth B"
 	err = store.Update(ctx, abc)
 	require.NoError(t, err)
@@ -249,7 +216,6 @@ func TestABCStore_CRUD(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "Booth B", got.Name)
 
-	// Delete
 	err = store.Delete(ctx, abc.ID)
 	require.NoError(t, err)
 	_, err = store.Get(ctx, abc.ID)
@@ -257,9 +223,9 @@ func TestABCStore_CRUD(t *testing.T) {
 }
 
 func TestUserStore_CRUD(t *testing.T) {
-	db := testDB(t)
-	store := sqlite.NewUserStore(db)
-	sessionStore := sqlite.NewSessionStore(db)
+	db := pgtest.New(t)
+	store := postgres.NewUserStore(db)
+	sessionStore := postgres.NewSessionStore(db)
 	ctx := context.Background()
 
 	user := &crosstalk.User{
@@ -271,22 +237,18 @@ func TestUserStore_CRUD(t *testing.T) {
 	err := store.Create(ctx, user)
 	require.NoError(t, err)
 
-	// Get
 	got, err := store.Get(ctx, user.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "admin", got.Username)
 
-	// GetByUsername
 	got, err = store.GetByUsername(ctx, "admin")
 	require.NoError(t, err)
 	assert.Equal(t, user.ID, got.ID)
 
-	// List
 	list, err := store.List(ctx)
 	require.NoError(t, err)
 	assert.Len(t, list, 1)
 
-	// ListByRole
 	list, err = store.ListByRole(ctx, "admin")
 	require.NoError(t, err)
 	assert.Len(t, list, 1)
@@ -294,7 +256,6 @@ func TestUserStore_CRUD(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, list, 0)
 
-	// AssignSessions
 	sess := &crosstalk.Session{ID: ulid.Make().String(), Name: "Test"}
 	require.NoError(t, sessionStore.Create(ctx, sess))
 
@@ -313,23 +274,20 @@ func TestUserStore_CRUD(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{sess.ID}, sessions)
 
-	// Update
 	user.Username = "superadmin"
 	err = store.Update(ctx, user)
 	require.NoError(t, err)
 
-	// Delete
 	err = store.Delete(ctx, user.ID)
 	require.NoError(t, err)
 }
 
 func TestRefreshTokenStore(t *testing.T) {
-	db := testDB(t)
-	userStore := sqlite.NewUserStore(db)
-	store := sqlite.NewRefreshTokenStore(db)
+	db := pgtest.New(t)
+	userStore := postgres.NewUserStore(db)
+	store := postgres.NewRefreshTokenStore(db)
 	ctx := context.Background()
 
-	// Create a user first
 	user := &crosstalk.User{
 		ID:           ulid.Make().String(),
 		Username:     "testuser",
@@ -346,19 +304,16 @@ func TestRefreshTokenStore(t *testing.T) {
 	err := store.Create(ctx, rt)
 	require.NoError(t, err)
 
-	// GetByHash
 	got, err := store.GetByHash(ctx, "somehash123")
 	require.NoError(t, err)
 	assert.Equal(t, rt.ID, got.ID)
 	assert.Equal(t, user.ID, got.UserID)
 
-	// DeleteByHash
 	err = store.DeleteByHash(ctx, "somehash123")
 	require.NoError(t, err)
 	_, err = store.GetByHash(ctx, "somehash123")
 	assert.Error(t, err)
 
-	// DeleteByUserID
 	rt2 := &crosstalk.RefreshToken{
 		ID:        ulid.Make().String(),
 		UserID:    user.ID,

@@ -13,7 +13,7 @@ import (
 
 	"github.com/aleksclark/crosstalk/server/api"
 	"github.com/aleksclark/crosstalk/server/auth"
-	"github.com/aleksclark/crosstalk/server/sqlite"
+	"github.com/aleksclark/crosstalk/server/postgres"
 	"github.com/aleksclark/crosstalk/server/web"
 
 	crosstalk "github.com/aleksclark/crosstalk/server"
@@ -25,16 +25,15 @@ func main() {
 
 	// Config from env or defaults
 	addr := envOr("CT_ADDR", ":8080")
-	dbPath := envOr("CT_DB_PATH", "crosstalk.db")
+	dbURL := envOr("CT_DATABASE_URL", "postgres://postgres:postgres@localhost:5432/crosstalk?sslmode=disable")
 	jwtSecret := envOr("CT_JWT_SECRET", "change-me-in-production")
 
 	log.Info("starting CrossTalk server",
 		"addr", addr,
-		"db", dbPath,
 	)
 
 	// Open database
-	db, err := sqlite.Open(dbPath, log)
+	db, err := postgres.Open(dbURL, log)
 	if err != nil {
 		log.Error("failed to open database", "error", err)
 		os.Exit(1)
@@ -42,13 +41,13 @@ func main() {
 	defer db.Close()
 
 	// Create stores
-	sessionStore := sqlite.NewSessionStore(db)
-	channelStore := sqlite.NewChannelStore(db)
-	sourceStore := sqlite.NewSourceStore(db)
-	mixStore := sqlite.NewMixStore(db)
-	abcStore := sqlite.NewABCStore(db)
-	userStore := sqlite.NewUserStore(db)
-	refreshTokenStore := sqlite.NewRefreshTokenStore(db)
+	sessionStore := postgres.NewSessionStore(db)
+	channelStore := postgres.NewChannelStore(db)
+	sourceStore := postgres.NewSourceStore(db)
+	mixStore := postgres.NewMixStore(db)
+	abcStore := postgres.NewABCStore(db)
+	userStore := postgres.NewUserStore(db)
+	refreshTokenStore := postgres.NewRefreshTokenStore(db)
 
 	// Create default admin if no users exist
 	ensureDefaultAdmin(context.Background(), userStore, log)

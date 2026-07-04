@@ -1,15 +1,28 @@
-version: "3.8"
-
 services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: crosstalk
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d crosstalk"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+
   server:
     build:
       context: ..
       dockerfile: test/Dockerfile.server
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "8080:8080"
     environment:
       CT_ADDR: ":8080"
-      CT_DB_PATH: ":memory:"
+      CT_DATABASE_URL: "postgres://postgres:postgres@postgres:5432/crosstalk?sslmode=disable"
       CT_JWT_SECRET: "test-secret-do-not-use-in-production"
       CT_ADMIN_PASSWORD: "admin123"
     healthcheck:
