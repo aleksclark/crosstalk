@@ -9,7 +9,7 @@ import {
 import type { components } from "@crosstalk/api-client";
 import { getApiClient } from "../lib/api";
 
-type User = components["schemas"]["User"];
+type User = components["schemas"]["UserOut"];
 
 interface AuthState {
   user: User | null;
@@ -96,9 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     if (error || !data) {
-      throw new Error(
-        error?.error?.message || "Login failed"
-      );
+      throw new Error(error?.detail || "Login failed");
     }
 
     const token = data.access_token;
@@ -107,16 +105,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // The login response returns only tokens; derive the user (role) from the
     // JWT so route guards that require an admin role work.
     const claims = decodeJwt(token);
-    const user: User | null =
-      data.user ||
-      (claims
-        ? ({
-            id: claims.sub ?? "",
-            username,
-            role: (claims.role as User["role"]) ?? "translator",
-            created_at: "",
-          } as User)
-        : null);
+    const user: User | null = claims
+      ? ({
+          id: claims.sub ?? "",
+          username,
+          role: (claims.role as User["role"]) ?? "translator",
+          created_at: "",
+        } as User)
+      : null;
 
     setState({
       user,

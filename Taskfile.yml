@@ -63,19 +63,26 @@ tasks:
   # ── API Client Generation ───────────────────────────────────
 
   api:spec:
-    desc: Export OpenAPI spec from server (placeholder - runs server and dumps spec)
+    desc: Generate the OpenAPI spec from the Go server (source of truth)
+    dir: server
+    sources:
+      - "**/*.go"
+    generates:
+      - ../{{.SPEC_FILE}}
     cmds:
-      - echo "TODO - start server and fetch /api/openapi.json to {{.SPEC_FILE}}"
-      - echo "For now, the spec is hand-maintained at {{.SPEC_FILE}}"
+      - go run ./cmd/gen-openapi ../{{.SPEC_FILE}}
 
   api:generate:
-    desc: Regenerate all API clients from the OpenAPI spec
+    desc: Regenerate the OpenAPI spec and all API clients
     cmds:
+      - task: api:spec
       - task: api:generate:ts
       - task: api:generate:go
 
   api:generate:ts:
-    desc: Generate TypeScript types and client from OpenAPI spec
+    desc: Generate TypeScript types and client from the OpenAPI spec
+    deps:
+      - api:spec
     dir: packages/api-client
     sources:
       - ../../{{.SPEC_FILE}}
@@ -83,12 +90,11 @@ tasks:
       - src/types.ts
     cmds:
       - pnpm openapi-typescript ../../{{.SPEC_FILE}} -o src/types.ts
-    preconditions:
-      - sh: test -f ../../{{.SPEC_FILE}}
-        msg: "OpenAPI spec not found at {{.SPEC_FILE}}. Run 'task api:spec' first."
 
   api:generate:go:
-    desc: Generate Go client from OpenAPI spec
+    desc: Generate Go client from the OpenAPI spec
+    deps:
+      - api:spec
     dir: client
     sources:
       - ../{{.SPEC_FILE}}
@@ -98,9 +104,6 @@ tasks:
     cmds:
       - "{{.OAPI_CODEGEN}} --config oapi-codegen.yaml ../{{.SPEC_FILE}}"
       - go mod tidy
-    preconditions:
-      - sh: test -f ../{{.SPEC_FILE}}
-        msg: "OpenAPI spec not found at {{.SPEC_FILE}}. Run 'task api:spec' first."
 
   api:validate:
     desc: Verify generated clients compile

@@ -4,6 +4,60 @@
  */
 
 export interface paths {
+    "/api/abcs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all ABCs */
+        get: operations["list-abcs"];
+        put?: never;
+        /** Register a new ABC */
+        post: operations["create-abc"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/abcs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get ABC details */
+        get: operations["get-abc"];
+        /** Update ABC configuration */
+        put: operations["update-abc"];
+        post?: never;
+        /** Remove an ABC */
+        delete: operations["delete-abc"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/abcs/{id}/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send restart command to an ABC */
+        post: operations["restart-abc"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/login": {
         parameters: {
             query?: never;
@@ -13,25 +67,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Authenticate with username and password */
+        /** Login with username and password */
         post: operations["login"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/auth/refresh": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Refresh an access token */
-        post: operations["refreshToken"];
         delete?: never;
         options?: never;
         head?: never;
@@ -47,8 +84,42 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Invalidate refresh token */
+        /** Logout and revoke refresh token */
         post: operations["logout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refresh access token */
+        post: operations["refresh"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recordings/{id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get recording file download path */
+        get: operations["get-recording-download"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -63,10 +134,10 @@ export interface paths {
             cookie?: never;
         };
         /** List all sessions */
-        get: operations["listSessions"];
+        get: operations["list-sessions"];
         put?: never;
         /** Create a new session */
-        post: operations["createSession"];
+        post: operations["create-session"];
         delete?: never;
         options?: never;
         head?: never;
@@ -81,55 +152,195 @@ export interface paths {
             cookie?: never;
         };
         /** Get session details */
-        get: operations["getSession"];
+        get: operations["get-session"];
         /** Update session metadata */
-        put: operations["updateSession"];
+        put: operations["update-session"];
         post?: never;
-        /** Archive a session */
-        delete: operations["deleteSession"];
+        /** Delete (archive) a session */
+        delete: operations["delete-session"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/abcs": {
+    "/api/sessions/{id}/broadcast": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** List all Audio Bridge Clients */
-        get: operations["listABCs"];
+        /** Get broadcast info (public) */
+        get: operations["get-broadcast-info"];
         put?: never;
-        /** Register a new Audio Bridge Client */
-        post: operations["registerABC"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/abcs/{id}": {
+    "/api/sessions/{id}/broadcast-url": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Get ABC details and status */
-        get: operations["getABC"];
-        /** Update ABC configuration */
-        put: operations["updateABC"];
-        post?: never;
-        /** Remove an ABC */
-        delete: operations["deleteABC"];
+        /** Get broadcast URL */
+        get: operations["get-broadcast-url"];
+        put?: never;
+        /** Regenerate broadcast URL */
+        post: operations["regenerate-broadcast-url"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/abcs/{id}/restart": {
+    "/api/sessions/{id}/channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List channels in a session */
+        get: operations["list-channels"];
+        put?: never;
+        /** Create a channel in a session */
+        post: operations["create-channel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{id}/channels/{ch_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update a channel */
+        put: operations["update-channel"];
+        post?: never;
+        /** Delete a channel */
+        delete: operations["delete-channel"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{id}/channels/{ch_id}/mix": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get current mix state for a channel */
+        get: operations["get-mix"];
+        /** Update mix state for a channel */
+        put: operations["update-mix"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{id}/recordings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List recordings for a session */
+        get: operations["list-session-recordings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/translators": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List translator accounts */
+        get: operations["list-translators"];
+        put?: never;
+        /** Create a translator account */
+        post: operations["create-translator"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/translators/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update a translator */
+        put: operations["update-translator"];
+        post?: never;
+        /** Delete a translator */
+        delete: operations["delete-translator"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/translators/{id}/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Assign sessions to a translator */
+        put: operations["assign-translator-sessions"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List admin users */
+        get: operations["list-users"];
+        put?: never;
+        /** Create an admin user */
+        post: operations["create-user"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/users/{id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -138,8 +349,25 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Send restart command to ABC via control channel */
-        post: operations["restartABC"];
+        post?: never;
+        /** Delete an admin user */
+        delete: operations["delete-user"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/webrtc/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Get a short-lived WebRTC signaling token */
+        post: operations["get-webrtc-token"];
         delete?: never;
         options?: never;
         head?: never;
@@ -150,87 +378,630 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        ErrorResponse: {
-            error: {
-                code: string;
-                message: string;
-            };
-        };
-        LoginRequest: {
-            username: string;
-            password: string;
-        };
-        AuthTokens: {
-            access_token: string;
-            refresh_token: string;
-            /** @description Token lifetime in seconds */
-            expires_in: number;
-            user?: components["schemas"]["User"];
-        };
-        RefreshRequest: {
-            refresh_token: string;
-        };
-        User: {
-            /** Format: uuid */
-            id: string;
-            username: string;
-            /** @enum {string} */
-            role: "admin" | "translator";
-        };
-        Session: {
-            /** Format: uuid */
-            id: string;
-            name: string;
-            /** @enum {string} */
-            status: "active" | "ended" | "archived";
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            ended_at?: string | null;
-            channel_count?: number;
-            client_count?: number;
-        };
-        SessionListResponse: {
-            data: components["schemas"]["Session"][];
-            total: number;
-            page: number;
-        };
-        CreateSessionRequest: {
-            name: string;
-            /** Format: uuid */
-            template_id?: string | null;
-        };
-        UpdateSessionRequest: {
-            name?: string;
-        };
-        ABC: {
-            /** Format: uuid */
-            id: string;
-            name: string;
-            /** @enum {string} */
-            status: "online" | "offline" | "error";
-            /** Format: uuid */
-            session_id?: string | null;
-            /** Format: date-time */
-            last_seen_at?: string | null;
-            /** Format: date-time */
-            created_at: string;
-        };
-        ABCListResponse: {
-            data: components["schemas"]["ABC"][];
-        };
-        RegisterABCRequest: {
-            name: string;
-            /** @description Pre-shared authentication token for the ABC */
-            token?: string;
-        };
-        UpdateABCRequest: {
-            name?: string;
+        ABCOut: {
             /**
-             * Format: uuid
-             * @description Assign ABC to a session (null to unassign)
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ABCOut.json
              */
-            session_id?: string | null;
+            readonly $schema?: string;
+            /** @description Whether ABC is currently connected */
+            connected: boolean;
+            /**
+             * Format: date-time
+             * @description Creation time
+             */
+            created_at: string;
+            /** @description ABC ULID */
+            id: string;
+            /**
+             * Format: date-time
+             * @description Last time ABC was seen
+             */
+            last_seen?: string;
+            /** @description ABC name */
+            name: string;
+            /** @description Assigned session ID */
+            session_id?: string;
+        };
+        AssignTranslatorSessionsRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/AssignTranslatorSessionsRequestBody.json
+             */
+            readonly $schema?: string;
+            /** @description Session IDs to assign */
+            session_ids: string[] | null;
+        };
+        AssignTranslatorSessionsResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/AssignTranslatorSessionsResponseBody.json
+             */
+            readonly $schema?: string;
+            ok: boolean;
+        };
+        ChannelOut: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ChannelOut.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: date-time
+             * @description Creation time
+             */
+            created_at: string;
+            /** @description Channel ULID */
+            id: string;
+            /** @description Channel name */
+            name: string;
+            /** @description Parent session ID */
+            session_id: string;
+            /** @description Channel type (feed or broadcast) */
+            type: string;
+        };
+        CreateABCRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CreateABCRequestBody.json
+             */
+            readonly $schema?: string;
+            /** @description ABC name */
+            name: string;
+        };
+        CreateABCResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CreateABCResponseBody.json
+             */
+            readonly $schema?: string;
+            /** @description ABC ID */
+            id: string;
+            /** @description ABC name */
+            name: string;
+            /** @description API token (shown once) */
+            token: string;
+        };
+        CreateChannelRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CreateChannelRequestBody.json
+             */
+            readonly $schema?: string;
+            /** @description Channel name */
+            name: string;
+            /**
+             * @description Channel type
+             * @enum {string}
+             */
+            type: "feed" | "broadcast";
+        };
+        CreateSessionRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CreateSessionRequestBody.json
+             */
+            readonly $schema?: string;
+            /** @description Session description */
+            description?: string;
+            /** @description Session name */
+            name: string;
+        };
+        CreateTranslatorRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CreateTranslatorRequestBody.json
+             */
+            readonly $schema?: string;
+            /** @description Password */
+            password: string;
+            /** @description Username */
+            username: string;
+        };
+        CreateUserRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CreateUserRequestBody.json
+             */
+            readonly $schema?: string;
+            /** @description Password */
+            password: string;
+            /**
+             * @description User role
+             * @enum {string}
+             */
+            role: "admin" | "translator";
+            /** @description Username */
+            username: string;
+        };
+        DeleteABCResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DeleteABCResponseBody.json
+             */
+            readonly $schema?: string;
+            ok: boolean;
+        };
+        DeleteChannelResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DeleteChannelResponseBody.json
+             */
+            readonly $schema?: string;
+            ok: boolean;
+        };
+        DeleteSessionResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DeleteSessionResponseBody.json
+             */
+            readonly $schema?: string;
+            ok: boolean;
+        };
+        DeleteTranslatorResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DeleteTranslatorResponseBody.json
+             */
+            readonly $schema?: string;
+            ok: boolean;
+        };
+        DeleteUserResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DeleteUserResponseBody.json
+             */
+            readonly $schema?: string;
+            ok: boolean;
+        };
+        DownloadRecordingResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DownloadRecordingResponseBody.json
+             */
+            readonly $schema?: string;
+            /** @description Absolute file path for download */
+            file_path: string;
+        };
+        ErrorDetail: {
+            /** @description Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id' */
+            location?: string;
+            /** @description Error message text */
+            message?: string;
+            /** @description The value at the given location */
+            value?: unknown;
+        };
+        ErrorModel: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ErrorModel.json
+             */
+            readonly $schema?: string;
+            /**
+             * @description A human-readable explanation specific to this occurrence of the problem.
+             * @example Property foo is required but is missing.
+             */
+            detail?: string;
+            /** @description Optional list of individual error details */
+            errors?: components["schemas"]["ErrorDetail"][] | null;
+            /**
+             * Format: uri
+             * @description A URI reference that identifies the specific occurrence of the problem.
+             * @example https://example.com/error-log/abc123
+             */
+            instance?: string;
+            /**
+             * Format: int64
+             * @description HTTP status code
+             * @example 400
+             */
+            status?: number;
+            /**
+             * @description A short, human-readable summary of the problem type. This value should not change between occurrences of the error.
+             * @example Bad Request
+             */
+            title?: string;
+            /**
+             * Format: uri
+             * @description A URI reference to human-readable documentation for the error.
+             * @default about:blank
+             * @example https://example.com/errors/example
+             */
+            type: string;
+        };
+        GetBroadcastInfoResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/GetBroadcastInfoResponseBody.json
+             */
+            readonly $schema?: string;
+            /** @description Whether session is active */
+            active: boolean;
+            /** @description Session ID */
+            session_id: string;
+            /** @description Session name */
+            session_name: string;
+        };
+        GetBroadcastURLResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/GetBroadcastURLResponseBody.json
+             */
+            readonly $schema?: string;
+            /** @description Broadcast token */
+            broadcast_token: string;
+            /** @description Full broadcast URL */
+            url: string;
+        };
+        GetMixResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/GetMixResponseBody.json
+             */
+            readonly $schema?: string;
+            data: components["schemas"]["MixEntryOut"][] | null;
+        };
+        ListABCsResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListABCsResponseBody.json
+             */
+            readonly $schema?: string;
+            data: components["schemas"]["ABCOut"][] | null;
+        };
+        ListChannelsResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListChannelsResponseBody.json
+             */
+            readonly $schema?: string;
+            data: components["schemas"]["ChannelOut"][] | null;
+        };
+        ListRecordingsResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListRecordingsResponseBody.json
+             */
+            readonly $schema?: string;
+            data: components["schemas"]["RecordingOut"][] | null;
+        };
+        ListSessionsResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListSessionsResponseBody.json
+             */
+            readonly $schema?: string;
+            data: components["schemas"]["SessionOut"][] | null;
+        };
+        ListTranslatorsResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListTranslatorsResponseBody.json
+             */
+            readonly $schema?: string;
+            data: components["schemas"]["TranslatorOut"][] | null;
+        };
+        ListUsersResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListUsersResponseBody.json
+             */
+            readonly $schema?: string;
+            data: components["schemas"]["UserOut"][] | null;
+        };
+        LoginRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/LoginRequestBody.json
+             */
+            readonly $schema?: string;
+            /** @description Password */
+            password: string;
+            /** @description Username */
+            username: string;
+        };
+        LoginResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/LoginResponseBody.json
+             */
+            readonly $schema?: string;
+            /** @description JWT access token */
+            access_token: string;
+            /** @description Opaque refresh token */
+            refresh_token: string;
+        };
+        LogoutRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/LogoutRequestBody.json
+             */
+            readonly $schema?: string;
+            /** @description Refresh token to revoke */
+            refresh_token: string;
+        };
+        LogoutResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/LogoutResponseBody.json
+             */
+            readonly $schema?: string;
+            ok: boolean;
+        };
+        MixEntryInput: {
+            /**
+             * Format: double
+             * @description Volume level
+             */
+            level: number;
+            /** @description Whether source is muted */
+            muted: boolean;
+            /** @description Source ID */
+            source_id: string;
+        };
+        MixEntryOut: {
+            /** @description Channel ID */
+            channel_id: string;
+            /** @description Mix entry ID */
+            id: string;
+            /**
+             * Format: double
+             * @description Volume level (0.0-2.0)
+             */
+            level: number;
+            /** @description Whether source is muted */
+            muted: boolean;
+            /** @description Source ID */
+            source_id: string;
+        };
+        RecordingOut: {
+            /** @description Channel ID (if channel recording) */
+            channel_id?: string;
+            /**
+             * Format: date-time
+             * @description Recording end time
+             */
+            ended_at?: string;
+            /** @description Relative file path */
+            file_path: string;
+            /** @description Recording ULID */
+            id: string;
+            /** @description Session ID */
+            session_id: string;
+            /**
+             * Format: int64
+             * @description File size in bytes
+             */
+            size_bytes: number;
+            /** @description Source ID (if source recording) */
+            source_id?: string;
+            /**
+             * Format: date-time
+             * @description Recording start time
+             */
+            started_at: string;
+        };
+        RefreshRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RefreshRequestBody.json
+             */
+            readonly $schema?: string;
+            /** @description Refresh token */
+            refresh_token: string;
+        };
+        RefreshResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RefreshResponseBody.json
+             */
+            readonly $schema?: string;
+            /** @description JWT access token */
+            access_token: string;
+            /** @description Opaque refresh token */
+            refresh_token: string;
+        };
+        RegenerateBroadcastURLResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RegenerateBroadcastURLResponseBody.json
+             */
+            readonly $schema?: string;
+            /** @description New broadcast token */
+            broadcast_token: string;
+            /** @description Full broadcast URL */
+            url: string;
+        };
+        RestartABCResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RestartABCResponseBody.json
+             */
+            readonly $schema?: string;
+            ok: boolean;
+        };
+        SessionOut: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SessionOut.json
+             */
+            readonly $schema?: string;
+            /** @description Broadcast token */
+            broadcast_token?: string;
+            /**
+             * Format: date-time
+             * @description Creation time
+             */
+            created_at: string;
+            /** @description Session description */
+            description: string;
+            /** @description Session ULID */
+            id: string;
+            /** @description Session name */
+            name: string;
+            /**
+             * Format: date-time
+             * @description Last update time
+             */
+            updated_at: string;
+        };
+        TranslatorOut: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/TranslatorOut.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: date-time
+             * @description Creation time
+             */
+            created_at: string;
+            /** @description User ULID */
+            id: string;
+            /** @description Assigned session IDs */
+            sessions?: string[] | null;
+            /** @description Username */
+            username: string;
+        };
+        UpdateABCRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/UpdateABCRequestBody.json
+             */
+            readonly $schema?: string;
+            /** @description ABC name */
+            name?: string;
+            /** @description Assigned session ID */
+            session_id?: string;
+        };
+        UpdateChannelRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/UpdateChannelRequestBody.json
+             */
+            readonly $schema?: string;
+            /** @description Channel name */
+            name: string;
+            /**
+             * @description Channel type
+             * @enum {string}
+             */
+            type: "feed" | "broadcast";
+        };
+        UpdateMixRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/UpdateMixRequestBody.json
+             */
+            readonly $schema?: string;
+            /** @description Mix entries to set */
+            entries: components["schemas"]["MixEntryInput"][] | null;
+        };
+        UpdateMixResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/UpdateMixResponseBody.json
+             */
+            readonly $schema?: string;
+            data: components["schemas"]["MixEntryOut"][] | null;
+        };
+        UpdateSessionRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/UpdateSessionRequestBody.json
+             */
+            readonly $schema?: string;
+            /** @description Session description */
+            description?: string;
+            /** @description Session name */
+            name: string;
+        };
+        UpdateTranslatorRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/UpdateTranslatorRequestBody.json
+             */
+            readonly $schema?: string;
+            /** @description Password (leave empty to keep current) */
+            password?: string;
+            /** @description Username */
+            username?: string;
+        };
+        UserOut: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/UserOut.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: date-time
+             * @description Creation time
+             */
+            created_at: string;
+            /** @description User ULID */
+            id: string;
+            /** @description User role */
+            role: string;
+            /** @description Username */
+            username: string;
+        };
+        WebRTCTokenResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/WebRTCTokenResponseBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: date-time
+             * @description Token expiration time
+             */
+            expires_at: string;
+            /** @description Short-lived WebRTC signaling token */
+            token: string;
         };
     };
     responses: never;
@@ -241,6 +1012,218 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    "list-abcs": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer token */
+                Authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListABCsResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "create-abc": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer token */
+                Authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateABCRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateABCResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-abc": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer token */
+                Authorization?: string;
+            };
+            path: {
+                /** @description ABC ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ABCOut"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "update-abc": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer token */
+                Authorization?: string;
+            };
+            path: {
+                /** @description ABC ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateABCRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ABCOut"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "delete-abc": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer token */
+                Authorization?: string;
+            };
+            path: {
+                /** @description ABC ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteABCResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "restart-abc": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer token */
+                Authorization?: string;
+            };
+            path: {
+                /** @description ABC ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RestartABCResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     login: {
         parameters: {
             query?: never;
@@ -250,59 +1233,26 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["LoginRequest"];
+                "application/json": components["schemas"]["LoginRequestBody"];
             };
         };
         responses: {
-            /** @description Authentication successful */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AuthTokens"];
+                    "application/json": components["schemas"]["LoginResponseBody"];
                 };
             };
-            /** @description Invalid credentials */
-            401: {
+            /** @description Error */
+            default: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    refreshToken: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RefreshRequest"];
-            };
-        };
-        responses: {
-            /** @description Token refreshed */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthTokens"];
-                };
-            };
-            /** @description Invalid or expired refresh token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
+                    "application/problem+json": components["schemas"]["ErrorModel"];
                 };
             };
         };
@@ -314,41 +1264,33 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
-        responses: {
-            /** @description Logged out successfully */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LogoutRequestBody"];
             };
         };
-    };
-    listSessions: {
-        parameters: {
-            query?: {
-                page?: number;
-                per_page?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
         responses: {
-            /** @description List of sessions */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SessionListResponse"];
+                    "application/json": components["schemas"]["LogoutResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
                 };
             };
         };
     };
-    createSession: {
+    refresh: {
         parameters: {
             query?: never;
             header?: never;
@@ -357,271 +1299,921 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateSessionRequest"];
+                "application/json": components["schemas"]["RefreshRequestBody"];
             };
         };
         responses: {
-            /** @description Session created */
-            201: {
+            /** @description OK */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Session"];
+                    "application/json": components["schemas"]["RefreshResponseBody"];
                 };
             };
-            /** @description Validation error */
-            400: {
+            /** @description Error */
+            default: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
+                    "application/problem+json": components["schemas"]["ErrorModel"];
                 };
             };
         };
     };
-    getSession: {
+    "get-recording-download": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Bearer token */
+                Authorization?: string;
+            };
             path: {
+                /** @description Recording ID */
                 id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Session details */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Session"];
+                    "application/json": components["schemas"]["DownloadRecordingResponseBody"];
                 };
             };
-            /** @description Session not found */
-            404: {
+            /** @description Error */
+            default: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
+                    "application/problem+json": components["schemas"]["ErrorModel"];
                 };
             };
         };
     };
-    updateSession: {
+    "list-sessions": {
         parameters: {
             query?: never;
-            header?: never;
-            path: {
-                id: string;
+            header?: {
+                /** @description Bearer token */
+                Authorization?: string;
             };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateSessionRequest"];
-            };
-        };
-        responses: {
-            /** @description Session updated */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Session"];
-                };
-            };
-            /** @description Session not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    deleteSession: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Session archived */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Session not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    listABCs: {
-        parameters: {
-            query?: never;
-            header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description List of ABCs */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ABCListResponse"];
+                    "application/json": components["schemas"]["ListSessionsResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
                 };
             };
         };
     };
-    registerABC: {
+    "create-session": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Bearer token */
+                Authorization?: string;
+            };
             path?: never;
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["RegisterABCRequest"];
+                "application/json": components["schemas"]["CreateSessionRequestBody"];
             };
         };
         responses: {
-            /** @description ABC registered */
-            201: {
+            /** @description OK */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ABC"];
+                    "application/json": components["schemas"]["SessionOut"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
                 };
             };
         };
     };
-    getABC: {
+    "get-session": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Bearer token */
+                Authorization?: string;
+            };
             path: {
+                /** @description Session ID */
                 id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description ABC details */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ABC"];
+                    "application/json": components["schemas"]["SessionOut"];
                 };
             };
-            /** @description ABC not found */
-            404: {
+            /** @description Error */
+            default: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
+                    "application/problem+json": components["schemas"]["ErrorModel"];
                 };
             };
         };
     };
-    updateABC: {
+    "update-session": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Bearer token */
+                Authorization?: string;
+            };
             path: {
+                /** @description Session ID */
                 id: string;
             };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["UpdateABCRequest"];
+                "application/json": components["schemas"]["UpdateSessionRequestBody"];
             };
         };
         responses: {
-            /** @description ABC updated */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ABC"];
+                    "application/json": components["schemas"]["SessionOut"];
                 };
             };
-        };
-    };
-    deleteABC: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description ABC removed */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    restartABC: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Restart command sent */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description ABC not found */
-            404: {
+            /** @description Error */
+            default: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "delete-session": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer token */
+                Authorization?: string;
+            };
+            path: {
+                /** @description Session ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteSessionResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-broadcast-info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Session ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GetBroadcastInfoResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-broadcast-url": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer token */
+                Authorization?: string;
+            };
+            path: {
+                /** @description Session ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GetBroadcastURLResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "regenerate-broadcast-url": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer token */
+                Authorization?: string;
+            };
+            path: {
+                /** @description Session ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegenerateBroadcastURLResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-channels": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer token */
+                Authorization?: string;
+            };
+            path: {
+                /** @description Session ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListChannelsResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "create-channel": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer token */
+                Authorization?: string;
+            };
+            path: {
+                /** @description Session ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateChannelRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelOut"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "update-channel": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer token */
+                Authorization?: string;
+            };
+            path: {
+                /** @description Session ID */
+                id: string;
+                /** @description Channel ID */
+                ch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateChannelRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelOut"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "delete-channel": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer token */
+                Authorization?: string;
+            };
+            path: {
+                /** @description Session ID */
+                id: string;
+                /** @description Channel ID */
+                ch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteChannelResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-mix": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer token */
+                Authorization?: string;
+            };
+            path: {
+                /** @description Session ID */
+                id: string;
+                /** @description Channel ID */
+                ch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GetMixResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "update-mix": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer token */
+                Authorization?: string;
+            };
+            path: {
+                /** @description Session ID */
+                id: string;
+                /** @description Channel ID */
+                ch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMixRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateMixResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-session-recordings": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer token */
+                Authorization?: string;
+            };
+            path: {
+                /** @description Session ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListRecordingsResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-translators": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer token */
+                Authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListTranslatorsResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "create-translator": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer token */
+                Authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTranslatorRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranslatorOut"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "update-translator": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer token */
+                Authorization?: string;
+            };
+            path: {
+                /** @description Translator ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateTranslatorRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranslatorOut"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "delete-translator": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer token */
+                Authorization?: string;
+            };
+            path: {
+                /** @description Translator ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteTranslatorResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "assign-translator-sessions": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer token */
+                Authorization?: string;
+            };
+            path: {
+                /** @description Translator ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignTranslatorSessionsRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssignTranslatorSessionsResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-users": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer token */
+                Authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListUsersResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "create-user": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer token */
+                Authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateUserRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserOut"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "delete-user": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer token */
+                Authorization?: string;
+            };
+            path: {
+                /** @description User ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteUserResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-webrtc-token": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer token */
+                Authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebRTCTokenResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
                 };
             };
         };

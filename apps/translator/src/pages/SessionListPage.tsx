@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { createApiClient, type components } from "@crosstalk/api-client";
 
-type Session = components["schemas"]["Session"];
+type Session = components["schemas"]["SessionOut"];
 
 export function SessionListPage() {
   const { getToken, logout, user } = useAuth();
@@ -21,25 +21,12 @@ export function SessionListPage() {
       if (apiError) {
         setError("Failed to load sessions");
       } else if (data) {
-        setSessions(data.data);
+        setSessions(data.data ?? []);
       }
       setLoading(false);
     };
     fetchSessions();
   }, [getToken]);
-
-  const statusColor = (status: string) => {
-    switch (status) {
-      case "active":
-        return "bg-green-500";
-      case "ended":
-        return "bg-yellow-500";
-      case "archived":
-        return "bg-gray-500";
-      default:
-        return "bg-gray-500";
-    }
-  };
 
   return (
     <div className="min-h-screen p-4 max-w-2xl mx-auto">
@@ -72,15 +59,14 @@ export function SessionListPage() {
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className={`w-2 h-2 rounded-full ${statusColor(session.status)}`} />
+                <div className="w-2 h-2 rounded-full bg-blue-500" />
                 <span className="font-medium text-white">{session.name}</span>
               </div>
-              <div className="flex items-center gap-4 text-sm text-gray-400">
-                <span className="capitalize">{session.status}</span>
-                {session.client_count !== undefined && (
-                  <span>{session.client_count} connected</span>
-                )}
-              </div>
+              {session.description && (
+                <div className="text-sm text-gray-400">
+                  {session.description}
+                </div>
+              )}
             </div>
           </button>
         ))}

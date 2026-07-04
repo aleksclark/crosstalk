@@ -100,6 +100,14 @@ func (s *Server) Handler() http.Handler {
 	return s.router
 }
 
+// OpenAPIJSON returns the generated OpenAPI spec as JSON, downgraded to 3.0.3.
+// It reflects the registered routes and types exactly and is the source of
+// truth for client code generation. 3.0.3 is emitted (rather than huma's native
+// 3.1) so that both openapi-typescript and oapi-codegen can consume it.
+func (s *Server) OpenAPIJSON() ([]byte, error) {
+	return s.api.OpenAPI().Downgrade()
+}
+
 // registerRoutes registers all API endpoints.
 func (s *Server) registerRoutes() {
 	// Auth

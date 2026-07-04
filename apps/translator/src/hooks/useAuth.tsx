@@ -25,6 +25,24 @@ interface AuthState {
 
 const AuthContext = createContext<AuthState | null>(null);
 
+interface JwtClaims {
+  sub?: string;
+  role?: string;
+}
+
+// decodeJwt reads the (unverified) payload of a JWT. The server verifies the
+// signature; the client only needs the role/subject to drive UI state.
+function decodeJwt(token: string): JwtClaims | null {
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return null;
+    const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
+    return JSON.parse(json) as JwtClaims;
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
@@ -37,14 +55,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: { username, password },
     });
     if (error || !data) {
-      throw new Error(
-        error?.error?.message ?? "Login failed",
-      );
+      throw new Error(error?.detail ?? "Login failed");
     }
     tokenRef.current = data.access_token;
     refreshTokenRef.current = data.refresh_token;
     setToken(data.access_token);
-    setUser(data.user ?? null);
+
+    // The login response returns only tokens; derive the user (id/role) from
+    // the JWT so role-based UI works.
+    const claims = decodeJwt(data.access_token);
+    setUser(
+      claims
+        ? {
+            id: claims.sub ?? "",
+            username,
+            role: (claims.role as User["role"]) ?? "translator",
+          }
+        : null
+    );
   }, []);
 
   const logout = useCallback(() => {

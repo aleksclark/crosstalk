@@ -5,7 +5,7 @@ import { getApiClient } from "../lib/api";
 import { MixPanel } from "../components/MixPanel";
 import type { components } from "@crosstalk/api-client";
 
-type Session = components["schemas"]["Session"];
+type Session = components["schemas"]["SessionOut"];
 
 export function SessionDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -75,34 +75,24 @@ export function SessionDetailPage() {
           </div>
           <p className="text-muted-foreground text-sm mt-1">ID: {session.id}</p>
         </div>
-        <span
-          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium ${
-            session.status === "active"
-              ? "bg-green-500/20 text-green-400"
-              : "bg-gray-500/20 text-gray-400"
-          }`}
-        >
-          <span className="w-2 h-2 rounded-full bg-current" />
-          {session.status}
-        </span>
       </div>
 
       {/* Session info cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-card border border-border rounded-lg p-4">
           <h3 className="text-sm font-medium text-muted-foreground">
-            Channels
+            Description
           </h3>
-          <p className="text-2xl font-bold mt-1">
-            {session.channel_count ?? 0}
+          <p className="text-sm mt-2">
+            {session.description || "—"}
           </p>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <h3 className="text-sm font-medium text-muted-foreground">
-            Connected Clients
+            Created
           </h3>
-          <p className="text-2xl font-bold mt-1">
-            {session.client_count ?? 0}
+          <p className="text-sm mt-2">
+            {new Date(session.created_at).toLocaleString()}
           </p>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">

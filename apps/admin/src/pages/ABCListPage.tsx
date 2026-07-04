@@ -4,7 +4,7 @@ import { useAuth } from "../hooks/useAuth";
 import { getApiClient } from "../lib/api";
 import type { components } from "@crosstalk/api-client";
 
-type ABC = components["schemas"]["ABC"];
+type ABC = components["schemas"]["ABCOut"];
 
 export function ABCListPage() {
   const { token } = useAuth();
@@ -76,15 +76,13 @@ export function ABCListPage() {
                 <td className="px-4 py-3">
                   <span
                     className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${
-                      abc.status === "online"
+                      abc.connected
                         ? "bg-green-500/20 text-green-400"
-                        : abc.status === "error"
-                          ? "bg-red-500/20 text-red-400"
-                          : "bg-gray-500/20 text-gray-400"
+                        : "bg-gray-500/20 text-gray-400"
                     }`}
                   >
                     <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                    {abc.status}
+                    {abc.connected ? "online" : "offline"}
                   </span>
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">
@@ -100,8 +98,8 @@ export function ABCListPage() {
                   )}
                 </td>
                 <td className="px-4 py-3 text-muted-foreground text-xs">
-                  {abc.last_seen_at
-                    ? new Date(abc.last_seen_at).toLocaleString()
+                  {abc.last_seen
+                    ? new Date(abc.last_seen).toLocaleString()
                     : "Never"}
                 </td>
               </tr>

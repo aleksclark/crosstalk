@@ -69,6 +69,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -77,14 +81,20 @@ jobs:
         with:
           version: 10.10.0
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Generate OpenAPI spec + TS types from the server
+        run: |
+          cd server && go run ./cmd/gen-openapi ../api/openapi.json
+          cd .. && pnpm install --frozen-lockfile
+          pnpm --filter @crosstalk/api-client generate
 
-      - name: TypeScript check (web)
-        run: pnpm --filter './web' exec tsc --noEmit
+      - name: TypeScript check (api-client)
+        run: pnpm --filter @crosstalk/api-client exec tsc --noEmit
 
-      - name: TypeScript check (packages)
-        run: pnpm --filter './packages/*' exec tsc --noEmit
+      - name: TypeScript check (apps)
+        run: |
+          pnpm --filter @crosstalk/admin exec tsc -b --noEmit
+          pnpm --filter @crosstalk/translator exec tsc -b --noEmit
+          pnpm --filter @crosstalk/broadcast exec tsc -b --noEmit
 
   build-server:
     name: Build Server
@@ -114,6 +124,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -122,11 +136,17 @@ jobs:
         with:
           version: 10.10.0
 
+      - name: Generate OpenAPI spec from the server
+        run: cd server && go run ./cmd/gen-openapi ../api/openapi.json
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build web
-        run: pnpm --filter './web' build
+      - name: Build apps (regenerates types via prebuild hooks)
+        run: |
+          pnpm --filter @crosstalk/admin build
+          pnpm --filter @crosstalk/translator build
+          pnpm --filter @crosstalk/broadcast build
 
   integration:
     name: Integration Tests

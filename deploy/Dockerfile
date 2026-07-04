@@ -1,6 +1,20 @@
 # syntax=docker/dockerfile:1
 
-# ── Stage 1: build the frontend SPAs ───────────────────────────────
+# ── Stage 1: generate the OpenAPI spec from the Go server ──────────
+# The spec is derived from the real API code (no DB/network needed), so the
+# generated TypeScript client can never drift from the server.
+FROM golang:1.25-bookworm AS spec
+
+WORKDIR /app
+COPY server/go.mod server/go.sum ./server/
+COPY proto/gen/go/go.mod proto/gen/go/go.sum ./proto/gen/go/
+RUN cd server && go mod download
+
+COPY server/ ./server/
+COPY proto/ ./proto/
+RUN cd server && go run ./cmd/gen-openapi /openapi.json
+
+# ── Stage 2: build the frontend SPAs ───────────────────────────────
 FROM node:22-bookworm AS webbuild
 
 RUN npm install -g pnpm@10.10.0
@@ -9,14 +23,17 @@ WORKDIR /src
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/ ./packages/
 COPY apps/ ./apps/
-COPY api/ ./api/
+
+# Use the freshly generated spec as the codegen source of truth. Each app's
+# prebuild step regenerates packages/api-client/src/types.ts from it.
+COPY --from=spec /openapi.json ./api/openapi.json
 
 RUN pnpm install --no-frozen-lockfile
 RUN pnpm --filter @crosstalk/admin build \
     && pnpm --filter @crosstalk/broadcast build \
     && pnpm --filter @crosstalk/translator build
 
-# ── Stage 2: build the Go server (embeds the SPA dist output) ──────
+# ── Stage 3: build the Go server (embeds the SPA dist output) ──────
 FROM golang:1.25-bookworm AS build
 
 WORKDIR /app
@@ -34,7 +51,7 @@ COPY --from=webbuild /src/apps/translator/dist/ ./server/web/translator/
 
 RUN cd server && CGO_ENABLED=0 go build -o /app/ct-server ./cmd/ct-server
 
-# ── Stage 3: runtime ───────────────────────────────────────────────
+# ── Stage 4: runtime ───────────────────────────────────────────────
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \

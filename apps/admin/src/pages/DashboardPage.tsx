@@ -25,19 +25,21 @@ export function DashboardPage() {
       const client = getApiClient(token);
 
       try {
-        const [sessionsRes, abcsRes] = await Promise.all([
-          client.GET("/api/sessions", { params: { query: { page: 1, per_page: 100 } } }),
+        const [sessionsRes, abcsRes, translatorsRes] = await Promise.all([
+          client.GET("/api/sessions"),
           client.GET("/api/abcs"),
+          client.GET("/api/translators"),
         ]);
 
         const sessions = sessionsRes.data?.data ?? [];
         const abcs = abcsRes.data?.data ?? [];
+        const translators = translatorsRes.data?.data ?? [];
 
         setStats({
-          activeSessions: sessions.filter((s) => s.status === "active").length,
+          activeSessions: sessions.length,
           totalABCs: abcs.length,
-          onlineABCs: abcs.filter((a) => a.status === "online").length,
-          totalTranslators: 0,
+          onlineABCs: abcs.filter((a) => a.connected).length,
+          totalTranslators: translators.length,
         });
       } catch {
         // Silently handle errors for now
@@ -51,7 +53,7 @@ export function DashboardPage() {
 
   const cards = [
     {
-      label: "Active Sessions",
+      label: "Sessions",
       value: stats.activeSessions,
       icon: "🎙️",
       color: "text-green-400",

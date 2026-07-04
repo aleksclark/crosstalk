@@ -4,7 +4,7 @@ import { useAuth } from "../hooks/useAuth";
 import { getApiClient } from "../lib/api";
 import type { components } from "@crosstalk/api-client";
 
-type Session = components["schemas"]["Session"];
+type Session = components["schemas"]["SessionOut"];
 
 export function SessionListPage() {
   const { token } = useAuth();
@@ -18,9 +18,7 @@ export function SessionListPage() {
     if (!token) return;
     const client = getApiClient(token);
     try {
-      const { data } = await client.GET("/api/sessions", {
-        params: { query: { page: 1, per_page: 50 } },
-      });
+      const { data } = await client.GET("/api/sessions");
       setSessions(data?.data ?? []);
     } catch {
       // handle error
@@ -109,10 +107,7 @@ export function SessionListPage() {
                 Name
               </th>
               <th className="text-left px-4 py-3 text-muted-foreground font-medium">
-                Status
-              </th>
-              <th className="text-left px-4 py-3 text-muted-foreground font-medium">
-                Channels
+                Description
               </th>
               <th className="text-left px-4 py-3 text-muted-foreground font-medium">
                 Created
@@ -133,22 +128,10 @@ export function SessionListPage() {
                     {session.name}
                   </Link>
                 </td>
-                <td className="px-4 py-3">
-                  <span
-                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${
-                      session.status === "active"
-                        ? "bg-green-500/20 text-green-400"
-                        : session.status === "ended"
-                          ? "bg-yellow-500/20 text-yellow-400"
-                          : "bg-gray-500/20 text-gray-400"
-                    }`}
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                    {session.status}
-                  </span>
-                </td>
                 <td className="px-4 py-3 text-muted-foreground">
-                  {session.channel_count ?? 0}
+                  {session.description || (
+                    <span className="text-xs italic">No description</span>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">
                   {new Date(session.created_at).toLocaleDateString()}
@@ -158,7 +141,7 @@ export function SessionListPage() {
             {sessions.length === 0 && (
               <tr>
                 <td
-                  colSpan={4}
+                  colSpan={3}
                   className="px-4 py-8 text-center text-muted-foreground"
                 >
                   No sessions yet. Create one to get started.

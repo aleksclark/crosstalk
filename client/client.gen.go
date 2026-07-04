@@ -15,63 +15,38 @@ import (
 	"time"
 
 	"github.com/oapi-codegen/runtime"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 const (
 	BearerAuthScopes bearerAuthContextKey = "bearerAuth.Scopes"
 )
 
-// Defines values for ABCStatus.
+// Defines values for CreateChannelRequestBodyType.
 const (
-	Error   ABCStatus = "error"
-	Offline ABCStatus = "offline"
-	Online  ABCStatus = "online"
+	CreateChannelRequestBodyTypeBroadcast CreateChannelRequestBodyType = "broadcast"
+	CreateChannelRequestBodyTypeFeed      CreateChannelRequestBodyType = "feed"
 )
 
-// Valid indicates whether the value is a known member of the ABCStatus enum.
-func (e ABCStatus) Valid() bool {
+// Valid indicates whether the value is a known member of the CreateChannelRequestBodyType enum.
+func (e CreateChannelRequestBodyType) Valid() bool {
 	switch e {
-	case Error:
+	case CreateChannelRequestBodyTypeBroadcast:
 		return true
-	case Offline:
-		return true
-	case Online:
+	case CreateChannelRequestBodyTypeFeed:
 		return true
 	default:
 		return false
 	}
 }
 
-// Defines values for SessionStatus.
+// Defines values for CreateUserRequestBodyRole.
 const (
-	Active   SessionStatus = "active"
-	Archived SessionStatus = "archived"
-	Ended    SessionStatus = "ended"
+	Admin      CreateUserRequestBodyRole = "admin"
+	Translator CreateUserRequestBodyRole = "translator"
 )
 
-// Valid indicates whether the value is a known member of the SessionStatus enum.
-func (e SessionStatus) Valid() bool {
-	switch e {
-	case Active:
-		return true
-	case Archived:
-		return true
-	case Ended:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for UserRole.
-const (
-	Admin      UserRole = "admin"
-	Translator UserRole = "translator"
-)
-
-// Valid indicates whether the value is a known member of the UserRole enum.
-func (e UserRole) Valid() bool {
+// Valid indicates whether the value is a known member of the CreateUserRequestBodyRole enum.
+func (e CreateUserRequestBodyRole) Valid() bool {
 	switch e {
 	case Admin:
 		return true
@@ -82,137 +57,822 @@ func (e UserRole) Valid() bool {
 	}
 }
 
-// ABC defines model for ABC.
-type ABC struct {
-	CreatedAt  time.Time           `json:"created_at"`
-	Id         openapi_types.UUID  `json:"id"`
-	LastSeenAt *time.Time          `json:"last_seen_at,omitempty"`
-	Name       string              `json:"name"`
-	SessionId  *openapi_types.UUID `json:"session_id,omitempty"`
-	Status     ABCStatus           `json:"status"`
+// Defines values for UpdateChannelRequestBodyType.
+const (
+	UpdateChannelRequestBodyTypeBroadcast UpdateChannelRequestBodyType = "broadcast"
+	UpdateChannelRequestBodyTypeFeed      UpdateChannelRequestBodyType = "feed"
+)
+
+// Valid indicates whether the value is a known member of the UpdateChannelRequestBodyType enum.
+func (e UpdateChannelRequestBodyType) Valid() bool {
+	switch e {
+	case UpdateChannelRequestBodyTypeBroadcast:
+		return true
+	case UpdateChannelRequestBodyTypeFeed:
+		return true
+	default:
+		return false
+	}
 }
 
-// ABCStatus defines model for ABC.Status.
-type ABCStatus string
+// ABCOut defines model for ABCOut.
+type ABCOut struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
 
-// ABCListResponse defines model for ABCListResponse.
-type ABCListResponse struct {
-	Data []ABC `json:"data"`
+	// Connected Whether ABC is currently connected
+	Connected bool `json:"connected"`
+
+	// CreatedAt Creation time
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id ABC ULID
+	Id string `json:"id"`
+
+	// LastSeen Last time ABC was seen
+	LastSeen *time.Time `json:"last_seen,omitempty"`
+
+	// Name ABC name
+	Name string `json:"name"`
+
+	// SessionId Assigned session ID
+	SessionId *string `json:"session_id,omitempty"`
 }
 
-// AuthTokens defines model for AuthTokens.
-type AuthTokens struct {
-	AccessToken string `json:"access_token"`
+// AssignTranslatorSessionsRequestBody defines model for AssignTranslatorSessionsRequestBody.
+type AssignTranslatorSessionsRequestBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
 
-	// ExpiresIn Token lifetime in seconds
-	ExpiresIn    int    `json:"expires_in"`
-	RefreshToken string `json:"refresh_token"`
-	User         *User  `json:"user,omitempty"`
+	// SessionIds Session IDs to assign
+	SessionIds *[]string `json:"session_ids"`
 }
 
-// CreateSessionRequest defines model for CreateSessionRequest.
-type CreateSessionRequest struct {
-	Name       string              `json:"name"`
-	TemplateId *openapi_types.UUID `json:"template_id,omitempty"`
+// AssignTranslatorSessionsResponseBody defines model for AssignTranslatorSessionsResponseBody.
+type AssignTranslatorSessionsResponseBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+	Ok     bool    `json:"ok"`
 }
 
-// ErrorResponse defines model for ErrorResponse.
-type ErrorResponse struct {
-	Error struct {
-		Code    string `json:"code"`
-		Message string `json:"message"`
-	} `json:"error"`
+// ChannelOut defines model for ChannelOut.
+type ChannelOut struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+
+	// CreatedAt Creation time
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id Channel ULID
+	Id string `json:"id"`
+
+	// Name Channel name
+	Name string `json:"name"`
+
+	// SessionId Parent session ID
+	SessionId string `json:"session_id"`
+
+	// Type Channel type (feed or broadcast)
+	Type string `json:"type"`
 }
 
-// LoginRequest defines model for LoginRequest.
-type LoginRequest struct {
+// CreateABCRequestBody defines model for CreateABCRequestBody.
+type CreateABCRequestBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+
+	// Name ABC name
+	Name string `json:"name"`
+}
+
+// CreateABCResponseBody defines model for CreateABCResponseBody.
+type CreateABCResponseBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+
+	// Id ABC ID
+	Id string `json:"id"`
+
+	// Name ABC name
+	Name string `json:"name"`
+
+	// Token API token (shown once)
+	Token string `json:"token"`
+}
+
+// CreateChannelRequestBody defines model for CreateChannelRequestBody.
+type CreateChannelRequestBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+
+	// Name Channel name
+	Name string `json:"name"`
+
+	// Type Channel type
+	Type CreateChannelRequestBodyType `json:"type"`
+}
+
+// CreateChannelRequestBodyType Channel type
+type CreateChannelRequestBodyType string
+
+// CreateSessionRequestBody defines model for CreateSessionRequestBody.
+type CreateSessionRequestBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+
+	// Description Session description
+	Description *string `json:"description,omitempty"`
+
+	// Name Session name
+	Name string `json:"name"`
+}
+
+// CreateTranslatorRequestBody defines model for CreateTranslatorRequestBody.
+type CreateTranslatorRequestBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+
+	// Password Password
 	Password string `json:"password"`
+
+	// Username Username
 	Username string `json:"username"`
 }
 
-// RefreshRequest defines model for RefreshRequest.
-type RefreshRequest struct {
+// CreateUserRequestBody defines model for CreateUserRequestBody.
+type CreateUserRequestBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+
+	// Password Password
+	Password string `json:"password"`
+
+	// Role User role
+	Role CreateUserRequestBodyRole `json:"role"`
+
+	// Username Username
+	Username string `json:"username"`
+}
+
+// CreateUserRequestBodyRole User role
+type CreateUserRequestBodyRole string
+
+// DeleteABCResponseBody defines model for DeleteABCResponseBody.
+type DeleteABCResponseBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+	Ok     bool    `json:"ok"`
+}
+
+// DeleteChannelResponseBody defines model for DeleteChannelResponseBody.
+type DeleteChannelResponseBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+	Ok     bool    `json:"ok"`
+}
+
+// DeleteSessionResponseBody defines model for DeleteSessionResponseBody.
+type DeleteSessionResponseBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+	Ok     bool    `json:"ok"`
+}
+
+// DeleteTranslatorResponseBody defines model for DeleteTranslatorResponseBody.
+type DeleteTranslatorResponseBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+	Ok     bool    `json:"ok"`
+}
+
+// DeleteUserResponseBody defines model for DeleteUserResponseBody.
+type DeleteUserResponseBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+	Ok     bool    `json:"ok"`
+}
+
+// DownloadRecordingResponseBody defines model for DownloadRecordingResponseBody.
+type DownloadRecordingResponseBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+
+	// FilePath Absolute file path for download
+	FilePath string `json:"file_path"`
+}
+
+// ErrorDetail defines model for ErrorDetail.
+type ErrorDetail struct {
+	// Location Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id'
+	Location *string `json:"location,omitempty"`
+
+	// Message Error message text
+	Message *string `json:"message,omitempty"`
+
+	// Value The value at the given location
+	Value interface{} `json:"value,omitempty"`
+}
+
+// ErrorModel defines model for ErrorModel.
+type ErrorModel struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+
+	// Detail A human-readable explanation specific to this occurrence of the problem.
+	Detail *string `json:"detail,omitempty"`
+
+	// Errors Optional list of individual error details
+	Errors *[]ErrorDetail `json:"errors,omitempty"`
+
+	// Instance A URI reference that identifies the specific occurrence of the problem.
+	Instance *string `json:"instance,omitempty"`
+
+	// Status HTTP status code
+	Status *int64 `json:"status,omitempty"`
+
+	// Title A short, human-readable summary of the problem type. This value should not change between occurrences of the error.
+	Title *string `json:"title,omitempty"`
+
+	// Type A URI reference to human-readable documentation for the error.
+	Type *string `json:"type,omitempty"`
+}
+
+// GetBroadcastInfoResponseBody defines model for GetBroadcastInfoResponseBody.
+type GetBroadcastInfoResponseBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+
+	// Active Whether session is active
+	Active bool `json:"active"`
+
+	// SessionId Session ID
+	SessionId string `json:"session_id"`
+
+	// SessionName Session name
+	SessionName string `json:"session_name"`
+}
+
+// GetBroadcastURLResponseBody defines model for GetBroadcastURLResponseBody.
+type GetBroadcastURLResponseBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+
+	// BroadcastToken Broadcast token
+	BroadcastToken string `json:"broadcast_token"`
+
+	// Url Full broadcast URL
+	Url string `json:"url"`
+}
+
+// GetMixResponseBody defines model for GetMixResponseBody.
+type GetMixResponseBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string        `json:"$schema,omitempty"`
+	Data   *[]MixEntryOut `json:"data"`
+}
+
+// ListABCsResponseBody defines model for ListABCsResponseBody.
+type ListABCsResponseBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string   `json:"$schema,omitempty"`
+	Data   *[]ABCOut `json:"data"`
+}
+
+// ListChannelsResponseBody defines model for ListChannelsResponseBody.
+type ListChannelsResponseBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string       `json:"$schema,omitempty"`
+	Data   *[]ChannelOut `json:"data"`
+}
+
+// ListRecordingsResponseBody defines model for ListRecordingsResponseBody.
+type ListRecordingsResponseBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string         `json:"$schema,omitempty"`
+	Data   *[]RecordingOut `json:"data"`
+}
+
+// ListSessionsResponseBody defines model for ListSessionsResponseBody.
+type ListSessionsResponseBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string       `json:"$schema,omitempty"`
+	Data   *[]SessionOut `json:"data"`
+}
+
+// ListTranslatorsResponseBody defines model for ListTranslatorsResponseBody.
+type ListTranslatorsResponseBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string          `json:"$schema,omitempty"`
+	Data   *[]TranslatorOut `json:"data"`
+}
+
+// ListUsersResponseBody defines model for ListUsersResponseBody.
+type ListUsersResponseBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string    `json:"$schema,omitempty"`
+	Data   *[]UserOut `json:"data"`
+}
+
+// LoginRequestBody defines model for LoginRequestBody.
+type LoginRequestBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+
+	// Password Password
+	Password string `json:"password"`
+
+	// Username Username
+	Username string `json:"username"`
+}
+
+// LoginResponseBody defines model for LoginResponseBody.
+type LoginResponseBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+
+	// AccessToken JWT access token
+	AccessToken string `json:"access_token"`
+
+	// RefreshToken Opaque refresh token
 	RefreshToken string `json:"refresh_token"`
 }
 
-// RegisterABCRequest defines model for RegisterABCRequest.
-type RegisterABCRequest struct {
+// LogoutRequestBody defines model for LogoutRequestBody.
+type LogoutRequestBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+
+	// RefreshToken Refresh token to revoke
+	RefreshToken string `json:"refresh_token"`
+}
+
+// LogoutResponseBody defines model for LogoutResponseBody.
+type LogoutResponseBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+	Ok     bool    `json:"ok"`
+}
+
+// MixEntryInput defines model for MixEntryInput.
+type MixEntryInput struct {
+	// Level Volume level
+	Level float64 `json:"level"`
+
+	// Muted Whether source is muted
+	Muted bool `json:"muted"`
+
+	// SourceId Source ID
+	SourceId string `json:"source_id"`
+}
+
+// MixEntryOut defines model for MixEntryOut.
+type MixEntryOut struct {
+	// ChannelId Channel ID
+	ChannelId string `json:"channel_id"`
+
+	// Id Mix entry ID
+	Id string `json:"id"`
+
+	// Level Volume level (0.0-2.0)
+	Level float64 `json:"level"`
+
+	// Muted Whether source is muted
+	Muted bool `json:"muted"`
+
+	// SourceId Source ID
+	SourceId string `json:"source_id"`
+}
+
+// RecordingOut defines model for RecordingOut.
+type RecordingOut struct {
+	// ChannelId Channel ID (if channel recording)
+	ChannelId *string `json:"channel_id,omitempty"`
+
+	// EndedAt Recording end time
+	EndedAt *time.Time `json:"ended_at,omitempty"`
+
+	// FilePath Relative file path
+	FilePath string `json:"file_path"`
+
+	// Id Recording ULID
+	Id string `json:"id"`
+
+	// SessionId Session ID
+	SessionId string `json:"session_id"`
+
+	// SizeBytes File size in bytes
+	SizeBytes int64 `json:"size_bytes"`
+
+	// SourceId Source ID (if source recording)
+	SourceId *string `json:"source_id,omitempty"`
+
+	// StartedAt Recording start time
+	StartedAt time.Time `json:"started_at"`
+}
+
+// RefreshRequestBody defines model for RefreshRequestBody.
+type RefreshRequestBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+
+	// RefreshToken Refresh token
+	RefreshToken string `json:"refresh_token"`
+}
+
+// RefreshResponseBody defines model for RefreshResponseBody.
+type RefreshResponseBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+
+	// AccessToken JWT access token
+	AccessToken string `json:"access_token"`
+
+	// RefreshToken Opaque refresh token
+	RefreshToken string `json:"refresh_token"`
+}
+
+// RegenerateBroadcastURLResponseBody defines model for RegenerateBroadcastURLResponseBody.
+type RegenerateBroadcastURLResponseBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+
+	// BroadcastToken New broadcast token
+	BroadcastToken string `json:"broadcast_token"`
+
+	// Url Full broadcast URL
+	Url string `json:"url"`
+}
+
+// RestartABCResponseBody defines model for RestartABCResponseBody.
+type RestartABCResponseBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+	Ok     bool    `json:"ok"`
+}
+
+// SessionOut defines model for SessionOut.
+type SessionOut struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+
+	// BroadcastToken Broadcast token
+	BroadcastToken *string `json:"broadcast_token,omitempty"`
+
+	// CreatedAt Creation time
+	CreatedAt time.Time `json:"created_at"`
+
+	// Description Session description
+	Description string `json:"description"`
+
+	// Id Session ULID
+	Id string `json:"id"`
+
+	// Name Session name
 	Name string `json:"name"`
 
-	// Token Pre-shared authentication token for the ABC
-	Token *string `json:"token,omitempty"`
+	// UpdatedAt Last update time
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// Session defines model for Session.
-type Session struct {
-	ChannelCount *int               `json:"channel_count,omitempty"`
-	ClientCount  *int               `json:"client_count,omitempty"`
-	CreatedAt    time.Time          `json:"created_at"`
-	EndedAt      *time.Time         `json:"ended_at,omitempty"`
-	Id           openapi_types.UUID `json:"id"`
-	Name         string             `json:"name"`
-	Status       SessionStatus      `json:"status"`
+// TranslatorOut defines model for TranslatorOut.
+type TranslatorOut struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+
+	// CreatedAt Creation time
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id User ULID
+	Id string `json:"id"`
+
+	// Sessions Assigned session IDs
+	Sessions *[]string `json:"sessions,omitempty"`
+
+	// Username Username
+	Username string `json:"username"`
 }
 
-// SessionStatus defines model for Session.Status.
-type SessionStatus string
+// UpdateABCRequestBody defines model for UpdateABCRequestBody.
+type UpdateABCRequestBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
 
-// SessionListResponse defines model for SessionListResponse.
-type SessionListResponse struct {
-	Data  []Session `json:"data"`
-	Page  int       `json:"page"`
-	Total int       `json:"total"`
-}
-
-// UpdateABCRequest defines model for UpdateABCRequest.
-type UpdateABCRequest struct {
+	// Name ABC name
 	Name *string `json:"name,omitempty"`
 
-	// SessionId Assign ABC to a session (null to unassign)
-	SessionId *openapi_types.UUID `json:"session_id,omitempty"`
+	// SessionId Assigned session ID
+	SessionId *string `json:"session_id,omitempty"`
 }
 
-// UpdateSessionRequest defines model for UpdateSessionRequest.
-type UpdateSessionRequest struct {
-	Name *string `json:"name,omitempty"`
+// UpdateChannelRequestBody defines model for UpdateChannelRequestBody.
+type UpdateChannelRequestBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+
+	// Name Channel name
+	Name string `json:"name"`
+
+	// Type Channel type
+	Type UpdateChannelRequestBodyType `json:"type"`
 }
 
-// User defines model for User.
-type User struct {
-	Id       openapi_types.UUID `json:"id"`
-	Role     UserRole           `json:"role"`
-	Username string             `json:"username"`
+// UpdateChannelRequestBodyType Channel type
+type UpdateChannelRequestBodyType string
+
+// UpdateMixRequestBody defines model for UpdateMixRequestBody.
+type UpdateMixRequestBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+
+	// Entries Mix entries to set
+	Entries *[]MixEntryInput `json:"entries"`
 }
 
-// UserRole defines model for User.Role.
-type UserRole string
+// UpdateMixResponseBody defines model for UpdateMixResponseBody.
+type UpdateMixResponseBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string        `json:"$schema,omitempty"`
+	Data   *[]MixEntryOut `json:"data"`
+}
+
+// UpdateSessionRequestBody defines model for UpdateSessionRequestBody.
+type UpdateSessionRequestBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+
+	// Description Session description
+	Description *string `json:"description,omitempty"`
+
+	// Name Session name
+	Name string `json:"name"`
+}
+
+// UpdateTranslatorRequestBody defines model for UpdateTranslatorRequestBody.
+type UpdateTranslatorRequestBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+
+	// Password Password (leave empty to keep current)
+	Password *string `json:"password,omitempty"`
+
+	// Username Username
+	Username *string `json:"username,omitempty"`
+}
+
+// UserOut defines model for UserOut.
+type UserOut struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+
+	// CreatedAt Creation time
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id User ULID
+	Id string `json:"id"`
+
+	// Role User role
+	Role string `json:"role"`
+
+	// Username Username
+	Username string `json:"username"`
+}
+
+// WebRTCTokenResponseBody defines model for WebRTCTokenResponseBody.
+type WebRTCTokenResponseBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+
+	// ExpiresAt Token expiration time
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// Token Short-lived WebRTC signaling token
+	Token string `json:"token"`
+}
 
 // bearerAuthContextKey is the context key for bearerAuth security scheme
 type bearerAuthContextKey string
 
-// ListSessionsParams defines parameters for ListSessions.
-type ListSessionsParams struct {
-	Page    *int `form:"page,omitempty" json:"page,omitempty"`
-	PerPage *int `form:"per_page,omitempty" json:"per_page,omitempty"`
+// ListAbcsParams defines parameters for ListAbcs.
+type ListAbcsParams struct {
+	// Authorization Bearer token
+	Authorization *string `json:"Authorization,omitempty"`
 }
 
-// RegisterABCJSONRequestBody defines body for RegisterABC for application/json ContentType.
-type RegisterABCJSONRequestBody = RegisterABCRequest
+// CreateAbcParams defines parameters for CreateAbc.
+type CreateAbcParams struct {
+	// Authorization Bearer token
+	Authorization *string `json:"Authorization,omitempty"`
+}
 
-// UpdateABCJSONRequestBody defines body for UpdateABC for application/json ContentType.
-type UpdateABCJSONRequestBody = UpdateABCRequest
+// DeleteAbcParams defines parameters for DeleteAbc.
+type DeleteAbcParams struct {
+	// Authorization Bearer token
+	Authorization *string `json:"Authorization,omitempty"`
+}
+
+// GetAbcParams defines parameters for GetAbc.
+type GetAbcParams struct {
+	// Authorization Bearer token
+	Authorization *string `json:"Authorization,omitempty"`
+}
+
+// UpdateAbcParams defines parameters for UpdateAbc.
+type UpdateAbcParams struct {
+	// Authorization Bearer token
+	Authorization *string `json:"Authorization,omitempty"`
+}
+
+// RestartAbcParams defines parameters for RestartAbc.
+type RestartAbcParams struct {
+	// Authorization Bearer token
+	Authorization *string `json:"Authorization,omitempty"`
+}
+
+// GetRecordingDownloadParams defines parameters for GetRecordingDownload.
+type GetRecordingDownloadParams struct {
+	// Authorization Bearer token
+	Authorization *string `json:"Authorization,omitempty"`
+}
+
+// ListSessionsParams defines parameters for ListSessions.
+type ListSessionsParams struct {
+	// Authorization Bearer token
+	Authorization *string `json:"Authorization,omitempty"`
+}
+
+// CreateSessionParams defines parameters for CreateSession.
+type CreateSessionParams struct {
+	// Authorization Bearer token
+	Authorization *string `json:"Authorization,omitempty"`
+}
+
+// DeleteSessionParams defines parameters for DeleteSession.
+type DeleteSessionParams struct {
+	// Authorization Bearer token
+	Authorization *string `json:"Authorization,omitempty"`
+}
+
+// GetSessionParams defines parameters for GetSession.
+type GetSessionParams struct {
+	// Authorization Bearer token
+	Authorization *string `json:"Authorization,omitempty"`
+}
+
+// UpdateSessionParams defines parameters for UpdateSession.
+type UpdateSessionParams struct {
+	// Authorization Bearer token
+	Authorization *string `json:"Authorization,omitempty"`
+}
+
+// GetBroadcastUrlParams defines parameters for GetBroadcastUrl.
+type GetBroadcastUrlParams struct {
+	// Authorization Bearer token
+	Authorization *string `json:"Authorization,omitempty"`
+}
+
+// RegenerateBroadcastUrlParams defines parameters for RegenerateBroadcastUrl.
+type RegenerateBroadcastUrlParams struct {
+	// Authorization Bearer token
+	Authorization *string `json:"Authorization,omitempty"`
+}
+
+// ListChannelsParams defines parameters for ListChannels.
+type ListChannelsParams struct {
+	// Authorization Bearer token
+	Authorization *string `json:"Authorization,omitempty"`
+}
+
+// CreateChannelParams defines parameters for CreateChannel.
+type CreateChannelParams struct {
+	// Authorization Bearer token
+	Authorization *string `json:"Authorization,omitempty"`
+}
+
+// DeleteChannelParams defines parameters for DeleteChannel.
+type DeleteChannelParams struct {
+	// Authorization Bearer token
+	Authorization *string `json:"Authorization,omitempty"`
+}
+
+// UpdateChannelParams defines parameters for UpdateChannel.
+type UpdateChannelParams struct {
+	// Authorization Bearer token
+	Authorization *string `json:"Authorization,omitempty"`
+}
+
+// GetMixParams defines parameters for GetMix.
+type GetMixParams struct {
+	// Authorization Bearer token
+	Authorization *string `json:"Authorization,omitempty"`
+}
+
+// UpdateMixParams defines parameters for UpdateMix.
+type UpdateMixParams struct {
+	// Authorization Bearer token
+	Authorization *string `json:"Authorization,omitempty"`
+}
+
+// ListSessionRecordingsParams defines parameters for ListSessionRecordings.
+type ListSessionRecordingsParams struct {
+	// Authorization Bearer token
+	Authorization *string `json:"Authorization,omitempty"`
+}
+
+// ListTranslatorsParams defines parameters for ListTranslators.
+type ListTranslatorsParams struct {
+	// Authorization Bearer token
+	Authorization *string `json:"Authorization,omitempty"`
+}
+
+// CreateTranslatorParams defines parameters for CreateTranslator.
+type CreateTranslatorParams struct {
+	// Authorization Bearer token
+	Authorization *string `json:"Authorization,omitempty"`
+}
+
+// DeleteTranslatorParams defines parameters for DeleteTranslator.
+type DeleteTranslatorParams struct {
+	// Authorization Bearer token
+	Authorization *string `json:"Authorization,omitempty"`
+}
+
+// UpdateTranslatorParams defines parameters for UpdateTranslator.
+type UpdateTranslatorParams struct {
+	// Authorization Bearer token
+	Authorization *string `json:"Authorization,omitempty"`
+}
+
+// AssignTranslatorSessionsParams defines parameters for AssignTranslatorSessions.
+type AssignTranslatorSessionsParams struct {
+	// Authorization Bearer token
+	Authorization *string `json:"Authorization,omitempty"`
+}
+
+// ListUsersParams defines parameters for ListUsers.
+type ListUsersParams struct {
+	// Authorization Bearer token
+	Authorization *string `json:"Authorization,omitempty"`
+}
+
+// CreateUserParams defines parameters for CreateUser.
+type CreateUserParams struct {
+	// Authorization Bearer token
+	Authorization *string `json:"Authorization,omitempty"`
+}
+
+// DeleteUserParams defines parameters for DeleteUser.
+type DeleteUserParams struct {
+	// Authorization Bearer token
+	Authorization *string `json:"Authorization,omitempty"`
+}
+
+// GetWebrtcTokenParams defines parameters for GetWebrtcToken.
+type GetWebrtcTokenParams struct {
+	// Authorization Bearer token
+	Authorization *string `json:"Authorization,omitempty"`
+}
+
+// CreateAbcJSONRequestBody defines body for CreateAbc for application/json ContentType.
+type CreateAbcJSONRequestBody = CreateABCRequestBody
+
+// UpdateAbcJSONRequestBody defines body for UpdateAbc for application/json ContentType.
+type UpdateAbcJSONRequestBody = UpdateABCRequestBody
 
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
-type LoginJSONRequestBody = LoginRequest
+type LoginJSONRequestBody = LoginRequestBody
 
-// RefreshTokenJSONRequestBody defines body for RefreshToken for application/json ContentType.
-type RefreshTokenJSONRequestBody = RefreshRequest
+// LogoutJSONRequestBody defines body for Logout for application/json ContentType.
+type LogoutJSONRequestBody = LogoutRequestBody
+
+// RefreshJSONRequestBody defines body for Refresh for application/json ContentType.
+type RefreshJSONRequestBody = RefreshRequestBody
 
 // CreateSessionJSONRequestBody defines body for CreateSession for application/json ContentType.
-type CreateSessionJSONRequestBody = CreateSessionRequest
+type CreateSessionJSONRequestBody = CreateSessionRequestBody
 
 // UpdateSessionJSONRequestBody defines body for UpdateSession for application/json ContentType.
-type UpdateSessionJSONRequestBody = UpdateSessionRequest
+type UpdateSessionJSONRequestBody = UpdateSessionRequestBody
+
+// CreateChannelJSONRequestBody defines body for CreateChannel for application/json ContentType.
+type CreateChannelJSONRequestBody = CreateChannelRequestBody
+
+// UpdateChannelJSONRequestBody defines body for UpdateChannel for application/json ContentType.
+type UpdateChannelJSONRequestBody = UpdateChannelRequestBody
+
+// UpdateMixJSONRequestBody defines body for UpdateMix for application/json ContentType.
+type UpdateMixJSONRequestBody = UpdateMixRequestBody
+
+// CreateTranslatorJSONRequestBody defines body for CreateTranslator for application/json ContentType.
+type CreateTranslatorJSONRequestBody = CreateTranslatorRequestBody
+
+// UpdateTranslatorJSONRequestBody defines body for UpdateTranslator for application/json ContentType.
+type UpdateTranslatorJSONRequestBody = UpdateTranslatorRequestBody
+
+// AssignTranslatorSessionsJSONRequestBody defines body for AssignTranslatorSessions for application/json ContentType.
+type AssignTranslatorSessionsJSONRequestBody = AssignTranslatorSessionsRequestBody
+
+// CreateUserJSONRequestBody defines body for CreateUser for application/json ContentType.
+type CreateUserJSONRequestBody = CreateUserRequestBody
 
 // RequestEditorFn  is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -287,63 +947,139 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 
 // The interface specification for the client above.
 type ClientInterface interface {
-	// ListABCs request
-	ListABCs(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// ListAbcs request
+	ListAbcs(ctx context.Context, params *ListAbcsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// RegisterABCWithBody request with any body
-	RegisterABCWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// CreateAbcWithBody request with any body
+	CreateAbcWithBody(ctx context.Context, params *CreateAbcParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	RegisterABC(ctx context.Context, body RegisterABCJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	CreateAbc(ctx context.Context, params *CreateAbcParams, body CreateAbcJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// DeleteABC request
-	DeleteABC(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// DeleteAbc request
+	DeleteAbc(ctx context.Context, id string, params *DeleteAbcParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetABC request
-	GetABC(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// GetAbc request
+	GetAbc(ctx context.Context, id string, params *GetAbcParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// UpdateABCWithBody request with any body
-	UpdateABCWithBody(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// UpdateAbcWithBody request with any body
+	UpdateAbcWithBody(ctx context.Context, id string, params *UpdateAbcParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	UpdateABC(ctx context.Context, id openapi_types.UUID, body UpdateABCJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	UpdateAbc(ctx context.Context, id string, params *UpdateAbcParams, body UpdateAbcJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// RestartABC request
-	RestartABC(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// RestartAbc request
+	RestartAbc(ctx context.Context, id string, params *RestartAbcParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// LoginWithBody request with any body
 	LoginWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	Login(ctx context.Context, body LoginJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// Logout request
-	Logout(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// LogoutWithBody request with any body
+	LogoutWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// RefreshTokenWithBody request with any body
-	RefreshTokenWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	Logout(ctx context.Context, body LogoutJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	RefreshToken(ctx context.Context, body RefreshTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// RefreshWithBody request with any body
+	RefreshWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	Refresh(ctx context.Context, body RefreshJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetRecordingDownload request
+	GetRecordingDownload(ctx context.Context, id string, params *GetRecordingDownloadParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListSessions request
 	ListSessions(ctx context.Context, params *ListSessionsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreateSessionWithBody request with any body
-	CreateSessionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	CreateSessionWithBody(ctx context.Context, params *CreateSessionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	CreateSession(ctx context.Context, body CreateSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	CreateSession(ctx context.Context, params *CreateSessionParams, body CreateSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DeleteSession request
-	DeleteSession(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+	DeleteSession(ctx context.Context, id string, params *DeleteSessionParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetSession request
-	GetSession(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetSession(ctx context.Context, id string, params *GetSessionParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// UpdateSessionWithBody request with any body
-	UpdateSessionWithBody(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	UpdateSessionWithBody(ctx context.Context, id string, params *UpdateSessionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	UpdateSession(ctx context.Context, id openapi_types.UUID, body UpdateSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	UpdateSession(ctx context.Context, id string, params *UpdateSessionParams, body UpdateSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetBroadcastInfo request
+	GetBroadcastInfo(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetBroadcastUrl request
+	GetBroadcastUrl(ctx context.Context, id string, params *GetBroadcastUrlParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RegenerateBroadcastUrl request
+	RegenerateBroadcastUrl(ctx context.Context, id string, params *RegenerateBroadcastUrlParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListChannels request
+	ListChannels(ctx context.Context, id string, params *ListChannelsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateChannelWithBody request with any body
+	CreateChannelWithBody(ctx context.Context, id string, params *CreateChannelParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateChannel(ctx context.Context, id string, params *CreateChannelParams, body CreateChannelJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteChannel request
+	DeleteChannel(ctx context.Context, id string, chId string, params *DeleteChannelParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateChannelWithBody request with any body
+	UpdateChannelWithBody(ctx context.Context, id string, chId string, params *UpdateChannelParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateChannel(ctx context.Context, id string, chId string, params *UpdateChannelParams, body UpdateChannelJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetMix request
+	GetMix(ctx context.Context, id string, chId string, params *GetMixParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateMixWithBody request with any body
+	UpdateMixWithBody(ctx context.Context, id string, chId string, params *UpdateMixParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateMix(ctx context.Context, id string, chId string, params *UpdateMixParams, body UpdateMixJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListSessionRecordings request
+	ListSessionRecordings(ctx context.Context, id string, params *ListSessionRecordingsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListTranslators request
+	ListTranslators(ctx context.Context, params *ListTranslatorsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateTranslatorWithBody request with any body
+	CreateTranslatorWithBody(ctx context.Context, params *CreateTranslatorParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateTranslator(ctx context.Context, params *CreateTranslatorParams, body CreateTranslatorJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteTranslator request
+	DeleteTranslator(ctx context.Context, id string, params *DeleteTranslatorParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateTranslatorWithBody request with any body
+	UpdateTranslatorWithBody(ctx context.Context, id string, params *UpdateTranslatorParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateTranslator(ctx context.Context, id string, params *UpdateTranslatorParams, body UpdateTranslatorJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AssignTranslatorSessionsWithBody request with any body
+	AssignTranslatorSessionsWithBody(ctx context.Context, id string, params *AssignTranslatorSessionsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AssignTranslatorSessions(ctx context.Context, id string, params *AssignTranslatorSessionsParams, body AssignTranslatorSessionsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListUsers request
+	ListUsers(ctx context.Context, params *ListUsersParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateUserWithBody request with any body
+	CreateUserWithBody(ctx context.Context, params *CreateUserParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateUser(ctx context.Context, params *CreateUserParams, body CreateUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteUser request
+	DeleteUser(ctx context.Context, id string, params *DeleteUserParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetWebrtcToken request
+	GetWebrtcToken(ctx context.Context, params *GetWebrtcTokenParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
-func (c *Client) ListABCs(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewListABCsRequest(c.Server)
+func (c *Client) ListAbcs(ctx context.Context, params *ListAbcsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAbcsRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -354,8 +1090,8 @@ func (c *Client) ListABCs(ctx context.Context, reqEditors ...RequestEditorFn) (*
 	return c.Client.Do(req)
 }
 
-func (c *Client) RegisterABCWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewRegisterABCRequestWithBody(c.Server, contentType, body)
+func (c *Client) CreateAbcWithBody(ctx context.Context, params *CreateAbcParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAbcRequestWithBody(c.Server, params, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -366,8 +1102,8 @@ func (c *Client) RegisterABCWithBody(ctx context.Context, contentType string, bo
 	return c.Client.Do(req)
 }
 
-func (c *Client) RegisterABC(ctx context.Context, body RegisterABCJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewRegisterABCRequest(c.Server, body)
+func (c *Client) CreateAbc(ctx context.Context, params *CreateAbcParams, body CreateAbcJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAbcRequest(c.Server, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -378,8 +1114,8 @@ func (c *Client) RegisterABC(ctx context.Context, body RegisterABCJSONRequestBod
 	return c.Client.Do(req)
 }
 
-func (c *Client) DeleteABC(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewDeleteABCRequest(c.Server, id)
+func (c *Client) DeleteAbc(ctx context.Context, id string, params *DeleteAbcParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteAbcRequest(c.Server, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -390,8 +1126,8 @@ func (c *Client) DeleteABC(ctx context.Context, id openapi_types.UUID, reqEditor
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetABC(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetABCRequest(c.Server, id)
+func (c *Client) GetAbc(ctx context.Context, id string, params *GetAbcParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAbcRequest(c.Server, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -402,8 +1138,8 @@ func (c *Client) GetABC(ctx context.Context, id openapi_types.UUID, reqEditors .
 	return c.Client.Do(req)
 }
 
-func (c *Client) UpdateABCWithBody(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewUpdateABCRequestWithBody(c.Server, id, contentType, body)
+func (c *Client) UpdateAbcWithBody(ctx context.Context, id string, params *UpdateAbcParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAbcRequestWithBody(c.Server, id, params, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -414,8 +1150,8 @@ func (c *Client) UpdateABCWithBody(ctx context.Context, id openapi_types.UUID, c
 	return c.Client.Do(req)
 }
 
-func (c *Client) UpdateABC(ctx context.Context, id openapi_types.UUID, body UpdateABCJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewUpdateABCRequest(c.Server, id, body)
+func (c *Client) UpdateAbc(ctx context.Context, id string, params *UpdateAbcParams, body UpdateAbcJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAbcRequest(c.Server, id, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -426,8 +1162,8 @@ func (c *Client) UpdateABC(ctx context.Context, id openapi_types.UUID, body Upda
 	return c.Client.Do(req)
 }
 
-func (c *Client) RestartABC(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewRestartABCRequest(c.Server, id)
+func (c *Client) RestartAbc(ctx context.Context, id string, params *RestartAbcParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRestartAbcRequest(c.Server, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -462,8 +1198,8 @@ func (c *Client) Login(ctx context.Context, body LoginJSONRequestBody, reqEditor
 	return c.Client.Do(req)
 }
 
-func (c *Client) Logout(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewLogoutRequest(c.Server)
+func (c *Client) LogoutWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewLogoutRequestWithBody(c.Server, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -474,8 +1210,8 @@ func (c *Client) Logout(ctx context.Context, reqEditors ...RequestEditorFn) (*ht
 	return c.Client.Do(req)
 }
 
-func (c *Client) RefreshTokenWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewRefreshTokenRequestWithBody(c.Server, contentType, body)
+func (c *Client) Logout(ctx context.Context, body LogoutJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewLogoutRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -486,8 +1222,32 @@ func (c *Client) RefreshTokenWithBody(ctx context.Context, contentType string, b
 	return c.Client.Do(req)
 }
 
-func (c *Client) RefreshToken(ctx context.Context, body RefreshTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewRefreshTokenRequest(c.Server, body)
+func (c *Client) RefreshWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRefreshRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) Refresh(ctx context.Context, body RefreshJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRefreshRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetRecordingDownload(ctx context.Context, id string, params *GetRecordingDownloadParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetRecordingDownloadRequest(c.Server, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -510,8 +1270,8 @@ func (c *Client) ListSessions(ctx context.Context, params *ListSessionsParams, r
 	return c.Client.Do(req)
 }
 
-func (c *Client) CreateSessionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCreateSessionRequestWithBody(c.Server, contentType, body)
+func (c *Client) CreateSessionWithBody(ctx context.Context, params *CreateSessionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateSessionRequestWithBody(c.Server, params, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -522,8 +1282,8 @@ func (c *Client) CreateSessionWithBody(ctx context.Context, contentType string, 
 	return c.Client.Do(req)
 }
 
-func (c *Client) CreateSession(ctx context.Context, body CreateSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCreateSessionRequest(c.Server, body)
+func (c *Client) CreateSession(ctx context.Context, params *CreateSessionParams, body CreateSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateSessionRequest(c.Server, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -534,8 +1294,8 @@ func (c *Client) CreateSession(ctx context.Context, body CreateSessionJSONReques
 	return c.Client.Do(req)
 }
 
-func (c *Client) DeleteSession(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewDeleteSessionRequest(c.Server, id)
+func (c *Client) DeleteSession(ctx context.Context, id string, params *DeleteSessionParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteSessionRequest(c.Server, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -546,8 +1306,8 @@ func (c *Client) DeleteSession(ctx context.Context, id openapi_types.UUID, reqEd
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetSession(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetSessionRequest(c.Server, id)
+func (c *Client) GetSession(ctx context.Context, id string, params *GetSessionParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSessionRequest(c.Server, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -558,8 +1318,8 @@ func (c *Client) GetSession(ctx context.Context, id openapi_types.UUID, reqEdito
 	return c.Client.Do(req)
 }
 
-func (c *Client) UpdateSessionWithBody(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewUpdateSessionRequestWithBody(c.Server, id, contentType, body)
+func (c *Client) UpdateSessionWithBody(ctx context.Context, id string, params *UpdateSessionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateSessionRequestWithBody(c.Server, id, params, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -570,8 +1330,8 @@ func (c *Client) UpdateSessionWithBody(ctx context.Context, id openapi_types.UUI
 	return c.Client.Do(req)
 }
 
-func (c *Client) UpdateSession(ctx context.Context, id openapi_types.UUID, body UpdateSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewUpdateSessionRequest(c.Server, id, body)
+func (c *Client) UpdateSession(ctx context.Context, id string, params *UpdateSessionParams, body UpdateSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateSessionRequest(c.Server, id, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -582,8 +1342,320 @@ func (c *Client) UpdateSession(ctx context.Context, id openapi_types.UUID, body 
 	return c.Client.Do(req)
 }
 
-// NewListABCsRequest generates requests for ListABCs
-func NewListABCsRequest(server string) (*http.Request, error) {
+func (c *Client) GetBroadcastInfo(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetBroadcastInfoRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetBroadcastUrl(ctx context.Context, id string, params *GetBroadcastUrlParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetBroadcastUrlRequest(c.Server, id, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RegenerateBroadcastUrl(ctx context.Context, id string, params *RegenerateBroadcastUrlParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRegenerateBroadcastUrlRequest(c.Server, id, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListChannels(ctx context.Context, id string, params *ListChannelsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListChannelsRequest(c.Server, id, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateChannelWithBody(ctx context.Context, id string, params *CreateChannelParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateChannelRequestWithBody(c.Server, id, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateChannel(ctx context.Context, id string, params *CreateChannelParams, body CreateChannelJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateChannelRequest(c.Server, id, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteChannel(ctx context.Context, id string, chId string, params *DeleteChannelParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteChannelRequest(c.Server, id, chId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateChannelWithBody(ctx context.Context, id string, chId string, params *UpdateChannelParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateChannelRequestWithBody(c.Server, id, chId, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateChannel(ctx context.Context, id string, chId string, params *UpdateChannelParams, body UpdateChannelJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateChannelRequest(c.Server, id, chId, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetMix(ctx context.Context, id string, chId string, params *GetMixParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetMixRequest(c.Server, id, chId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateMixWithBody(ctx context.Context, id string, chId string, params *UpdateMixParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateMixRequestWithBody(c.Server, id, chId, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateMix(ctx context.Context, id string, chId string, params *UpdateMixParams, body UpdateMixJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateMixRequest(c.Server, id, chId, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListSessionRecordings(ctx context.Context, id string, params *ListSessionRecordingsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListSessionRecordingsRequest(c.Server, id, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListTranslators(ctx context.Context, params *ListTranslatorsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListTranslatorsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateTranslatorWithBody(ctx context.Context, params *CreateTranslatorParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateTranslatorRequestWithBody(c.Server, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateTranslator(ctx context.Context, params *CreateTranslatorParams, body CreateTranslatorJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateTranslatorRequest(c.Server, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteTranslator(ctx context.Context, id string, params *DeleteTranslatorParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteTranslatorRequest(c.Server, id, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateTranslatorWithBody(ctx context.Context, id string, params *UpdateTranslatorParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateTranslatorRequestWithBody(c.Server, id, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateTranslator(ctx context.Context, id string, params *UpdateTranslatorParams, body UpdateTranslatorJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateTranslatorRequest(c.Server, id, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AssignTranslatorSessionsWithBody(ctx context.Context, id string, params *AssignTranslatorSessionsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAssignTranslatorSessionsRequestWithBody(c.Server, id, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AssignTranslatorSessions(ctx context.Context, id string, params *AssignTranslatorSessionsParams, body AssignTranslatorSessionsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAssignTranslatorSessionsRequest(c.Server, id, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListUsers(ctx context.Context, params *ListUsersParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListUsersRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateUserWithBody(ctx context.Context, params *CreateUserParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateUserRequestWithBody(c.Server, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateUser(ctx context.Context, params *CreateUserParams, body CreateUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateUserRequest(c.Server, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteUser(ctx context.Context, id string, params *DeleteUserParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteUserRequest(c.Server, id, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetWebrtcToken(ctx context.Context, params *GetWebrtcTokenParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetWebrtcTokenRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// NewListAbcsRequest generates requests for ListAbcs
+func NewListAbcsRequest(server string, params *ListAbcsParams) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -606,22 +1678,37 @@ func NewListABCsRequest(server string) (*http.Request, error) {
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.Authorization != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Authorization", *params.Authorization, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Authorization", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
-// NewRegisterABCRequest calls the generic RegisterABC builder with application/json body
-func NewRegisterABCRequest(server string, body RegisterABCJSONRequestBody) (*http.Request, error) {
+// NewCreateAbcRequest calls the generic CreateAbc builder with application/json body
+func NewCreateAbcRequest(server string, params *CreateAbcParams, body CreateAbcJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
 	bodyReader = bytes.NewReader(buf)
-	return NewRegisterABCRequestWithBody(server, "application/json", bodyReader)
+	return NewCreateAbcRequestWithBody(server, params, "application/json", bodyReader)
 }
 
-// NewRegisterABCRequestWithBody generates requests for RegisterABC with any type of body
-func NewRegisterABCRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+// NewCreateAbcRequestWithBody generates requests for CreateAbc with any type of body
+func NewCreateAbcRequestWithBody(server string, params *CreateAbcParams, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -646,16 +1733,31 @@ func NewRegisterABCRequestWithBody(server string, contentType string, body io.Re
 
 	req.Header.Add("Content-Type", contentType)
 
+	if params != nil {
+
+		if params.Authorization != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Authorization", *params.Authorization, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Authorization", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
-// NewDeleteABCRequest generates requests for DeleteABC
-func NewDeleteABCRequest(server string, id openapi_types.UUID) (*http.Request, error) {
+// NewDeleteAbcRequest generates requests for DeleteAbc
+func NewDeleteAbcRequest(server string, id string, params *DeleteAbcParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
 
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
 	if err != nil {
 		return nil, err
 	}
@@ -680,16 +1782,31 @@ func NewDeleteABCRequest(server string, id openapi_types.UUID) (*http.Request, e
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.Authorization != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Authorization", *params.Authorization, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Authorization", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
-// NewGetABCRequest generates requests for GetABC
-func NewGetABCRequest(server string, id openapi_types.UUID) (*http.Request, error) {
+// NewGetAbcRequest generates requests for GetAbc
+func NewGetAbcRequest(server string, id string, params *GetAbcParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
 
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
 	if err != nil {
 		return nil, err
 	}
@@ -714,27 +1831,42 @@ func NewGetABCRequest(server string, id openapi_types.UUID) (*http.Request, erro
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.Authorization != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Authorization", *params.Authorization, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Authorization", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
-// NewUpdateABCRequest calls the generic UpdateABC builder with application/json body
-func NewUpdateABCRequest(server string, id openapi_types.UUID, body UpdateABCJSONRequestBody) (*http.Request, error) {
+// NewUpdateAbcRequest calls the generic UpdateAbc builder with application/json body
+func NewUpdateAbcRequest(server string, id string, params *UpdateAbcParams, body UpdateAbcJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
 	bodyReader = bytes.NewReader(buf)
-	return NewUpdateABCRequestWithBody(server, id, "application/json", bodyReader)
+	return NewUpdateAbcRequestWithBody(server, id, params, "application/json", bodyReader)
 }
 
-// NewUpdateABCRequestWithBody generates requests for UpdateABC with any type of body
-func NewUpdateABCRequestWithBody(server string, id openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+// NewUpdateAbcRequestWithBody generates requests for UpdateAbc with any type of body
+func NewUpdateAbcRequestWithBody(server string, id string, params *UpdateAbcParams, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
 
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
 	if err != nil {
 		return nil, err
 	}
@@ -761,16 +1893,31 @@ func NewUpdateABCRequestWithBody(server string, id openapi_types.UUID, contentTy
 
 	req.Header.Add("Content-Type", contentType)
 
+	if params != nil {
+
+		if params.Authorization != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Authorization", *params.Authorization, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Authorization", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
-// NewRestartABCRequest generates requests for RestartABC
-func NewRestartABCRequest(server string, id openapi_types.UUID) (*http.Request, error) {
+// NewRestartAbcRequest generates requests for RestartAbc
+func NewRestartAbcRequest(server string, id string, params *RestartAbcParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
 
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
 	if err != nil {
 		return nil, err
 	}
@@ -793,6 +1940,21 @@ func NewRestartABCRequest(server string, id openapi_types.UUID) (*http.Request, 
 	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.Authorization != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Authorization", *params.Authorization, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Authorization", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -838,8 +2000,19 @@ func NewLoginRequestWithBody(server string, contentType string, body io.Reader) 
 	return req, nil
 }
 
-// NewLogoutRequest generates requests for Logout
-func NewLogoutRequest(server string) (*http.Request, error) {
+// NewLogoutRequest calls the generic Logout builder with application/json body
+func NewLogoutRequest(server string, body LogoutJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewLogoutRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewLogoutRequestWithBody generates requests for Logout with any type of body
+func NewLogoutRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -857,27 +2030,29 @@ func NewLogoutRequest(server string) (*http.Request, error) {
 		return nil, err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
 
+	req.Header.Add("Content-Type", contentType)
+
 	return req, nil
 }
 
-// NewRefreshTokenRequest calls the generic RefreshToken builder with application/json body
-func NewRefreshTokenRequest(server string, body RefreshTokenJSONRequestBody) (*http.Request, error) {
+// NewRefreshRequest calls the generic Refresh builder with application/json body
+func NewRefreshRequest(server string, body RefreshJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
 	bodyReader = bytes.NewReader(buf)
-	return NewRefreshTokenRequestWithBody(server, "application/json", bodyReader)
+	return NewRefreshRequestWithBody(server, "application/json", bodyReader)
 }
 
-// NewRefreshTokenRequestWithBody generates requests for RefreshToken with any type of body
-func NewRefreshTokenRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+// NewRefreshRequestWithBody generates requests for Refresh with any type of body
+func NewRefreshRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -905,6 +2080,55 @@ func NewRefreshTokenRequestWithBody(server string, contentType string, body io.R
 	return req, nil
 }
 
+// NewGetRecordingDownloadRequest generates requests for GetRecordingDownload
+func NewGetRecordingDownloadRequest(server string, id string, params *GetRecordingDownloadParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/recordings/%s/download", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.Authorization != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Authorization", *params.Authorization, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Authorization", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
 // NewListSessionsRequest generates requests for ListSessions
 func NewListSessionsRequest(server string, params *ListSessionsParams) (*http.Request, error) {
 	var err error
@@ -924,66 +2148,42 @@ func NewListSessionsRequest(server string, params *ListSessionsParams) (*http.Re
 		return nil, err
 	}
 
-	if params != nil {
-		// queryValues collects non-styled parameters (passthrough, JSON)
-		// that are safe to round-trip through url.Values.Encode().
-		queryValues := queryURL.Query()
-		// rawQueryFragments collects pre-encoded query fragments from
-		// styled parameters, preserving literal commas as delimiters
-		// per the OpenAPI spec (e.g. "color=blue,black,brown").
-		var rawQueryFragments []string
-
-		if params.Page != nil {
-
-			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "page", *params.Page, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
-				return nil, err
-			} else {
-				for _, qp := range strings.Split(queryFrag, "&") {
-					rawQueryFragments = append(rawQueryFragments, qp)
-				}
-			}
-
-		}
-
-		if params.PerPage != nil {
-
-			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "per_page", *params.PerPage, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
-				return nil, err
-			} else {
-				for _, qp := range strings.Split(queryFrag, "&") {
-					rawQueryFragments = append(rawQueryFragments, qp)
-				}
-			}
-
-		}
-
-		if encoded := queryValues.Encode(); encoded != "" {
-			rawQueryFragments = append(rawQueryFragments, encoded)
-		}
-		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
-	}
-
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.Authorization != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Authorization", *params.Authorization, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Authorization", headerParam0)
+		}
+
 	}
 
 	return req, nil
 }
 
 // NewCreateSessionRequest calls the generic CreateSession builder with application/json body
-func NewCreateSessionRequest(server string, body CreateSessionJSONRequestBody) (*http.Request, error) {
+func NewCreateSessionRequest(server string, params *CreateSessionParams, body CreateSessionJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
 	bodyReader = bytes.NewReader(buf)
-	return NewCreateSessionRequestWithBody(server, "application/json", bodyReader)
+	return NewCreateSessionRequestWithBody(server, params, "application/json", bodyReader)
 }
 
 // NewCreateSessionRequestWithBody generates requests for CreateSession with any type of body
-func NewCreateSessionRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+func NewCreateSessionRequestWithBody(server string, params *CreateSessionParams, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -1008,16 +2208,31 @@ func NewCreateSessionRequestWithBody(server string, contentType string, body io.
 
 	req.Header.Add("Content-Type", contentType)
 
+	if params != nil {
+
+		if params.Authorization != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Authorization", *params.Authorization, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Authorization", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
 // NewDeleteSessionRequest generates requests for DeleteSession
-func NewDeleteSessionRequest(server string, id openapi_types.UUID) (*http.Request, error) {
+func NewDeleteSessionRequest(server string, id string, params *DeleteSessionParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
 
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
 	if err != nil {
 		return nil, err
 	}
@@ -1042,16 +2257,31 @@ func NewDeleteSessionRequest(server string, id openapi_types.UUID) (*http.Reques
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.Authorization != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Authorization", *params.Authorization, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Authorization", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
 // NewGetSessionRequest generates requests for GetSession
-func NewGetSessionRequest(server string, id openapi_types.UUID) (*http.Request, error) {
+func NewGetSessionRequest(server string, id string, params *GetSessionParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
 
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
 	if err != nil {
 		return nil, err
 	}
@@ -1076,27 +2306,42 @@ func NewGetSessionRequest(server string, id openapi_types.UUID) (*http.Request, 
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.Authorization != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Authorization", *params.Authorization, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Authorization", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
 // NewUpdateSessionRequest calls the generic UpdateSession builder with application/json body
-func NewUpdateSessionRequest(server string, id openapi_types.UUID, body UpdateSessionJSONRequestBody) (*http.Request, error) {
+func NewUpdateSessionRequest(server string, id string, params *UpdateSessionParams, body UpdateSessionJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
 	bodyReader = bytes.NewReader(buf)
-	return NewUpdateSessionRequestWithBody(server, id, "application/json", bodyReader)
+	return NewUpdateSessionRequestWithBody(server, id, params, "application/json", bodyReader)
 }
 
 // NewUpdateSessionRequestWithBody generates requests for UpdateSession with any type of body
-func NewUpdateSessionRequestWithBody(server string, id openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+func NewUpdateSessionRequestWithBody(server string, id string, params *UpdateSessionParams, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
 
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
 	if err != nil {
 		return nil, err
 	}
@@ -1122,6 +2367,1021 @@ func NewUpdateSessionRequestWithBody(server string, id openapi_types.UUID, conte
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.Authorization != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Authorization", *params.Authorization, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Authorization", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewGetBroadcastInfoRequest generates requests for GetBroadcastInfo
+func NewGetBroadcastInfoRequest(server string, id string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/sessions/%s/broadcast", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetBroadcastUrlRequest generates requests for GetBroadcastUrl
+func NewGetBroadcastUrlRequest(server string, id string, params *GetBroadcastUrlParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/sessions/%s/broadcast-url", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.Authorization != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Authorization", *params.Authorization, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Authorization", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewRegenerateBroadcastUrlRequest generates requests for RegenerateBroadcastUrl
+func NewRegenerateBroadcastUrlRequest(server string, id string, params *RegenerateBroadcastUrlParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/sessions/%s/broadcast-url", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.Authorization != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Authorization", *params.Authorization, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Authorization", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewListChannelsRequest generates requests for ListChannels
+func NewListChannelsRequest(server string, id string, params *ListChannelsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/sessions/%s/channels", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.Authorization != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Authorization", *params.Authorization, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Authorization", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewCreateChannelRequest calls the generic CreateChannel builder with application/json body
+func NewCreateChannelRequest(server string, id string, params *CreateChannelParams, body CreateChannelJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateChannelRequestWithBody(server, id, params, "application/json", bodyReader)
+}
+
+// NewCreateChannelRequestWithBody generates requests for CreateChannel with any type of body
+func NewCreateChannelRequestWithBody(server string, id string, params *CreateChannelParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/sessions/%s/channels", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.Authorization != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Authorization", *params.Authorization, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Authorization", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewDeleteChannelRequest generates requests for DeleteChannel
+func NewDeleteChannelRequest(server string, id string, chId string, params *DeleteChannelParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "ch_id", chId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/sessions/%s/channels/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.Authorization != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Authorization", *params.Authorization, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Authorization", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewUpdateChannelRequest calls the generic UpdateChannel builder with application/json body
+func NewUpdateChannelRequest(server string, id string, chId string, params *UpdateChannelParams, body UpdateChannelJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateChannelRequestWithBody(server, id, chId, params, "application/json", bodyReader)
+}
+
+// NewUpdateChannelRequestWithBody generates requests for UpdateChannel with any type of body
+func NewUpdateChannelRequestWithBody(server string, id string, chId string, params *UpdateChannelParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "ch_id", chId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/sessions/%s/channels/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.Authorization != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Authorization", *params.Authorization, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Authorization", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewGetMixRequest generates requests for GetMix
+func NewGetMixRequest(server string, id string, chId string, params *GetMixParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "ch_id", chId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/sessions/%s/channels/%s/mix", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.Authorization != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Authorization", *params.Authorization, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Authorization", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewUpdateMixRequest calls the generic UpdateMix builder with application/json body
+func NewUpdateMixRequest(server string, id string, chId string, params *UpdateMixParams, body UpdateMixJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateMixRequestWithBody(server, id, chId, params, "application/json", bodyReader)
+}
+
+// NewUpdateMixRequestWithBody generates requests for UpdateMix with any type of body
+func NewUpdateMixRequestWithBody(server string, id string, chId string, params *UpdateMixParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "ch_id", chId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/sessions/%s/channels/%s/mix", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.Authorization != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Authorization", *params.Authorization, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Authorization", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewListSessionRecordingsRequest generates requests for ListSessionRecordings
+func NewListSessionRecordingsRequest(server string, id string, params *ListSessionRecordingsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/sessions/%s/recordings", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.Authorization != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Authorization", *params.Authorization, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Authorization", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewListTranslatorsRequest generates requests for ListTranslators
+func NewListTranslatorsRequest(server string, params *ListTranslatorsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/translators")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.Authorization != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Authorization", *params.Authorization, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Authorization", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewCreateTranslatorRequest calls the generic CreateTranslator builder with application/json body
+func NewCreateTranslatorRequest(server string, params *CreateTranslatorParams, body CreateTranslatorJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateTranslatorRequestWithBody(server, params, "application/json", bodyReader)
+}
+
+// NewCreateTranslatorRequestWithBody generates requests for CreateTranslator with any type of body
+func NewCreateTranslatorRequestWithBody(server string, params *CreateTranslatorParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/translators")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.Authorization != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Authorization", *params.Authorization, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Authorization", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewDeleteTranslatorRequest generates requests for DeleteTranslator
+func NewDeleteTranslatorRequest(server string, id string, params *DeleteTranslatorParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/translators/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.Authorization != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Authorization", *params.Authorization, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Authorization", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewUpdateTranslatorRequest calls the generic UpdateTranslator builder with application/json body
+func NewUpdateTranslatorRequest(server string, id string, params *UpdateTranslatorParams, body UpdateTranslatorJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateTranslatorRequestWithBody(server, id, params, "application/json", bodyReader)
+}
+
+// NewUpdateTranslatorRequestWithBody generates requests for UpdateTranslator with any type of body
+func NewUpdateTranslatorRequestWithBody(server string, id string, params *UpdateTranslatorParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/translators/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.Authorization != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Authorization", *params.Authorization, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Authorization", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewAssignTranslatorSessionsRequest calls the generic AssignTranslatorSessions builder with application/json body
+func NewAssignTranslatorSessionsRequest(server string, id string, params *AssignTranslatorSessionsParams, body AssignTranslatorSessionsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAssignTranslatorSessionsRequestWithBody(server, id, params, "application/json", bodyReader)
+}
+
+// NewAssignTranslatorSessionsRequestWithBody generates requests for AssignTranslatorSessions with any type of body
+func NewAssignTranslatorSessionsRequestWithBody(server string, id string, params *AssignTranslatorSessionsParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/translators/%s/sessions", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.Authorization != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Authorization", *params.Authorization, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Authorization", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewListUsersRequest generates requests for ListUsers
+func NewListUsersRequest(server string, params *ListUsersParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/users")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.Authorization != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Authorization", *params.Authorization, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Authorization", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewCreateUserRequest calls the generic CreateUser builder with application/json body
+func NewCreateUserRequest(server string, params *CreateUserParams, body CreateUserJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateUserRequestWithBody(server, params, "application/json", bodyReader)
+}
+
+// NewCreateUserRequestWithBody generates requests for CreateUser with any type of body
+func NewCreateUserRequestWithBody(server string, params *CreateUserParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/users")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.Authorization != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Authorization", *params.Authorization, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Authorization", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewDeleteUserRequest generates requests for DeleteUser
+func NewDeleteUserRequest(server string, id string, params *DeleteUserParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/users/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.Authorization != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Authorization", *params.Authorization, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Authorization", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewGetWebrtcTokenRequest generates requests for GetWebrtcToken
+func NewGetWebrtcTokenRequest(server string, params *GetWebrtcTokenParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/webrtc/token")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.Authorization != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Authorization", *params.Authorization, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Authorization", headerParam0)
+		}
+
+	}
 
 	return req, nil
 }
@@ -1169,69 +3429,146 @@ func WithBaseURL(baseURL string) ClientOption {
 
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
-	// ListABCsWithResponse request
-	ListABCsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListABCsResponse, error)
+	// ListAbcsWithResponse request
+	ListAbcsWithResponse(ctx context.Context, params *ListAbcsParams, reqEditors ...RequestEditorFn) (*ListAbcsResponse, error)
 
-	// RegisterABCWithBodyWithResponse request with any body
-	RegisterABCWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RegisterABCResponse, error)
+	// CreateAbcWithBodyWithResponse request with any body
+	CreateAbcWithBodyWithResponse(ctx context.Context, params *CreateAbcParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAbcResponse, error)
 
-	RegisterABCWithResponse(ctx context.Context, body RegisterABCJSONRequestBody, reqEditors ...RequestEditorFn) (*RegisterABCResponse, error)
+	CreateAbcWithResponse(ctx context.Context, params *CreateAbcParams, body CreateAbcJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAbcResponse, error)
 
-	// DeleteABCWithResponse request
-	DeleteABCWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteABCResponse, error)
+	// DeleteAbcWithResponse request
+	DeleteAbcWithResponse(ctx context.Context, id string, params *DeleteAbcParams, reqEditors ...RequestEditorFn) (*DeleteAbcResponse, error)
 
-	// GetABCWithResponse request
-	GetABCWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetABCResponse, error)
+	// GetAbcWithResponse request
+	GetAbcWithResponse(ctx context.Context, id string, params *GetAbcParams, reqEditors ...RequestEditorFn) (*GetAbcResponse, error)
 
-	// UpdateABCWithBodyWithResponse request with any body
-	UpdateABCWithBodyWithResponse(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateABCResponse, error)
+	// UpdateAbcWithBodyWithResponse request with any body
+	UpdateAbcWithBodyWithResponse(ctx context.Context, id string, params *UpdateAbcParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAbcResponse, error)
 
-	UpdateABCWithResponse(ctx context.Context, id openapi_types.UUID, body UpdateABCJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateABCResponse, error)
+	UpdateAbcWithResponse(ctx context.Context, id string, params *UpdateAbcParams, body UpdateAbcJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAbcResponse, error)
 
-	// RestartABCWithResponse request
-	RestartABCWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*RestartABCResponse, error)
+	// RestartAbcWithResponse request
+	RestartAbcWithResponse(ctx context.Context, id string, params *RestartAbcParams, reqEditors ...RequestEditorFn) (*RestartAbcResponse, error)
 
 	// LoginWithBodyWithResponse request with any body
 	LoginWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*LoginResponse, error)
 
 	LoginWithResponse(ctx context.Context, body LoginJSONRequestBody, reqEditors ...RequestEditorFn) (*LoginResponse, error)
 
-	// LogoutWithResponse request
-	LogoutWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*LogoutResponse, error)
+	// LogoutWithBodyWithResponse request with any body
+	LogoutWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*LogoutResponse, error)
 
-	// RefreshTokenWithBodyWithResponse request with any body
-	RefreshTokenWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RefreshTokenResponse, error)
+	LogoutWithResponse(ctx context.Context, body LogoutJSONRequestBody, reqEditors ...RequestEditorFn) (*LogoutResponse, error)
 
-	RefreshTokenWithResponse(ctx context.Context, body RefreshTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*RefreshTokenResponse, error)
+	// RefreshWithBodyWithResponse request with any body
+	RefreshWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RefreshResponse, error)
+
+	RefreshWithResponse(ctx context.Context, body RefreshJSONRequestBody, reqEditors ...RequestEditorFn) (*RefreshResponse, error)
+
+	// GetRecordingDownloadWithResponse request
+	GetRecordingDownloadWithResponse(ctx context.Context, id string, params *GetRecordingDownloadParams, reqEditors ...RequestEditorFn) (*GetRecordingDownloadResponse, error)
 
 	// ListSessionsWithResponse request
 	ListSessionsWithResponse(ctx context.Context, params *ListSessionsParams, reqEditors ...RequestEditorFn) (*ListSessionsResponse, error)
 
 	// CreateSessionWithBodyWithResponse request with any body
-	CreateSessionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSessionResponse, error)
+	CreateSessionWithBodyWithResponse(ctx context.Context, params *CreateSessionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSessionResponse, error)
 
-	CreateSessionWithResponse(ctx context.Context, body CreateSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSessionResponse, error)
+	CreateSessionWithResponse(ctx context.Context, params *CreateSessionParams, body CreateSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSessionResponse, error)
 
 	// DeleteSessionWithResponse request
-	DeleteSessionWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteSessionResponse, error)
+	DeleteSessionWithResponse(ctx context.Context, id string, params *DeleteSessionParams, reqEditors ...RequestEditorFn) (*DeleteSessionResponse, error)
 
 	// GetSessionWithResponse request
-	GetSessionWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetSessionResponse, error)
+	GetSessionWithResponse(ctx context.Context, id string, params *GetSessionParams, reqEditors ...RequestEditorFn) (*GetSessionResponse, error)
 
 	// UpdateSessionWithBodyWithResponse request with any body
-	UpdateSessionWithBodyWithResponse(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateSessionResponse, error)
+	UpdateSessionWithBodyWithResponse(ctx context.Context, id string, params *UpdateSessionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateSessionResponse, error)
 
-	UpdateSessionWithResponse(ctx context.Context, id openapi_types.UUID, body UpdateSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSessionResponse, error)
+	UpdateSessionWithResponse(ctx context.Context, id string, params *UpdateSessionParams, body UpdateSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSessionResponse, error)
+
+	// GetBroadcastInfoWithResponse request
+	GetBroadcastInfoWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*GetBroadcastInfoResponse, error)
+
+	// GetBroadcastUrlWithResponse request
+	GetBroadcastUrlWithResponse(ctx context.Context, id string, params *GetBroadcastUrlParams, reqEditors ...RequestEditorFn) (*GetBroadcastUrlResponse, error)
+
+	// RegenerateBroadcastUrlWithResponse request
+	RegenerateBroadcastUrlWithResponse(ctx context.Context, id string, params *RegenerateBroadcastUrlParams, reqEditors ...RequestEditorFn) (*RegenerateBroadcastUrlResponse, error)
+
+	// ListChannelsWithResponse request
+	ListChannelsWithResponse(ctx context.Context, id string, params *ListChannelsParams, reqEditors ...RequestEditorFn) (*ListChannelsResponse, error)
+
+	// CreateChannelWithBodyWithResponse request with any body
+	CreateChannelWithBodyWithResponse(ctx context.Context, id string, params *CreateChannelParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateChannelResponse, error)
+
+	CreateChannelWithResponse(ctx context.Context, id string, params *CreateChannelParams, body CreateChannelJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateChannelResponse, error)
+
+	// DeleteChannelWithResponse request
+	DeleteChannelWithResponse(ctx context.Context, id string, chId string, params *DeleteChannelParams, reqEditors ...RequestEditorFn) (*DeleteChannelResponse, error)
+
+	// UpdateChannelWithBodyWithResponse request with any body
+	UpdateChannelWithBodyWithResponse(ctx context.Context, id string, chId string, params *UpdateChannelParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateChannelResponse, error)
+
+	UpdateChannelWithResponse(ctx context.Context, id string, chId string, params *UpdateChannelParams, body UpdateChannelJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateChannelResponse, error)
+
+	// GetMixWithResponse request
+	GetMixWithResponse(ctx context.Context, id string, chId string, params *GetMixParams, reqEditors ...RequestEditorFn) (*GetMixResponse, error)
+
+	// UpdateMixWithBodyWithResponse request with any body
+	UpdateMixWithBodyWithResponse(ctx context.Context, id string, chId string, params *UpdateMixParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateMixResponse, error)
+
+	UpdateMixWithResponse(ctx context.Context, id string, chId string, params *UpdateMixParams, body UpdateMixJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateMixResponse, error)
+
+	// ListSessionRecordingsWithResponse request
+	ListSessionRecordingsWithResponse(ctx context.Context, id string, params *ListSessionRecordingsParams, reqEditors ...RequestEditorFn) (*ListSessionRecordingsResponse, error)
+
+	// ListTranslatorsWithResponse request
+	ListTranslatorsWithResponse(ctx context.Context, params *ListTranslatorsParams, reqEditors ...RequestEditorFn) (*ListTranslatorsResponse, error)
+
+	// CreateTranslatorWithBodyWithResponse request with any body
+	CreateTranslatorWithBodyWithResponse(ctx context.Context, params *CreateTranslatorParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateTranslatorResponse, error)
+
+	CreateTranslatorWithResponse(ctx context.Context, params *CreateTranslatorParams, body CreateTranslatorJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateTranslatorResponse, error)
+
+	// DeleteTranslatorWithResponse request
+	DeleteTranslatorWithResponse(ctx context.Context, id string, params *DeleteTranslatorParams, reqEditors ...RequestEditorFn) (*DeleteTranslatorResponse, error)
+
+	// UpdateTranslatorWithBodyWithResponse request with any body
+	UpdateTranslatorWithBodyWithResponse(ctx context.Context, id string, params *UpdateTranslatorParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateTranslatorResponse, error)
+
+	UpdateTranslatorWithResponse(ctx context.Context, id string, params *UpdateTranslatorParams, body UpdateTranslatorJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateTranslatorResponse, error)
+
+	// AssignTranslatorSessionsWithBodyWithResponse request with any body
+	AssignTranslatorSessionsWithBodyWithResponse(ctx context.Context, id string, params *AssignTranslatorSessionsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AssignTranslatorSessionsResponse, error)
+
+	AssignTranslatorSessionsWithResponse(ctx context.Context, id string, params *AssignTranslatorSessionsParams, body AssignTranslatorSessionsJSONRequestBody, reqEditors ...RequestEditorFn) (*AssignTranslatorSessionsResponse, error)
+
+	// ListUsersWithResponse request
+	ListUsersWithResponse(ctx context.Context, params *ListUsersParams, reqEditors ...RequestEditorFn) (*ListUsersResponse, error)
+
+	// CreateUserWithBodyWithResponse request with any body
+	CreateUserWithBodyWithResponse(ctx context.Context, params *CreateUserParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateUserResponse, error)
+
+	CreateUserWithResponse(ctx context.Context, params *CreateUserParams, body CreateUserJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateUserResponse, error)
+
+	// DeleteUserWithResponse request
+	DeleteUserWithResponse(ctx context.Context, id string, params *DeleteUserParams, reqEditors ...RequestEditorFn) (*DeleteUserResponse, error)
+
+	// GetWebrtcTokenWithResponse request
+	GetWebrtcTokenWithResponse(ctx context.Context, params *GetWebrtcTokenParams, reqEditors ...RequestEditorFn) (*GetWebrtcTokenResponse, error)
 }
 
-type ListABCsResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *ABCListResponse
+type ListAbcsResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *ListABCsResponseBody
+	ApplicationproblemJSONDefault *ErrorModel
 }
 
 // Status returns HTTPResponse.Status
-func (r ListABCsResponse) Status() string {
+func (r ListAbcsResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -1239,7 +3576,7 @@ func (r ListABCsResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r ListABCsResponse) StatusCode() int {
+func (r ListAbcsResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -1247,21 +3584,22 @@ func (r ListABCsResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r ListABCsResponse) ContentType() string {
+func (r ListAbcsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
 	return ""
 }
 
-type RegisterABCResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON201      *ABC
+type CreateAbcResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *CreateABCResponseBody
+	ApplicationproblemJSONDefault *ErrorModel
 }
 
 // Status returns HTTPResponse.Status
-func (r RegisterABCResponse) Status() string {
+func (r CreateAbcResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -1269,7 +3607,7 @@ func (r RegisterABCResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r RegisterABCResponse) StatusCode() int {
+func (r CreateAbcResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -1277,20 +3615,22 @@ func (r RegisterABCResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r RegisterABCResponse) ContentType() string {
+func (r CreateAbcResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
 	return ""
 }
 
-type DeleteABCResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
+type DeleteAbcResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *DeleteABCResponseBody
+	ApplicationproblemJSONDefault *ErrorModel
 }
 
 // Status returns HTTPResponse.Status
-func (r DeleteABCResponse) Status() string {
+func (r DeleteAbcResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -1298,7 +3638,7 @@ func (r DeleteABCResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r DeleteABCResponse) StatusCode() int {
+func (r DeleteAbcResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -1306,22 +3646,22 @@ func (r DeleteABCResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r DeleteABCResponse) ContentType() string {
+func (r DeleteAbcResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
 	return ""
 }
 
-type GetABCResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *ABC
-	JSON404      *ErrorResponse
+type GetAbcResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *ABCOut
+	ApplicationproblemJSONDefault *ErrorModel
 }
 
 // Status returns HTTPResponse.Status
-func (r GetABCResponse) Status() string {
+func (r GetAbcResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -1329,7 +3669,7 @@ func (r GetABCResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r GetABCResponse) StatusCode() int {
+func (r GetAbcResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -1337,21 +3677,22 @@ func (r GetABCResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r GetABCResponse) ContentType() string {
+func (r GetAbcResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
 	return ""
 }
 
-type UpdateABCResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *ABC
+type UpdateAbcResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *ABCOut
+	ApplicationproblemJSONDefault *ErrorModel
 }
 
 // Status returns HTTPResponse.Status
-func (r UpdateABCResponse) Status() string {
+func (r UpdateAbcResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -1359,7 +3700,7 @@ func (r UpdateABCResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r UpdateABCResponse) StatusCode() int {
+func (r UpdateAbcResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -1367,21 +3708,22 @@ func (r UpdateABCResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r UpdateABCResponse) ContentType() string {
+func (r UpdateAbcResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
 	return ""
 }
 
-type RestartABCResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON404      *ErrorResponse
+type RestartAbcResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *RestartABCResponseBody
+	ApplicationproblemJSONDefault *ErrorModel
 }
 
 // Status returns HTTPResponse.Status
-func (r RestartABCResponse) Status() string {
+func (r RestartAbcResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -1389,7 +3731,7 @@ func (r RestartABCResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r RestartABCResponse) StatusCode() int {
+func (r RestartAbcResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -1397,7 +3739,7 @@ func (r RestartABCResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r RestartABCResponse) ContentType() string {
+func (r RestartAbcResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -1405,10 +3747,10 @@ func (r RestartABCResponse) ContentType() string {
 }
 
 type LoginResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *AuthTokens
-	JSON401      *ErrorResponse
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *LoginResponseBody
+	ApplicationproblemJSONDefault *ErrorModel
 }
 
 // Status returns HTTPResponse.Status
@@ -1436,8 +3778,10 @@ func (r LoginResponse) ContentType() string {
 }
 
 type LogoutResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *LogoutResponseBody
+	ApplicationproblemJSONDefault *ErrorModel
 }
 
 // Status returns HTTPResponse.Status
@@ -1464,15 +3808,15 @@ func (r LogoutResponse) ContentType() string {
 	return ""
 }
 
-type RefreshTokenResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *AuthTokens
-	JSON401      *ErrorResponse
+type RefreshResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *RefreshResponseBody
+	ApplicationproblemJSONDefault *ErrorModel
 }
 
 // Status returns HTTPResponse.Status
-func (r RefreshTokenResponse) Status() string {
+func (r RefreshResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -1480,7 +3824,7 @@ func (r RefreshTokenResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r RefreshTokenResponse) StatusCode() int {
+func (r RefreshResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -1488,7 +3832,38 @@ func (r RefreshTokenResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r RefreshTokenResponse) ContentType() string {
+func (r RefreshResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetRecordingDownloadResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *DownloadRecordingResponseBody
+	ApplicationproblemJSONDefault *ErrorModel
+}
+
+// Status returns HTTPResponse.Status
+func (r GetRecordingDownloadResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetRecordingDownloadResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetRecordingDownloadResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -1496,9 +3871,10 @@ func (r RefreshTokenResponse) ContentType() string {
 }
 
 type ListSessionsResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *SessionListResponse
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *ListSessionsResponseBody
+	ApplicationproblemJSONDefault *ErrorModel
 }
 
 // Status returns HTTPResponse.Status
@@ -1526,10 +3902,10 @@ func (r ListSessionsResponse) ContentType() string {
 }
 
 type CreateSessionResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON201      *Session
-	JSON400      *ErrorResponse
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *SessionOut
+	ApplicationproblemJSONDefault *ErrorModel
 }
 
 // Status returns HTTPResponse.Status
@@ -1557,9 +3933,10 @@ func (r CreateSessionResponse) ContentType() string {
 }
 
 type DeleteSessionResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON404      *ErrorResponse
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *DeleteSessionResponseBody
+	ApplicationproblemJSONDefault *ErrorModel
 }
 
 // Status returns HTTPResponse.Status
@@ -1587,10 +3964,10 @@ func (r DeleteSessionResponse) ContentType() string {
 }
 
 type GetSessionResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *Session
-	JSON404      *ErrorResponse
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *SessionOut
+	ApplicationproblemJSONDefault *ErrorModel
 }
 
 // Status returns HTTPResponse.Status
@@ -1618,10 +3995,10 @@ func (r GetSessionResponse) ContentType() string {
 }
 
 type UpdateSessionResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *Session
-	JSON404      *ErrorResponse
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *SessionOut
+	ApplicationproblemJSONDefault *ErrorModel
 }
 
 // Status returns HTTPResponse.Status
@@ -1648,74 +4025,663 @@ func (r UpdateSessionResponse) ContentType() string {
 	return ""
 }
 
-// ListABCsWithResponse request returning *ListABCsResponse
-func (c *ClientWithResponses) ListABCsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListABCsResponse, error) {
-	rsp, err := c.ListABCs(ctx, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseListABCsResponse(rsp)
+type GetBroadcastInfoResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *GetBroadcastInfoResponseBody
+	ApplicationproblemJSONDefault *ErrorModel
 }
 
-// RegisterABCWithBodyWithResponse request with arbitrary body returning *RegisterABCResponse
-func (c *ClientWithResponses) RegisterABCWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RegisterABCResponse, error) {
-	rsp, err := c.RegisterABCWithBody(ctx, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
+// Status returns HTTPResponse.Status
+func (r GetBroadcastInfoResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
 	}
-	return ParseRegisterABCResponse(rsp)
+	return http.StatusText(0)
 }
 
-func (c *ClientWithResponses) RegisterABCWithResponse(ctx context.Context, body RegisterABCJSONRequestBody, reqEditors ...RequestEditorFn) (*RegisterABCResponse, error) {
-	rsp, err := c.RegisterABC(ctx, body, reqEditors...)
-	if err != nil {
-		return nil, err
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetBroadcastInfoResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
 	}
-	return ParseRegisterABCResponse(rsp)
+	return 0
 }
 
-// DeleteABCWithResponse request returning *DeleteABCResponse
-func (c *ClientWithResponses) DeleteABCWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteABCResponse, error) {
-	rsp, err := c.DeleteABC(ctx, id, reqEditors...)
-	if err != nil {
-		return nil, err
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetBroadcastInfoResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
 	}
-	return ParseDeleteABCResponse(rsp)
+	return ""
 }
 
-// GetABCWithResponse request returning *GetABCResponse
-func (c *ClientWithResponses) GetABCWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetABCResponse, error) {
-	rsp, err := c.GetABC(ctx, id, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseGetABCResponse(rsp)
+type GetBroadcastUrlResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *GetBroadcastURLResponseBody
+	ApplicationproblemJSONDefault *ErrorModel
 }
 
-// UpdateABCWithBodyWithResponse request with arbitrary body returning *UpdateABCResponse
-func (c *ClientWithResponses) UpdateABCWithBodyWithResponse(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateABCResponse, error) {
-	rsp, err := c.UpdateABCWithBody(ctx, id, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
+// Status returns HTTPResponse.Status
+func (r GetBroadcastUrlResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
 	}
-	return ParseUpdateABCResponse(rsp)
+	return http.StatusText(0)
 }
 
-func (c *ClientWithResponses) UpdateABCWithResponse(ctx context.Context, id openapi_types.UUID, body UpdateABCJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateABCResponse, error) {
-	rsp, err := c.UpdateABC(ctx, id, body, reqEditors...)
-	if err != nil {
-		return nil, err
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetBroadcastUrlResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
 	}
-	return ParseUpdateABCResponse(rsp)
+	return 0
 }
 
-// RestartABCWithResponse request returning *RestartABCResponse
-func (c *ClientWithResponses) RestartABCWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*RestartABCResponse, error) {
-	rsp, err := c.RestartABC(ctx, id, reqEditors...)
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetBroadcastUrlResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RegenerateBroadcastUrlResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *RegenerateBroadcastURLResponseBody
+	ApplicationproblemJSONDefault *ErrorModel
+}
+
+// Status returns HTTPResponse.Status
+func (r RegenerateBroadcastUrlResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RegenerateBroadcastUrlResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RegenerateBroadcastUrlResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListChannelsResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *ListChannelsResponseBody
+	ApplicationproblemJSONDefault *ErrorModel
+}
+
+// Status returns HTTPResponse.Status
+func (r ListChannelsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListChannelsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListChannelsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateChannelResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *ChannelOut
+	ApplicationproblemJSONDefault *ErrorModel
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateChannelResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateChannelResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateChannelResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteChannelResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *DeleteChannelResponseBody
+	ApplicationproblemJSONDefault *ErrorModel
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteChannelResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteChannelResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteChannelResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateChannelResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *ChannelOut
+	ApplicationproblemJSONDefault *ErrorModel
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateChannelResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateChannelResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateChannelResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetMixResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *GetMixResponseBody
+	ApplicationproblemJSONDefault *ErrorModel
+}
+
+// Status returns HTTPResponse.Status
+func (r GetMixResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetMixResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetMixResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateMixResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *UpdateMixResponseBody
+	ApplicationproblemJSONDefault *ErrorModel
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateMixResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateMixResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateMixResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListSessionRecordingsResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *ListRecordingsResponseBody
+	ApplicationproblemJSONDefault *ErrorModel
+}
+
+// Status returns HTTPResponse.Status
+func (r ListSessionRecordingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListSessionRecordingsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListSessionRecordingsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListTranslatorsResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *ListTranslatorsResponseBody
+	ApplicationproblemJSONDefault *ErrorModel
+}
+
+// Status returns HTTPResponse.Status
+func (r ListTranslatorsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListTranslatorsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListTranslatorsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateTranslatorResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *TranslatorOut
+	ApplicationproblemJSONDefault *ErrorModel
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateTranslatorResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateTranslatorResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateTranslatorResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteTranslatorResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *DeleteTranslatorResponseBody
+	ApplicationproblemJSONDefault *ErrorModel
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteTranslatorResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteTranslatorResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteTranslatorResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateTranslatorResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *TranslatorOut
+	ApplicationproblemJSONDefault *ErrorModel
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateTranslatorResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateTranslatorResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateTranslatorResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type AssignTranslatorSessionsResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *AssignTranslatorSessionsResponseBody
+	ApplicationproblemJSONDefault *ErrorModel
+}
+
+// Status returns HTTPResponse.Status
+func (r AssignTranslatorSessionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AssignTranslatorSessionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r AssignTranslatorSessionsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListUsersResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *ListUsersResponseBody
+	ApplicationproblemJSONDefault *ErrorModel
+}
+
+// Status returns HTTPResponse.Status
+func (r ListUsersResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListUsersResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListUsersResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateUserResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *UserOut
+	ApplicationproblemJSONDefault *ErrorModel
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateUserResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateUserResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateUserResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteUserResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *DeleteUserResponseBody
+	ApplicationproblemJSONDefault *ErrorModel
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteUserResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteUserResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteUserResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetWebrtcTokenResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *WebRTCTokenResponseBody
+	ApplicationproblemJSONDefault *ErrorModel
+}
+
+// Status returns HTTPResponse.Status
+func (r GetWebrtcTokenResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetWebrtcTokenResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetWebrtcTokenResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ListAbcsWithResponse request returning *ListAbcsResponse
+func (c *ClientWithResponses) ListAbcsWithResponse(ctx context.Context, params *ListAbcsParams, reqEditors ...RequestEditorFn) (*ListAbcsResponse, error) {
+	rsp, err := c.ListAbcs(ctx, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseRestartABCResponse(rsp)
+	return ParseListAbcsResponse(rsp)
+}
+
+// CreateAbcWithBodyWithResponse request with arbitrary body returning *CreateAbcResponse
+func (c *ClientWithResponses) CreateAbcWithBodyWithResponse(ctx context.Context, params *CreateAbcParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAbcResponse, error) {
+	rsp, err := c.CreateAbcWithBody(ctx, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAbcResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateAbcWithResponse(ctx context.Context, params *CreateAbcParams, body CreateAbcJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAbcResponse, error) {
+	rsp, err := c.CreateAbc(ctx, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAbcResponse(rsp)
+}
+
+// DeleteAbcWithResponse request returning *DeleteAbcResponse
+func (c *ClientWithResponses) DeleteAbcWithResponse(ctx context.Context, id string, params *DeleteAbcParams, reqEditors ...RequestEditorFn) (*DeleteAbcResponse, error) {
+	rsp, err := c.DeleteAbc(ctx, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteAbcResponse(rsp)
+}
+
+// GetAbcWithResponse request returning *GetAbcResponse
+func (c *ClientWithResponses) GetAbcWithResponse(ctx context.Context, id string, params *GetAbcParams, reqEditors ...RequestEditorFn) (*GetAbcResponse, error) {
+	rsp, err := c.GetAbc(ctx, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAbcResponse(rsp)
+}
+
+// UpdateAbcWithBodyWithResponse request with arbitrary body returning *UpdateAbcResponse
+func (c *ClientWithResponses) UpdateAbcWithBodyWithResponse(ctx context.Context, id string, params *UpdateAbcParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAbcResponse, error) {
+	rsp, err := c.UpdateAbcWithBody(ctx, id, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAbcResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateAbcWithResponse(ctx context.Context, id string, params *UpdateAbcParams, body UpdateAbcJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAbcResponse, error) {
+	rsp, err := c.UpdateAbc(ctx, id, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAbcResponse(rsp)
+}
+
+// RestartAbcWithResponse request returning *RestartAbcResponse
+func (c *ClientWithResponses) RestartAbcWithResponse(ctx context.Context, id string, params *RestartAbcParams, reqEditors ...RequestEditorFn) (*RestartAbcResponse, error) {
+	rsp, err := c.RestartAbc(ctx, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRestartAbcResponse(rsp)
 }
 
 // LoginWithBodyWithResponse request with arbitrary body returning *LoginResponse
@@ -1735,30 +4701,47 @@ func (c *ClientWithResponses) LoginWithResponse(ctx context.Context, body LoginJ
 	return ParseLoginResponse(rsp)
 }
 
-// LogoutWithResponse request returning *LogoutResponse
-func (c *ClientWithResponses) LogoutWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*LogoutResponse, error) {
-	rsp, err := c.Logout(ctx, reqEditors...)
+// LogoutWithBodyWithResponse request with arbitrary body returning *LogoutResponse
+func (c *ClientWithResponses) LogoutWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*LogoutResponse, error) {
+	rsp, err := c.LogoutWithBody(ctx, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
 	return ParseLogoutResponse(rsp)
 }
 
-// RefreshTokenWithBodyWithResponse request with arbitrary body returning *RefreshTokenResponse
-func (c *ClientWithResponses) RefreshTokenWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RefreshTokenResponse, error) {
-	rsp, err := c.RefreshTokenWithBody(ctx, contentType, body, reqEditors...)
+func (c *ClientWithResponses) LogoutWithResponse(ctx context.Context, body LogoutJSONRequestBody, reqEditors ...RequestEditorFn) (*LogoutResponse, error) {
+	rsp, err := c.Logout(ctx, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseRefreshTokenResponse(rsp)
+	return ParseLogoutResponse(rsp)
 }
 
-func (c *ClientWithResponses) RefreshTokenWithResponse(ctx context.Context, body RefreshTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*RefreshTokenResponse, error) {
-	rsp, err := c.RefreshToken(ctx, body, reqEditors...)
+// RefreshWithBodyWithResponse request with arbitrary body returning *RefreshResponse
+func (c *ClientWithResponses) RefreshWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RefreshResponse, error) {
+	rsp, err := c.RefreshWithBody(ctx, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseRefreshTokenResponse(rsp)
+	return ParseRefreshResponse(rsp)
+}
+
+func (c *ClientWithResponses) RefreshWithResponse(ctx context.Context, body RefreshJSONRequestBody, reqEditors ...RequestEditorFn) (*RefreshResponse, error) {
+	rsp, err := c.Refresh(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRefreshResponse(rsp)
+}
+
+// GetRecordingDownloadWithResponse request returning *GetRecordingDownloadResponse
+func (c *ClientWithResponses) GetRecordingDownloadWithResponse(ctx context.Context, id string, params *GetRecordingDownloadParams, reqEditors ...RequestEditorFn) (*GetRecordingDownloadResponse, error) {
+	rsp, err := c.GetRecordingDownload(ctx, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetRecordingDownloadResponse(rsp)
 }
 
 // ListSessionsWithResponse request returning *ListSessionsResponse
@@ -1771,16 +4754,16 @@ func (c *ClientWithResponses) ListSessionsWithResponse(ctx context.Context, para
 }
 
 // CreateSessionWithBodyWithResponse request with arbitrary body returning *CreateSessionResponse
-func (c *ClientWithResponses) CreateSessionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSessionResponse, error) {
-	rsp, err := c.CreateSessionWithBody(ctx, contentType, body, reqEditors...)
+func (c *ClientWithResponses) CreateSessionWithBodyWithResponse(ctx context.Context, params *CreateSessionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSessionResponse, error) {
+	rsp, err := c.CreateSessionWithBody(ctx, params, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
 	return ParseCreateSessionResponse(rsp)
 }
 
-func (c *ClientWithResponses) CreateSessionWithResponse(ctx context.Context, body CreateSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSessionResponse, error) {
-	rsp, err := c.CreateSession(ctx, body, reqEditors...)
+func (c *ClientWithResponses) CreateSessionWithResponse(ctx context.Context, params *CreateSessionParams, body CreateSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSessionResponse, error) {
+	rsp, err := c.CreateSession(ctx, params, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -1788,8 +4771,8 @@ func (c *ClientWithResponses) CreateSessionWithResponse(ctx context.Context, bod
 }
 
 // DeleteSessionWithResponse request returning *DeleteSessionResponse
-func (c *ClientWithResponses) DeleteSessionWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteSessionResponse, error) {
-	rsp, err := c.DeleteSession(ctx, id, reqEditors...)
+func (c *ClientWithResponses) DeleteSessionWithResponse(ctx context.Context, id string, params *DeleteSessionParams, reqEditors ...RequestEditorFn) (*DeleteSessionResponse, error) {
+	rsp, err := c.DeleteSession(ctx, id, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -1797,8 +4780,8 @@ func (c *ClientWithResponses) DeleteSessionWithResponse(ctx context.Context, id 
 }
 
 // GetSessionWithResponse request returning *GetSessionResponse
-func (c *ClientWithResponses) GetSessionWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetSessionResponse, error) {
-	rsp, err := c.GetSession(ctx, id, reqEditors...)
+func (c *ClientWithResponses) GetSessionWithResponse(ctx context.Context, id string, params *GetSessionParams, reqEditors ...RequestEditorFn) (*GetSessionResponse, error) {
+	rsp, err := c.GetSession(ctx, id, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -1806,169 +4789,441 @@ func (c *ClientWithResponses) GetSessionWithResponse(ctx context.Context, id ope
 }
 
 // UpdateSessionWithBodyWithResponse request with arbitrary body returning *UpdateSessionResponse
-func (c *ClientWithResponses) UpdateSessionWithBodyWithResponse(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateSessionResponse, error) {
-	rsp, err := c.UpdateSessionWithBody(ctx, id, contentType, body, reqEditors...)
+func (c *ClientWithResponses) UpdateSessionWithBodyWithResponse(ctx context.Context, id string, params *UpdateSessionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateSessionResponse, error) {
+	rsp, err := c.UpdateSessionWithBody(ctx, id, params, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
 	return ParseUpdateSessionResponse(rsp)
 }
 
-func (c *ClientWithResponses) UpdateSessionWithResponse(ctx context.Context, id openapi_types.UUID, body UpdateSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSessionResponse, error) {
-	rsp, err := c.UpdateSession(ctx, id, body, reqEditors...)
+func (c *ClientWithResponses) UpdateSessionWithResponse(ctx context.Context, id string, params *UpdateSessionParams, body UpdateSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSessionResponse, error) {
+	rsp, err := c.UpdateSession(ctx, id, params, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
 	return ParseUpdateSessionResponse(rsp)
 }
 
-// ParseListABCsResponse parses an HTTP response from a ListABCsWithResponse call
-func ParseListABCsResponse(rsp *http.Response) (*ListABCsResponse, error) {
+// GetBroadcastInfoWithResponse request returning *GetBroadcastInfoResponse
+func (c *ClientWithResponses) GetBroadcastInfoWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*GetBroadcastInfoResponse, error) {
+	rsp, err := c.GetBroadcastInfo(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetBroadcastInfoResponse(rsp)
+}
+
+// GetBroadcastUrlWithResponse request returning *GetBroadcastUrlResponse
+func (c *ClientWithResponses) GetBroadcastUrlWithResponse(ctx context.Context, id string, params *GetBroadcastUrlParams, reqEditors ...RequestEditorFn) (*GetBroadcastUrlResponse, error) {
+	rsp, err := c.GetBroadcastUrl(ctx, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetBroadcastUrlResponse(rsp)
+}
+
+// RegenerateBroadcastUrlWithResponse request returning *RegenerateBroadcastUrlResponse
+func (c *ClientWithResponses) RegenerateBroadcastUrlWithResponse(ctx context.Context, id string, params *RegenerateBroadcastUrlParams, reqEditors ...RequestEditorFn) (*RegenerateBroadcastUrlResponse, error) {
+	rsp, err := c.RegenerateBroadcastUrl(ctx, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRegenerateBroadcastUrlResponse(rsp)
+}
+
+// ListChannelsWithResponse request returning *ListChannelsResponse
+func (c *ClientWithResponses) ListChannelsWithResponse(ctx context.Context, id string, params *ListChannelsParams, reqEditors ...RequestEditorFn) (*ListChannelsResponse, error) {
+	rsp, err := c.ListChannels(ctx, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListChannelsResponse(rsp)
+}
+
+// CreateChannelWithBodyWithResponse request with arbitrary body returning *CreateChannelResponse
+func (c *ClientWithResponses) CreateChannelWithBodyWithResponse(ctx context.Context, id string, params *CreateChannelParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateChannelResponse, error) {
+	rsp, err := c.CreateChannelWithBody(ctx, id, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateChannelResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateChannelWithResponse(ctx context.Context, id string, params *CreateChannelParams, body CreateChannelJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateChannelResponse, error) {
+	rsp, err := c.CreateChannel(ctx, id, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateChannelResponse(rsp)
+}
+
+// DeleteChannelWithResponse request returning *DeleteChannelResponse
+func (c *ClientWithResponses) DeleteChannelWithResponse(ctx context.Context, id string, chId string, params *DeleteChannelParams, reqEditors ...RequestEditorFn) (*DeleteChannelResponse, error) {
+	rsp, err := c.DeleteChannel(ctx, id, chId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteChannelResponse(rsp)
+}
+
+// UpdateChannelWithBodyWithResponse request with arbitrary body returning *UpdateChannelResponse
+func (c *ClientWithResponses) UpdateChannelWithBodyWithResponse(ctx context.Context, id string, chId string, params *UpdateChannelParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateChannelResponse, error) {
+	rsp, err := c.UpdateChannelWithBody(ctx, id, chId, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateChannelResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateChannelWithResponse(ctx context.Context, id string, chId string, params *UpdateChannelParams, body UpdateChannelJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateChannelResponse, error) {
+	rsp, err := c.UpdateChannel(ctx, id, chId, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateChannelResponse(rsp)
+}
+
+// GetMixWithResponse request returning *GetMixResponse
+func (c *ClientWithResponses) GetMixWithResponse(ctx context.Context, id string, chId string, params *GetMixParams, reqEditors ...RequestEditorFn) (*GetMixResponse, error) {
+	rsp, err := c.GetMix(ctx, id, chId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetMixResponse(rsp)
+}
+
+// UpdateMixWithBodyWithResponse request with arbitrary body returning *UpdateMixResponse
+func (c *ClientWithResponses) UpdateMixWithBodyWithResponse(ctx context.Context, id string, chId string, params *UpdateMixParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateMixResponse, error) {
+	rsp, err := c.UpdateMixWithBody(ctx, id, chId, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateMixResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateMixWithResponse(ctx context.Context, id string, chId string, params *UpdateMixParams, body UpdateMixJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateMixResponse, error) {
+	rsp, err := c.UpdateMix(ctx, id, chId, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateMixResponse(rsp)
+}
+
+// ListSessionRecordingsWithResponse request returning *ListSessionRecordingsResponse
+func (c *ClientWithResponses) ListSessionRecordingsWithResponse(ctx context.Context, id string, params *ListSessionRecordingsParams, reqEditors ...RequestEditorFn) (*ListSessionRecordingsResponse, error) {
+	rsp, err := c.ListSessionRecordings(ctx, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListSessionRecordingsResponse(rsp)
+}
+
+// ListTranslatorsWithResponse request returning *ListTranslatorsResponse
+func (c *ClientWithResponses) ListTranslatorsWithResponse(ctx context.Context, params *ListTranslatorsParams, reqEditors ...RequestEditorFn) (*ListTranslatorsResponse, error) {
+	rsp, err := c.ListTranslators(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListTranslatorsResponse(rsp)
+}
+
+// CreateTranslatorWithBodyWithResponse request with arbitrary body returning *CreateTranslatorResponse
+func (c *ClientWithResponses) CreateTranslatorWithBodyWithResponse(ctx context.Context, params *CreateTranslatorParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateTranslatorResponse, error) {
+	rsp, err := c.CreateTranslatorWithBody(ctx, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateTranslatorResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateTranslatorWithResponse(ctx context.Context, params *CreateTranslatorParams, body CreateTranslatorJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateTranslatorResponse, error) {
+	rsp, err := c.CreateTranslator(ctx, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateTranslatorResponse(rsp)
+}
+
+// DeleteTranslatorWithResponse request returning *DeleteTranslatorResponse
+func (c *ClientWithResponses) DeleteTranslatorWithResponse(ctx context.Context, id string, params *DeleteTranslatorParams, reqEditors ...RequestEditorFn) (*DeleteTranslatorResponse, error) {
+	rsp, err := c.DeleteTranslator(ctx, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteTranslatorResponse(rsp)
+}
+
+// UpdateTranslatorWithBodyWithResponse request with arbitrary body returning *UpdateTranslatorResponse
+func (c *ClientWithResponses) UpdateTranslatorWithBodyWithResponse(ctx context.Context, id string, params *UpdateTranslatorParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateTranslatorResponse, error) {
+	rsp, err := c.UpdateTranslatorWithBody(ctx, id, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateTranslatorResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateTranslatorWithResponse(ctx context.Context, id string, params *UpdateTranslatorParams, body UpdateTranslatorJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateTranslatorResponse, error) {
+	rsp, err := c.UpdateTranslator(ctx, id, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateTranslatorResponse(rsp)
+}
+
+// AssignTranslatorSessionsWithBodyWithResponse request with arbitrary body returning *AssignTranslatorSessionsResponse
+func (c *ClientWithResponses) AssignTranslatorSessionsWithBodyWithResponse(ctx context.Context, id string, params *AssignTranslatorSessionsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AssignTranslatorSessionsResponse, error) {
+	rsp, err := c.AssignTranslatorSessionsWithBody(ctx, id, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAssignTranslatorSessionsResponse(rsp)
+}
+
+func (c *ClientWithResponses) AssignTranslatorSessionsWithResponse(ctx context.Context, id string, params *AssignTranslatorSessionsParams, body AssignTranslatorSessionsJSONRequestBody, reqEditors ...RequestEditorFn) (*AssignTranslatorSessionsResponse, error) {
+	rsp, err := c.AssignTranslatorSessions(ctx, id, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAssignTranslatorSessionsResponse(rsp)
+}
+
+// ListUsersWithResponse request returning *ListUsersResponse
+func (c *ClientWithResponses) ListUsersWithResponse(ctx context.Context, params *ListUsersParams, reqEditors ...RequestEditorFn) (*ListUsersResponse, error) {
+	rsp, err := c.ListUsers(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListUsersResponse(rsp)
+}
+
+// CreateUserWithBodyWithResponse request with arbitrary body returning *CreateUserResponse
+func (c *ClientWithResponses) CreateUserWithBodyWithResponse(ctx context.Context, params *CreateUserParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateUserResponse, error) {
+	rsp, err := c.CreateUserWithBody(ctx, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateUserResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateUserWithResponse(ctx context.Context, params *CreateUserParams, body CreateUserJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateUserResponse, error) {
+	rsp, err := c.CreateUser(ctx, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateUserResponse(rsp)
+}
+
+// DeleteUserWithResponse request returning *DeleteUserResponse
+func (c *ClientWithResponses) DeleteUserWithResponse(ctx context.Context, id string, params *DeleteUserParams, reqEditors ...RequestEditorFn) (*DeleteUserResponse, error) {
+	rsp, err := c.DeleteUser(ctx, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteUserResponse(rsp)
+}
+
+// GetWebrtcTokenWithResponse request returning *GetWebrtcTokenResponse
+func (c *ClientWithResponses) GetWebrtcTokenWithResponse(ctx context.Context, params *GetWebrtcTokenParams, reqEditors ...RequestEditorFn) (*GetWebrtcTokenResponse, error) {
+	rsp, err := c.GetWebrtcToken(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetWebrtcTokenResponse(rsp)
+}
+
+// ParseListAbcsResponse parses an HTTP response from a ListAbcsWithResponse call
+func ParseListAbcsResponse(rsp *http.Response) (*ListAbcsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &ListABCsResponse{
+	response := &ListAbcsResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest ABCListResponse
+		var dest ListABCsResponseBody
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
 
-	}
-
-	return response, nil
-}
-
-// ParseRegisterABCResponse parses an HTTP response from a RegisterABCWithResponse call
-func ParseRegisterABCResponse(rsp *http.Response) (*RegisterABCResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &RegisterABCResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
-		var dest ABC
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSON201 = &dest
+		response.ApplicationproblemJSONDefault = &dest
 
 	}
 
 	return response, nil
 }
 
-// ParseDeleteABCResponse parses an HTTP response from a DeleteABCWithResponse call
-func ParseDeleteABCResponse(rsp *http.Response) (*DeleteABCResponse, error) {
+// ParseCreateAbcResponse parses an HTTP response from a CreateAbcWithResponse call
+func ParseCreateAbcResponse(rsp *http.Response) (*CreateAbcResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &DeleteABCResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	return response, nil
-}
-
-// ParseGetABCResponse parses an HTTP response from a GetABCWithResponse call
-func ParseGetABCResponse(rsp *http.Response) (*GetABCResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &GetABCResponse{
+	response := &CreateAbcResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest ABC
+		var dest CreateABCResponseBody
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
 
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest ErrorResponse
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSON404 = &dest
+		response.ApplicationproblemJSONDefault = &dest
 
 	}
 
 	return response, nil
 }
 
-// ParseUpdateABCResponse parses an HTTP response from a UpdateABCWithResponse call
-func ParseUpdateABCResponse(rsp *http.Response) (*UpdateABCResponse, error) {
+// ParseDeleteAbcResponse parses an HTTP response from a DeleteAbcWithResponse call
+func ParseDeleteAbcResponse(rsp *http.Response) (*DeleteAbcResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &UpdateABCResponse{
+	response := &DeleteAbcResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest ABC
+		var dest DeleteABCResponseBody
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
 
 	}
 
 	return response, nil
 }
 
-// ParseRestartABCResponse parses an HTTP response from a RestartABCWithResponse call
-func ParseRestartABCResponse(rsp *http.Response) (*RestartABCResponse, error) {
+// ParseGetAbcResponse parses an HTTP response from a GetAbcWithResponse call
+func ParseGetAbcResponse(rsp *http.Response) (*GetAbcResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &RestartABCResponse{
+	response := &GetAbcResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest ErrorResponse
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ABCOut
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSON404 = &dest
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateAbcResponse parses an HTTP response from a UpdateAbcWithResponse call
+func ParseUpdateAbcResponse(rsp *http.Response) (*UpdateAbcResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateAbcResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ABCOut
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRestartAbcResponse parses an HTTP response from a RestartAbcWithResponse call
+func ParseRestartAbcResponse(rsp *http.Response) (*RestartAbcResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RestartAbcResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RestartABCResponseBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
 
 	}
 
@@ -1990,18 +5245,18 @@ func ParseLoginResponse(rsp *http.Response) (*LoginResponse, error) {
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest AuthTokens
+		var dest LoginResponseBody
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
 
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest ErrorResponse
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSON401 = &dest
+		response.ApplicationproblemJSONDefault = &dest
 
 	}
 
@@ -2021,36 +5276,86 @@ func ParseLogoutResponse(rsp *http.Response) (*LogoutResponse, error) {
 		HTTPResponse: rsp,
 	}
 
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest LogoutResponseBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
 	return response, nil
 }
 
-// ParseRefreshTokenResponse parses an HTTP response from a RefreshTokenWithResponse call
-func ParseRefreshTokenResponse(rsp *http.Response) (*RefreshTokenResponse, error) {
+// ParseRefreshResponse parses an HTTP response from a RefreshWithResponse call
+func ParseRefreshResponse(rsp *http.Response) (*RefreshResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &RefreshTokenResponse{
+	response := &RefreshResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest AuthTokens
+		var dest RefreshResponseBody
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
 
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest ErrorResponse
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSON401 = &dest
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetRecordingDownloadResponse parses an HTTP response from a GetRecordingDownloadWithResponse call
+func ParseGetRecordingDownloadResponse(rsp *http.Response) (*GetRecordingDownloadResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetRecordingDownloadResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DownloadRecordingResponseBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
 
 	}
 
@@ -2072,11 +5377,18 @@ func ParseListSessionsResponse(rsp *http.Response) (*ListSessionsResponse, error
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest SessionListResponse
+		var dest ListSessionsResponseBody
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
 
 	}
 
@@ -2097,19 +5409,19 @@ func ParseCreateSessionResponse(rsp *http.Response) (*CreateSessionResponse, err
 	}
 
 	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
-		var dest Session
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SessionOut
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSON201 = &dest
+		response.JSON200 = &dest
 
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
-		var dest ErrorResponse
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSON400 = &dest
+		response.ApplicationproblemJSONDefault = &dest
 
 	}
 
@@ -2130,12 +5442,19 @@ func ParseDeleteSessionResponse(rsp *http.Response) (*DeleteSessionResponse, err
 	}
 
 	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest ErrorResponse
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DeleteSessionResponseBody
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSON404 = &dest
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
 
 	}
 
@@ -2157,18 +5476,18 @@ func ParseGetSessionResponse(rsp *http.Response) (*GetSessionResponse, error) {
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest Session
+		var dest SessionOut
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
 
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest ErrorResponse
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSON404 = &dest
+		response.ApplicationproblemJSONDefault = &dest
 
 	}
 
@@ -2190,18 +5509,645 @@ func ParseUpdateSessionResponse(rsp *http.Response) (*UpdateSessionResponse, err
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest Session
+		var dest SessionOut
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
 
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest ErrorResponse
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSON404 = &dest
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetBroadcastInfoResponse parses an HTTP response from a GetBroadcastInfoWithResponse call
+func ParseGetBroadcastInfoResponse(rsp *http.Response) (*GetBroadcastInfoResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetBroadcastInfoResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest GetBroadcastInfoResponseBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetBroadcastUrlResponse parses an HTTP response from a GetBroadcastUrlWithResponse call
+func ParseGetBroadcastUrlResponse(rsp *http.Response) (*GetBroadcastUrlResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetBroadcastUrlResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest GetBroadcastURLResponseBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRegenerateBroadcastUrlResponse parses an HTTP response from a RegenerateBroadcastUrlWithResponse call
+func ParseRegenerateBroadcastUrlResponse(rsp *http.Response) (*RegenerateBroadcastUrlResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RegenerateBroadcastUrlResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RegenerateBroadcastURLResponseBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListChannelsResponse parses an HTTP response from a ListChannelsWithResponse call
+func ParseListChannelsResponse(rsp *http.Response) (*ListChannelsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListChannelsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ListChannelsResponseBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateChannelResponse parses an HTTP response from a CreateChannelWithResponse call
+func ParseCreateChannelResponse(rsp *http.Response) (*CreateChannelResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateChannelResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ChannelOut
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteChannelResponse parses an HTTP response from a DeleteChannelWithResponse call
+func ParseDeleteChannelResponse(rsp *http.Response) (*DeleteChannelResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteChannelResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DeleteChannelResponseBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateChannelResponse parses an HTTP response from a UpdateChannelWithResponse call
+func ParseUpdateChannelResponse(rsp *http.Response) (*UpdateChannelResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateChannelResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ChannelOut
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetMixResponse parses an HTTP response from a GetMixWithResponse call
+func ParseGetMixResponse(rsp *http.Response) (*GetMixResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetMixResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest GetMixResponseBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateMixResponse parses an HTTP response from a UpdateMixWithResponse call
+func ParseUpdateMixResponse(rsp *http.Response) (*UpdateMixResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateMixResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UpdateMixResponseBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListSessionRecordingsResponse parses an HTTP response from a ListSessionRecordingsWithResponse call
+func ParseListSessionRecordingsResponse(rsp *http.Response) (*ListSessionRecordingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListSessionRecordingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ListRecordingsResponseBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListTranslatorsResponse parses an HTTP response from a ListTranslatorsWithResponse call
+func ParseListTranslatorsResponse(rsp *http.Response) (*ListTranslatorsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListTranslatorsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ListTranslatorsResponseBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateTranslatorResponse parses an HTTP response from a CreateTranslatorWithResponse call
+func ParseCreateTranslatorResponse(rsp *http.Response) (*CreateTranslatorResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateTranslatorResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TranslatorOut
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteTranslatorResponse parses an HTTP response from a DeleteTranslatorWithResponse call
+func ParseDeleteTranslatorResponse(rsp *http.Response) (*DeleteTranslatorResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteTranslatorResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DeleteTranslatorResponseBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateTranslatorResponse parses an HTTP response from a UpdateTranslatorWithResponse call
+func ParseUpdateTranslatorResponse(rsp *http.Response) (*UpdateTranslatorResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateTranslatorResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TranslatorOut
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAssignTranslatorSessionsResponse parses an HTTP response from a AssignTranslatorSessionsWithResponse call
+func ParseAssignTranslatorSessionsResponse(rsp *http.Response) (*AssignTranslatorSessionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AssignTranslatorSessionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AssignTranslatorSessionsResponseBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListUsersResponse parses an HTTP response from a ListUsersWithResponse call
+func ParseListUsersResponse(rsp *http.Response) (*ListUsersResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListUsersResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ListUsersResponseBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateUserResponse parses an HTTP response from a CreateUserWithResponse call
+func ParseCreateUserResponse(rsp *http.Response) (*CreateUserResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateUserResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UserOut
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteUserResponse parses an HTTP response from a DeleteUserWithResponse call
+func ParseDeleteUserResponse(rsp *http.Response) (*DeleteUserResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteUserResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DeleteUserResponseBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetWebrtcTokenResponse parses an HTTP response from a GetWebrtcTokenWithResponse call
+func ParseGetWebrtcTokenResponse(rsp *http.Response) (*GetWebrtcTokenResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetWebrtcTokenResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest WebRTCTokenResponseBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
 
 	}
 

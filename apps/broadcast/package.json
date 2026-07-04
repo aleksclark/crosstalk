@@ -4,7 +4,9 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
+    "predev": "pnpm --filter @crosstalk/api-client generate",
     "dev": "vite",
+    "prebuild": "pnpm --filter @crosstalk/api-client generate",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit"
