@@ -1,83 +1,139 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useAuth } from "../hooks/useAuth";
 import { DebugPanel } from "../components/DebugPanel";
 
-interface Peer {
+const BASE_URL = import.meta.env.VITE_API_URL || "";
+
+// PeerState mirrors server/webrtc.PeerState (returned by /api/debug/peers).
+interface PeerState {
   id: string;
-  type: string;
-  remoteAddress: string;
-  state: string;
-  sessionId: string | null;
+  created_at: string;
+  ice_state: string;
+  dtls_state: string;
+  signaling_state: string;
+  ice_gathering_state: string;
+  data_channel_open: boolean;
+  client_type?: string;
+  client_name?: string;
 }
 
-export function DebugPage() {
-  const [peers] = useState<Peer[]>([
-    {
-      id: "peer-001",
-      type: "ABC",
-      remoteAddress: "192.168.1.100:54321",
-      state: "connected",
-      sessionId: "session-abc",
-    },
-    {
-      id: "peer-002",
-      type: "Translator",
-      remoteAddress: "192.168.1.101:54322",
-      state: "connected",
-      sessionId: "session-abc",
-    },
-    {
-      id: "peer-003",
-      type: "Admin",
-      remoteAddress: "192.168.1.1:54323",
-      state: "new",
-      sessionId: null,
-    },
-  ]);
+// ServerEvent mirrors server/webrtc.Event (returned by /peers/{id}/events).
+interface ServerEvent {
+  timestamp: string;
+  peer_id: string;
+  type: string;
+  detail?: unknown;
+}
 
-  const [events] = useState([
-    {
-      id: "1",
-      timestamp: new Date().toISOString(),
-      type: "ICE",
-      message: "ICE candidate gathered",
-      data: { candidate: "candidate:1 1 udp 2122260223 ..." },
-    },
-    {
-      id: "2",
-      timestamp: new Date(Date.now() - 1000).toISOString(),
-      type: "SDP",
-      message: "Offer created",
-    },
-    {
-      id: "3",
-      timestamp: new Date(Date.now() - 2000).toISOString(),
-      type: "DTLS",
-      message: "DTLS handshake complete",
-    },
-    {
-      id: "4",
-      timestamp: new Date(Date.now() - 3000).toISOString(),
-      type: "TRACK",
-      message: "Audio track added",
-      data: { trackId: "audio-001", kind: "audio" },
-    },
-    {
-      id: "5",
-      timestamp: new Date(Date.now() - 5000).toISOString(),
-      type: "CONNECTION",
-      message: "Peer connection state: connected",
-    },
-  ]);
+interface UiEvent {
+  id: string;
+  timestamp: string;
+  type: string;
+  message: string;
+  data?: unknown;
+}
+
+const CONNECTED_ICE_STATES = new Set(["connected", "completed"]);
+
+export function DebugPage() {
+  const { token } = useAuth();
+  const [peers, setPeers] = useState<PeerState[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [events, setEvents] = useState<UiEvent[]>([]);
+  const [peersError, setPeersError] = useState<string | null>(null);
+  const [eventsError, setEventsError] = useState<string | null>(null);
+
+  const authFetch = useCallback(
+    (path: string) =>
+      fetch(`${BASE_URL}${path}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      }),
+    [token]
+  );
+
+  // Poll the live peer list.
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      try {
+        const res = await authFetch("/api/debug/peers");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const body = (await res.json()) as { peers: PeerState[] };
+        if (!active) return;
+        setPeers(body.peers ?? []);
+        setPeersError(null);
+      } catch (e) {
+        if (!active) return;
+        setPeersError(e instanceof Error ? e.message : "failed to load peers");
+      }
+    };
+    load();
+    const timer = setInterval(load, 3000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [authFetch]);
+
+  // Load events for the selected peer (and refresh while selected).
+  useEffect(() => {
+    if (!selectedId) {
+      setEvents([]);
+      setEventsError(null);
+      return;
+    }
+    let active = true;
+    const load = async () => {
+      try {
+        const res = await authFetch(
+          `/api/debug/peers/${encodeURIComponent(selectedId)}/events`
+        );
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const body = (await res.json()) as { events: ServerEvent[] };
+        if (!active) return;
+        const mapped = (body.events ?? []).map((e, i) => ({
+          id: `${e.timestamp}-${i}`,
+          timestamp: e.timestamp,
+          type: e.type,
+          message: e.type.replace(/_/g, " "),
+          data: e.detail,
+        }));
+        setEvents(mapped);
+        setEventsError(null);
+      } catch (e) {
+        if (!active) return;
+        setEventsError(e instanceof Error ? e.message : "failed to load events");
+      }
+    };
+    load();
+    const timer = setInterval(load, 3000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [authFetch, selectedId]);
+
+  const selectedPeer = peers.find((p) => p.id === selectedId) ?? null;
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Debug</h1>
 
-      {/* Peer list */}
+      {/* Connected peers */}
       <div className="bg-card border border-border rounded-lg overflow-hidden">
-        <div className="px-4 py-3 border-b border-border">
+        <div className="px-4 py-3 border-b border-border flex items-center justify-between">
           <h2 className="text-sm font-semibold">Connected Peers</h2>
+          <span className="text-xs text-muted-foreground">
+            {peers.length} connected
+          </span>
         </div>
+
+        {peersError && (
+          <p className="px-4 py-3 text-xs text-red-400">
+            Failed to load peers: {peersError}
+          </p>
+        )}
+
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border">
@@ -85,75 +141,102 @@ export function DebugPage() {
                 Peer ID
               </th>
               <th className="text-left px-4 py-2 text-muted-foreground font-medium text-xs">
-                Type
+                Client
               </th>
               <th className="text-left px-4 py-2 text-muted-foreground font-medium text-xs">
-                Address
+                ICE
               </th>
               <th className="text-left px-4 py-2 text-muted-foreground font-medium text-xs">
-                State
+                DTLS
               </th>
               <th className="text-left px-4 py-2 text-muted-foreground font-medium text-xs">
-                Session
+                Signaling
+              </th>
+              <th className="text-left px-4 py-2 text-muted-foreground font-medium text-xs">
+                Data Channel
               </th>
             </tr>
           </thead>
           <tbody>
-            {peers.map((peer) => (
-              <tr
-                key={peer.id}
-                className="border-b border-border/50 hover:bg-accent/50"
-              >
-                <td className="px-4 py-2 font-mono text-xs">{peer.id}</td>
-                <td className="px-4 py-2 text-xs">{peer.type}</td>
-                <td className="px-4 py-2 font-mono text-xs text-muted-foreground">
-                  {peer.remoteAddress}
-                </td>
-                <td className="px-4 py-2">
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded ${
-                      peer.state === "connected"
-                        ? "bg-green-500/20 text-green-400"
-                        : "bg-yellow-500/20 text-yellow-400"
-                    }`}
-                  >
-                    {peer.state}
-                  </span>
-                </td>
-                <td className="px-4 py-2 font-mono text-xs text-muted-foreground">
-                  {peer.sessionId ?? "-"}
+            {peers.map((peer) => {
+              const connected = CONNECTED_ICE_STATES.has(peer.ice_state);
+              return (
+                <tr
+                  key={peer.id}
+                  onClick={() => setSelectedId(peer.id)}
+                  className={`border-b border-border/50 cursor-pointer hover:bg-accent/50 ${
+                    peer.id === selectedId ? "bg-accent/60" : ""
+                  }`}
+                >
+                  <td className="px-4 py-2 font-mono text-xs">{peer.id}</td>
+                  <td className="px-4 py-2 text-xs">
+                    {peer.client_type || "unknown"}
+                    {peer.client_name ? ` · ${peer.client_name}` : ""}
+                  </td>
+                  <td className="px-4 py-2">
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded ${
+                        connected
+                          ? "bg-green-500/20 text-green-400"
+                          : "bg-yellow-500/20 text-yellow-400"
+                      }`}
+                    >
+                      {peer.ice_state || "-"}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2 font-mono text-xs text-muted-foreground">
+                    {peer.dtls_state || "-"}
+                  </td>
+                  <td className="px-4 py-2 font-mono text-xs text-muted-foreground">
+                    {peer.signaling_state || "-"}
+                  </td>
+                  <td className="px-4 py-2 text-xs text-muted-foreground">
+                    {peer.data_channel_open ? "open" : "closed"}
+                  </td>
+                </tr>
+              );
+            })}
+            {peers.length === 0 && !peersError && (
+              <tr>
+                <td
+                  colSpan={6}
+                  className="px-4 py-6 text-center text-muted-foreground text-xs"
+                >
+                  No peers connected
                 </td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </div>
 
-      {/* Session topology */}
-      <div className="bg-card border border-border rounded-lg p-4">
-        <h2 className="text-sm font-semibold mb-3">Session Topology</h2>
-        <div className="flex items-center justify-center py-8">
-          <div className="flex items-center gap-4">
-            <div className="bg-muted rounded-lg px-4 py-3 text-center">
-              <span className="text-xs text-muted-foreground">ABC</span>
-              <p className="text-sm font-medium mt-1">peer-001</p>
-            </div>
-            <div className="w-12 border-t border-dashed border-border" />
-            <div className="bg-primary/20 rounded-lg px-4 py-3 text-center">
-              <span className="text-xs text-primary">Server</span>
-              <p className="text-sm font-medium mt-1">SFU</p>
-            </div>
-            <div className="w-12 border-t border-dashed border-border" />
-            <div className="bg-muted rounded-lg px-4 py-3 text-center">
-              <span className="text-xs text-muted-foreground">Translator</span>
-              <p className="text-sm font-medium mt-1">peer-002</p>
-            </div>
+      {/* Per-peer event log — only shown when a peer is selected */}
+      {selectedPeer && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-sm">
+            <span className="font-semibold">Events for</span>
+            <span className="font-mono text-xs bg-muted px-2 py-0.5 rounded">
+              {selectedPeer.id}
+            </span>
+            <button
+              onClick={() => setSelectedId(null)}
+              className="ml-auto text-xs text-muted-foreground hover:text-foreground"
+            >
+              Close
+            </button>
           </div>
+          {eventsError ? (
+            <p className="text-xs text-red-400">
+              Failed to load events: {eventsError}
+            </p>
+          ) : (
+            <DebugPanel
+              events={events}
+              title={`WebRTC Event Log (${selectedPeer.id})`}
+            />
+          )}
         </div>
-      </div>
-
-      {/* Event log */}
-      <DebugPanel events={events} title="WebRTC Event Log" />
+      )}
     </div>
   );
 }

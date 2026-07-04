@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 	"github.com/aleksclark/crosstalk/server/auth"
 	"github.com/aleksclark/crosstalk/server/sqlite"
 	"github.com/aleksclark/crosstalk/server/web"
+	"github.com/aleksclark/crosstalk/server/webrtc"
 
 	crosstalk "github.com/aleksclark/crosstalk/server"
 )
@@ -61,6 +64,15 @@ func main() {
 	}
 	authService := auth.NewService(authCfg, userStore, refreshTokenStore)
 
+	// WebRTC peer manager: powers the signaling endpoint and the admin debug
+	// API (live peer state + event logs). ICE config comes from env so it can
+	// be tuned per environment (Fly sets CT_UDP_MUX_PORT + CT_PUBLIC_IP).
+	peerManager := webrtc.NewPeerManager(webrtc.ICEConfig{
+		STUNServers: stunServers(),
+		PublicIP:    os.Getenv("CT_PUBLIC_IP"),
+		UDPMuxPort:  envInt("CT_UDP_MUX_PORT", 0),
+	})
+
 	// API server
 	svc := api.Services{
 		Sessions:      sessionStore,
@@ -71,6 +83,7 @@ func main() {
 		Users:         userStore,
 		RefreshTokens: refreshTokenStore,
 		Auth:          authService,
+		PeerManager:   peerManager,
 	}
 
 	// Embedded frontend SPAs (served at /admin, /broadcast, /translator).
@@ -144,4 +157,32 @@ func envOr(key, defaultVal string) string {
 		return v
 	}
 	return defaultVal
+}
+
+// envInt reads an integer env var, falling back to defaultVal when unset or invalid.
+func envInt(key string, defaultVal int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return defaultVal
+}
+
+// stunServers returns the STUN server list from CT_STUN_SERVERS (comma-separated),
+// defaulting to Google's public STUN server.
+func stunServers() []string {
+	if v := os.Getenv("CT_STUN_SERVERS"); v != "" {
+		parts := strings.Split(v, ",")
+		out := make([]string, 0, len(parts))
+		for _, p := range parts {
+			if s := strings.TrimSpace(p); s != "" {
+				out = append(out, s)
+			}
+		}
+		if len(out) > 0 {
+			return out
+		}
+	}
+	return []string{"stun:stun.l.google.com:19302"}
 }
