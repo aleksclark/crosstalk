@@ -36,6 +36,42 @@ func (s *Server) mountWebRTC() {
 		r.Get("/peers/{id}/events", dbg.HandlePeerEventsFromPath)
 		r.Get("/peers/{id}/sdp", dbg.HandlePeerSDPFromPath)
 	})
+
+	s.mountSessionMedia()
+}
+
+// mountSessionMedia wires the session-scoped signaling endpoint that bridges a
+// peer's audio into a session mixer. It is a no-op unless both a PeerManager
+// and a SessionMedia manager are configured.
+//
+// Clients connect to:
+//
+//	/api/sessions/{id}/ws?source_id=<src>&listen_channel=<ch>
+//
+// where source_id names the (already registered) source the peer produces into
+// and listen_channel optionally names the channel whose mixed output is returned
+// to the peer.
+func (s *Server) mountSessionMedia() {
+	pm := s.services.PeerManager
+	media := s.services.SessionMedia
+	if pm == nil || media == nil {
+		return
+	}
+
+	s.router.Get("/api/sessions/{id}/ws", func(w http.ResponseWriter, r *http.Request) {
+		sessionID := chi.URLParam(r, "id")
+		sourceID := r.URL.Query().Get("source_id")
+		listenChannel := r.URL.Query().Get("listen_channel")
+
+		handler := &webrtc.SignalingHandler{
+			PeerManager:   pm,
+			ServerVersion: "3.0.0",
+			OnPeer: func(peer *webrtc.PeerConn, req *http.Request) error {
+				return media.Bridge(req.Context(), peer, sessionID, sourceID, listenChannel)
+			},
+		}
+		handler.ServeHTTP(w, r)
+	})
 }
 
 // requireAdminMiddleware rejects requests that lack a valid admin JWT.

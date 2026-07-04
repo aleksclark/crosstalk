@@ -21,7 +21,11 @@ import (
 	"github.com/aleksclark/crosstalk/server/auth"
 	"github.com/aleksclark/crosstalk/server/pgtest"
 	"github.com/aleksclark/crosstalk/server/postgres"
+	"github.com/aleksclark/crosstalk/server/sessionrtc"
 	"github.com/aleksclark/crosstalk/server/webrtc"
+
+	"github.com/pion/ice/v4"
+	pionwebrtc "github.com/pion/webrtc/v4"
 )
 
 // testEnv holds a fully wired integration test environment.
@@ -55,6 +59,18 @@ func setupIntegrationServer(t *testing.T) *testEnv {
 	}
 	authService := auth.NewService(authCfg, userStore, refreshTokenStore)
 
+	// WebRTC peer manager with mDNS disabled so localhost ICE candidates are
+	// plain host IPs (no .local names) — required for reliable in-test peers.
+	var se pionwebrtc.SettingEngine
+	se.SetICEMulticastDNSMode(ice.MulticastDNSModeDisabled)
+	peerManager := webrtc.NewPeerManagerWithAPI(pionwebrtc.NewAPI(pionwebrtc.WithSettingEngine(se)))
+
+	sessionMedia := sessionrtc.NewManager(sessionrtc.Stores{
+		Channels: channelStore,
+		Sources:  sourceStore,
+		Mix:      mixStore,
+	}, log)
+
 	svc := api.Services{
 		Sessions:      sessionStore,
 		Channels:      channelStore,
@@ -65,13 +81,24 @@ func setupIntegrationServer(t *testing.T) *testEnv {
 		RefreshTokens: refreshTokenStore,
 		Recordings:    recordingStore,
 		Auth:          authService,
-		PeerManager:   webrtc.NewPeerManagerWithAPI(nil),
+		PeerManager:   peerManager,
+		SessionMedia:  sessionMedia,
 	}
 
 	cfg := api.Config{Addr: ":0", JWTSecret: "integration-test-secret"}
 	srv := api.NewServer(cfg, svc, log)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
+
+	// Drain any live peers (flushing their source-disconnect DB writes) before
+	// pgtest drops the database. Registered after pgtest.New so it runs first
+	// (t.Cleanup is LIFO), while the DB is still open.
+	t.Cleanup(func() {
+		for _, p := range peerManager.ListPeers() {
+			peerManager.RemovePeer(p.ID)
+		}
+		time.Sleep(50 * time.Millisecond)
+	})
 
 	return &testEnv{
 		server:  ts,

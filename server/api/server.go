@@ -16,6 +16,7 @@ import (
 
 	crosstalk "github.com/aleksclark/crosstalk/server"
 	"github.com/aleksclark/crosstalk/server/auth"
+	"github.com/aleksclark/crosstalk/server/sessionrtc"
 	"github.com/aleksclark/crosstalk/server/webrtc"
 )
 
@@ -37,6 +38,10 @@ type Services struct {
 	// PeerManager, when set, enables the WebRTC signaling endpoint and the
 	// admin debug API (live peer state + per-peer event logs).
 	PeerManager *webrtc.PeerManager
+	// SessionMedia, when set (together with PeerManager), enables the
+	// session-scoped signaling endpoint that bridges peer audio into a
+	// session's mixer.
+	SessionMedia *sessionrtc.Manager
 }
 
 // Config holds API configuration.

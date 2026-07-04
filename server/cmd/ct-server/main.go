@@ -16,6 +16,7 @@ import (
 	"github.com/aleksclark/crosstalk/server/api"
 	"github.com/aleksclark/crosstalk/server/auth"
 	"github.com/aleksclark/crosstalk/server/postgres"
+	"github.com/aleksclark/crosstalk/server/sessionrtc"
 	"github.com/aleksclark/crosstalk/server/web"
 	"github.com/aleksclark/crosstalk/server/webrtc"
 
@@ -72,6 +73,14 @@ func main() {
 		UDPMuxPort:  envInt("CT_UDP_MUX_PORT", 0),
 	})
 
+	// Session media manager: bridges connected peers' audio into per-session
+	// mixers and streams mixed channel output back to listeners.
+	sessionMedia := sessionrtc.NewManager(sessionrtc.Stores{
+		Channels: channelStore,
+		Sources:  sourceStore,
+		Mix:      mixStore,
+	}, log)
+
 	// API server
 	svc := api.Services{
 		Sessions:      sessionStore,
@@ -83,6 +92,7 @@ func main() {
 		RefreshTokens: refreshTokenStore,
 		Auth:          authService,
 		PeerManager:   peerManager,
+		SessionMedia:  sessionMedia,
 	}
 
 	// Embedded frontend SPAs (served at /admin, /broadcast, /translator).

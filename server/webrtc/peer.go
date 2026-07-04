@@ -50,6 +50,35 @@ type PeerConn struct {
 	// onNegotiationNeeded is called when the server creates a new offer for
 	// server-initiated renegotiation.
 	onNegotiationNeeded func(offer webrtc.SessionDescription)
+
+	// onRemoteTrack, if set, is invoked (in addition to debug-event emission)
+	// whenever a remote media track is received. Used to route inbound audio
+	// into a session mixer.
+	onRemoteTrack func(*webrtc.TrackRemote, *webrtc.RTPReceiver)
+
+	// onClose, if set, is invoked once when the peer is closed. Used to tear
+	// down session-mixer bridges.
+	onClose func()
+}
+
+// OnClose registers a callback invoked once when the peer connection closes.
+func (c *PeerConn) OnClose(f func()) {
+	c.mu.Lock()
+	c.onClose = f
+	c.mu.Unlock()
+}
+
+// OnRemoteTrack registers a handler invoked when a remote media track arrives.
+// It does not replace the built-in debug-event instrumentation.
+func (c *PeerConn) OnRemoteTrack(f func(*webrtc.TrackRemote, *webrtc.RTPReceiver)) {
+	c.mu.Lock()
+	c.onRemoteTrack = f
+	c.mu.Unlock()
+}
+
+// AddTrack attaches a local outbound track to the peer connection.
+func (c *PeerConn) AddTrack(track webrtc.TrackLocal) (*webrtc.RTPSender, error) {
+	return c.pc.AddTrack(track)
 }
 
 // Events returns the event ring buffer for this peer.
@@ -198,6 +227,13 @@ func (c *PeerConn) Negotiate() {
 // Close closes the underlying PeerConnection and emits a connection_closed event.
 func (c *PeerConn) Close() error {
 	c.events.Push(MakeEvent(c.ID, EventConnectionClosed, nil))
+	c.mu.Lock()
+	cb := c.onClose
+	c.onClose = nil
+	c.mu.Unlock()
+	if cb != nil {
+		cb()
+	}
 	if c.pc != nil {
 		return c.pc.Close()
 	}
@@ -471,6 +507,13 @@ func (pm *PeerManager) instrumentPeer(conn *PeerConn) {
 			"stream_id", track.StreamID(),
 			"codec", track.Codec().MimeType,
 			"kind", track.Kind().String())
+
+		conn.mu.Lock()
+		handler := conn.onRemoteTrack
+		conn.mu.Unlock()
+		if handler != nil {
+			handler(track, receiver)
+		}
 	})
 
 	// Connection State (DTLS/SCTP).

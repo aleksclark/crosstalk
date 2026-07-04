@@ -4,24 +4,24 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"math"
 	"math/rand"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/oklog/ulid/v2"
+	"github.com/pion/ice/v4"
+	"github.com/pion/rtp"
+	pionwebrtc "github.com/pion/webrtc/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"nhooyr.io/websocket"
 
 	crosstalk "github.com/aleksclark/crosstalk/server"
 	"github.com/aleksclark/crosstalk/server/mixer"
-	"github.com/aleksclark/crosstalk/server/orchestrator"
-	"github.com/aleksclark/crosstalk/server/postgres"
 )
 
 // ── Audio helpers ─────────────────────────────────────────────────────────
@@ -49,9 +49,9 @@ func goertzel(samples []int16, freq float64) float64 {
 		return 0
 	}
 	k := 2 * math.Cos(2*math.Pi*freq/float64(sampleRate))
-	var s0, s1, s2 float64
+	var s1, s2 float64
 	for _, x := range samples {
-		s0 = float64(x) + k*s1 - s2
+		s0 := float64(x) + k*s1 - s2
 		s2 = s1
 		s1 = s0
 	}
@@ -66,12 +66,9 @@ func detectTone(samples []int16, candidates []float64) (best float64, ratio floa
 		freq float64
 		mag  float64
 	}
-	scores := make([]score, 0, len(candidates))
-	for _, f := range candidates {
-		scores = append(scores, score{f, goertzel(samples, f)})
-	}
 	var top, second score
-	for _, s := range scores {
+	for _, f := range candidates {
+		s := score{f, goertzel(samples, f)}
 		if s.mag > top.mag {
 			second = top
 			top = s
@@ -85,67 +82,239 @@ func detectTone(samples []int16, candidates []float64) (best float64, ratio floa
 	return top.freq, top.mag / second.mag
 }
 
-// captureSink accumulates mixed frames delivered to a channel sink.
-type captureSink struct {
-	mu      sync.Mutex
-	samples []int16
+// ── WebRTC test client ──────────────────────────────────────────────────────
+
+// mediaClient is a real pion WebRTC peer that connects to the server's
+// session signaling endpoint, sends a tone, and captures received audio.
+type mediaClient struct {
+	name      string
+	pc        *pionwebrtc.PeerConnection
+	ws        *websocket.Conn
+	sendTrack *pionwebrtc.TrackLocalStaticRTP
+	connected chan struct{}
+
+	mu       sync.Mutex
+	received []int16
 }
 
-func (c *captureSink) writer() orchestrator.SinkWriter {
-	return func(_ string, frame []int16) {
-		cp := make([]int16, len(frame)) // frame is reused by the mixer; copy it
-		copy(cp, frame)
-		c.mu.Lock()
-		c.samples = append(c.samples, cp...)
-		c.mu.Unlock()
+// newMediaClient dials the given ws URL, negotiates a bidirectional audio
+// session with the server, and returns once ICE is connected.
+func newMediaClient(t *testing.T, name, wsURL string) *mediaClient {
+	t.Helper()
+
+	var se pionwebrtc.SettingEngine
+	se.SetICEMulticastDNSMode(ice.MulticastDNSModeDisabled)
+	api := pionwebrtc.NewAPI(pionwebrtc.WithSettingEngine(se))
+
+	pc, err := api.NewPeerConnection(pionwebrtc.Configuration{})
+	require.NoError(t, err, "%s: new pc", name)
+
+	track, err := pionwebrtc.NewTrackLocalStaticRTP(
+		pionwebrtc.RTPCodecCapability{MimeType: pionwebrtc.MimeTypeOpus},
+		name+"-mic", name,
+	)
+	require.NoError(t, err, "%s: new track", name)
+
+	// One bidirectional audio transceiver: the client sends its tone and
+	// receives the server's mixed channel output on the same m-line.
+	_, err = pc.AddTransceiverFromTrack(track, pionwebrtc.RTPTransceiverInit{
+		Direction: pionwebrtc.RTPTransceiverDirectionSendrecv,
+	})
+	require.NoError(t, err, "%s: add transceiver", name)
+
+	mc := &mediaClient{
+		name:      name,
+		pc:        pc,
+		sendTrack: track,
+		connected: make(chan struct{}),
+	}
+
+	pc.OnTrack(func(remote *pionwebrtc.TrackRemote, _ *pionwebrtc.RTPReceiver) {
+		dec := mixer.NullDecoder{}
+		pcm := make([]int16, mixer.FrameSize*8)
+		for {
+			pkt, _, rerr := remote.ReadRTP()
+			if rerr != nil {
+				return
+			}
+			if len(pkt.Payload) == 0 {
+				continue
+			}
+			n, derr := dec.Decode(pkt.Payload, pcm)
+			if derr != nil || n == 0 {
+				continue
+			}
+			mc.mu.Lock()
+			mc.received = append(mc.received, pcm[:n]...)
+			mc.mu.Unlock()
+		}
+	})
+
+	var once sync.Once
+	pc.OnICEConnectionStateChange(func(state pionwebrtc.ICEConnectionState) {
+		if state == pionwebrtc.ICEConnectionStateConnected {
+			once.Do(func() { close(mc.connected) })
+		}
+	})
+
+	ctx := context.Background()
+	ws, _, err := websocket.Dial(ctx, wsURL, nil)
+	require.NoError(t, err, "%s: ws dial", name)
+	mc.ws = ws
+
+	pc.OnICECandidate(func(c *pionwebrtc.ICECandidate) {
+		if c == nil {
+			return
+		}
+		init := c.ToJSON()
+		msg, _ := json.Marshal(map[string]any{"type": "ice", "candidate": init})
+		_ = ws.Write(ctx, websocket.MessageText, msg)
+	})
+
+	offer, err := pc.CreateOffer(nil)
+	require.NoError(t, err, "%s: create offer", name)
+	require.NoError(t, pc.SetLocalDescription(offer), "%s: set local", name)
+
+	offerMsg, _ := json.Marshal(map[string]string{"type": "offer", "sdp": offer.SDP})
+	require.NoError(t, ws.Write(ctx, websocket.MessageText, offerMsg), "%s: send offer", name)
+
+	go mc.readSignaling(ctx)
+
+	select {
+	case <-mc.connected:
+	case <-time.After(20 * time.Second):
+		t.Fatalf("%s: ICE connect timeout", name)
+	}
+
+	t.Cleanup(func() {
+		_ = ws.Close(websocket.StatusNormalClosure, "")
+		_ = pc.Close()
+	})
+	return mc
+}
+
+func (mc *mediaClient) readSignaling(ctx context.Context) {
+	for {
+		_, data, err := mc.ws.Read(ctx)
+		if err != nil {
+			return
+		}
+		var msg struct {
+			Type      string                          `json:"type"`
+			SDP       string                          `json:"sdp"`
+			Candidate *pionwebrtc.ICECandidateInit    `json:"candidate"`
+		}
+		if err := json.Unmarshal(data, &msg); err != nil {
+			continue
+		}
+		switch msg.Type {
+		case "answer":
+			_ = mc.pc.SetRemoteDescription(pionwebrtc.SessionDescription{
+				Type: pionwebrtc.SDPTypeAnswer, SDP: msg.SDP,
+			})
+		case "offer":
+			// Server-initiated renegotiation.
+			if err := mc.pc.SetRemoteDescription(pionwebrtc.SessionDescription{
+				Type: pionwebrtc.SDPTypeOffer, SDP: msg.SDP,
+			}); err != nil {
+				continue
+			}
+			ans, err := mc.pc.CreateAnswer(nil)
+			if err != nil {
+				continue
+			}
+			_ = mc.pc.SetLocalDescription(ans)
+			ansMsg, _ := json.Marshal(map[string]string{"type": "answer", "sdp": ans.SDP})
+			_ = mc.ws.Write(ctx, websocket.MessageText, ansMsg)
+		case "ice":
+			if msg.Candidate != nil {
+				_ = mc.pc.AddICECandidate(*msg.Candidate)
+			}
+		}
 	}
 }
 
-// window returns a middle slice of captured samples, skipping warm-up frames.
-func (c *captureSink) window() []int16 {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	s := c.samples
-	skip := mixer.FrameSize * 5
-	if len(s) <= skip {
-		return append([]int16(nil), s...)
+// stream sends `frames` 20ms sine-tone frames, split into MTU-sized RTP
+// packets, at the mixer's real-time cadence.
+func (mc *mediaClient) stream(ctx context.Context, freq float64, frames int) {
+	const samplesPerPacket = 480 // 960-byte payload, safely under MTU
+	enc := mixer.NullEncoder{}
+	buf := make([]byte, samplesPerPacket*2)
+	ticker := time.NewTicker(20 * time.Millisecond)
+	defer ticker.Stop()
+	var seq uint16
+	var ts uint32
+	start := 0
+	for i := 0; i < frames; i++ {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		frame := sineFrame(freq, start)
+		for off := 0; off < len(frame); off += samplesPerPacket {
+			end := off + samplesPerPacket
+			if end > len(frame) {
+				end = len(frame)
+			}
+			chunk := frame[off:end]
+			n, _ := enc.Encode(chunk, buf)
+			payload := make([]byte, n)
+			copy(payload, buf[:n])
+			seq++
+			ts += uint32(len(chunk))
+			_ = mc.sendTrack.WriteRTP(&rtp.Packet{
+				Header: rtp.Header{
+					Version:        2,
+					PayloadType:    111,
+					SequenceNumber: seq,
+					Timestamp:      ts,
+					SSRC:           uint32(0xA000 + len(mc.name)),
+				},
+				Payload: payload,
+			})
+		}
+		start += len(frame)
 	}
-	return append([]int16(nil), s[skip:]...)
+}
+
+// captured returns a copy of received samples, skipping warm-up frames.
+func (mc *mediaClient) captured() []int16 {
+	mc.mu.Lock()
+	defer mc.mu.Unlock()
+	skip := mixer.FrameSize * 8
+	if len(mc.received) <= skip {
+		return append([]int16(nil), mc.received...)
+	}
+	return append([]int16(nil), mc.received[skip:]...)
 }
 
 // ── Test ──────────────────────────────────────────────────────────────────
 
-// TestIntegrationAudioFlowABCToTranslatorToBroadcast exercises the full v3
-// audio-routing path with REAL infrastructure end to end:
+// TestIntegrationAudioFlowABCToTranslatorToBroadcast is the full v3 golden
+// audio-flow test over REAL WebRTC transport, end to end:
 //
 //   - Real PostgreSQL (Bun) database (per-test, provisioned by pgtest).
-//   - Real REST API over httptest: admin logs in, creates a session with a
-//     "feed" and a "broadcast" channel, creates a translator, and assigns the
-//     session to that translator.
+//   - Real REST API: admin logs in, creates a session with a "feed" and a
+//     "broadcast" channel, creates a translator, assigns the session to them,
+//     and configures the per-channel mix.
 //   - Real translator login through the same auth path the translate interface
 //     uses, verifying the translator sees the assigned session.
-//   - Real orchestrator + mixer routing engine carrying actual PCM audio.
+//   - Real WebRTC peers (pion) connecting to /api/sessions/{id}/ws: full
+//     ICE/DTLS/SRTP/RTP transport into the real orchestrator + mixer.
 //
-// Routing under test (mirrors the product's mix-based routing):
+// Routing under test:
 //
 //	ABC ──(feed channel)──▶ Translator     (translator hears the ABC/floor feed)
 //	Translator ──(broadcast channel)──▶ Broadcast client
 //
-// Each source emits a RANDOMLY selected tone. The test asserts that the
-// correct tone arrives at the correct destination and that tones do not leak
-// across channels (correct-destination validation).
+// Each source emits a RANDOMLY selected tone. The test asserts the correct tone
+// arrives at the correct destination and does not leak across channels.
 func TestIntegrationAudioFlowABCToTranslatorToBroadcast(t *testing.T) {
 	env := setupIntegrationServer(t)
-	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 	ctx := context.Background()
 
-	// Fresh stores bound to the same DB the API server uses.
-	db := env.db
-	channelStore := postgres.NewChannelStore(db)
-	sourceStore := postgres.NewSourceStore(db)
-	mixStore := postgres.NewMixStore(db)
-
-	// ── 1. Admin creates a session + channels + translator (via REST) ──────
+	// ── 1. Admin creates session + channels + translator (via REST) ────────
 	env.createAdminUser(t, "admin", "admin-pass-123")
 	adminToken := env.login(t, "admin", "admin-pass-123")
 
@@ -153,7 +322,6 @@ func TestIntegrationAudioFlowABCToTranslatorToBroadcast(t *testing.T) {
 	feedCh := createChannel(t, env, adminToken, session.ID, "Floor Feed", "feed")
 	broadcastCh := createChannel(t, env, adminToken, session.ID, "English Broadcast", "broadcast")
 
-	// Create translator and assign the session.
 	resp := env.doRequest(t, http.MethodPost, "/api/translators", adminToken,
 		`{"username":"maria","password":"translate-pass-123"}`)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -187,9 +355,7 @@ func TestIntegrationAudioFlowABCToTranslatorToBroadcast(t *testing.T) {
 	}
 	assert.True(t, sawSession, "translator should see the assigned session")
 
-	// ── 3. Register the connecting sources (ABC + translator mic) ──────────
-	// Sources are created in the store when WebRTC peers connect. We model the
-	// ABC and the translator's microphone connecting to the session.
+	// ── 3. Register connecting sources (ABC + translator mic) ──────────────
 	abcSource := &crosstalk.Source{
 		ID: ulid.Make().String(), SessionID: session.ID,
 		Name: "Booth A (ABC)", Origin: crosstalk.OriginABC, Connected: true,
@@ -198,12 +364,11 @@ func TestIntegrationAudioFlowABCToTranslatorToBroadcast(t *testing.T) {
 		ID: ulid.Make().String(), SessionID: session.ID,
 		Name: "Maria (Translator)", Origin: crosstalk.OriginTranslator, Connected: true,
 	}
-	require.NoError(t, sourceStore.Create(ctx, abcSource))
-	require.NoError(t, sourceStore.Create(ctx, translatorSource))
+	require.NoError(t, env.sources.Create(ctx, abcSource))
+	require.NoError(t, env.sources.Create(ctx, translatorSource))
 
-	// ── 4. Configure mix (admin, via REST) to express the routing ──────────
-	// Feed channel carries only the ABC; broadcast channel carries only the
-	// translator. The "off" source is muted per channel.
+	// ── 4. Configure the mix (admin, via REST) ─────────────────────────────
+	// Feed carries only the ABC; broadcast carries only the translator.
 	setMix(t, env, adminToken, session.ID, feedCh.ID, []mixEntry{
 		{abcSource.ID, false, 1.0},
 		{translatorSource.ID, true, 1.0},
@@ -213,31 +378,17 @@ func TestIntegrationAudioFlowABCToTranslatorToBroadcast(t *testing.T) {
 		{translatorSource.ID, false, 1.0},
 	})
 
-	// ── 5. Bring up the orchestrator + mixers for the session ──────────────
-	orch := orchestrator.New(orchestrator.Config{
-		SessionID:    session.ID,
-		MixStore:     mixStore,
-		ChannelStore: channelStore,
-		SourceStore:  sourceStore,
-		Logger:       log,
-	})
-	require.NoError(t, orch.Initialize(ctx))
-	require.Equal(t, 2, orch.ChannelCount())
+	// ── 5. Connect real WebRTC peers to the session signaling endpoint ─────
+	wsBase := strings.Replace(env.server.URL, "http://", "ws://", 1) + "/api/sessions/" + session.ID + "/ws"
+	abcWS := fmt.Sprintf("%s?source_id=%s", wsBase, abcSource.ID)
+	translatorWS := fmt.Sprintf("%s?source_id=%s&listen_channel=%s", wsBase, translatorSource.ID, feedCh.ID)
+	broadcastWS := fmt.Sprintf("%s?listen_channel=%s", wsBase, broadcastCh.ID)
 
-	require.NoError(t, orch.SourceConnect(ctx, *abcSource))
-	require.NoError(t, orch.SourceConnect(ctx, *translatorSource))
+	abc := newMediaClient(t, "abc", abcWS)
+	translatorClient := newMediaClient(t, "translator", translatorWS)
+	broadcast := newMediaClient(t, "broadcast", broadcastWS)
 
-	// Sinks: the translator listens to the feed; the broadcast client listens
-	// to the broadcast channel.
-	translatorEar := &captureSink{}
-	broadcastEar := &captureSink{}
-	orch.ForwardOutput(feedCh.ID, "translator-listener", translatorEar.writer())
-	orch.ForwardOutput(broadcastCh.ID, "broadcast-client", broadcastEar.writer())
-
-	orch.StartMixers()
-	defer orch.StopMixers()
-
-	// ── 6. Each source emits a randomly selected (distinct) tone ───────────
+	// ── 6. Each producing source emits a randomly selected (distinct) tone ──
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	abcTone := toneMenu[rng.Intn(len(toneMenu))]
 	translatorTone := abcTone
@@ -246,42 +397,32 @@ func TestIntegrationAudioFlowABCToTranslatorToBroadcast(t *testing.T) {
 	}
 	t.Logf("ABC tone=%.0fHz  Translator tone=%.0fHz", abcTone, translatorTone)
 
-	// Stream ~700ms of audio from both sources, paced to the mixer's 20ms tick.
-	const frames = 35
+	const frames = 100 // ~2s of audio
+	streamCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	var wg sync.WaitGroup
 	wg.Add(2)
-	stream := func(sourceID string, freq float64) {
-		defer wg.Done()
-		ticker := time.NewTicker(20 * time.Millisecond)
-		defer ticker.Stop()
-		start := 0
-		for i := 0; i < frames; i++ {
-			<-ticker.C
-			orch.WriteAudio(sourceID, sineFrame(freq, start))
-			start += mixer.FrameSize
-		}
-	}
-	go stream(abcSource.ID, abcTone)
-	go stream(translatorSource.ID, translatorTone)
+	go func() { defer wg.Done(); abc.stream(streamCtx, abcTone, frames) }()
+	go func() { defer wg.Done(); translatorClient.stream(streamCtx, translatorTone, frames) }()
 	wg.Wait()
-	time.Sleep(60 * time.Millisecond) // let final frames drain to sinks
+	time.Sleep(200 * time.Millisecond) // let final frames traverse the pipeline
 
 	// ── 7. Validate the correct tone reached each destination ──────────────
-	feedSamples := translatorEar.window()
-	bcastSamples := broadcastEar.window()
-	require.Greater(t, len(feedSamples), mixer.FrameSize*5, "translator received too little audio")
-	require.Greater(t, len(bcastSamples), mixer.FrameSize*5, "broadcast received too little audio")
+	feedSamples := translatorClient.captured()
+	bcastSamples := broadcast.captured()
+	require.Greater(t, len(feedSamples), mixer.FrameSize*10, "translator received too little audio")
+	require.Greater(t, len(bcastSamples), mixer.FrameSize*10, "broadcast received too little audio")
 
 	feedTone, feedRatio := detectTone(feedSamples, toneMenu)
 	bcastTone, bcastRatio := detectTone(bcastSamples, toneMenu)
-	t.Logf("feed detected=%.0fHz (ratio %.1f)  broadcast detected=%.0fHz (ratio %.1f)",
+	t.Logf("feed(translator ear) detected=%.0fHz (ratio %.1f)  broadcast detected=%.0fHz (ratio %.1f)",
 		feedTone, feedRatio, bcastTone, bcastRatio)
 
-	// Translator (feed sink) must hear the ABC's tone, dominantly.
+	// Translator hears the ABC's tone on the feed, dominantly.
 	assert.Equal(t, abcTone, feedTone, "translator should hear the ABC tone on the feed")
-	assert.Greater(t, feedRatio, 3.0, "ABC tone should dominate on the feed")
+	assert.Greater(t, feedRatio, 3.0, "ABC tone should dominate at the translator")
 
-	// Broadcast client must hear the translator's tone, dominantly.
+	// Broadcast client hears the translator's tone, dominantly.
 	assert.Equal(t, translatorTone, bcastTone, "broadcast should hear the translator tone")
 	assert.Greater(t, bcastRatio, 3.0, "translator tone should dominate on the broadcast")
 

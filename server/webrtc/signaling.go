@@ -37,6 +37,12 @@ type SignalingHandler struct {
 	// AuthFunc is an optional authentication function. If set, it's called with
 	// the HTTP request before upgrade. Return an error to reject.
 	AuthFunc func(r *http.Request) error
+
+	// OnPeer, if set, is called with each freshly created peer (and the
+	// originating request) before the signaling loop begins. It is the hook
+	// used to bridge a peer's media into a session mixer. Returning an error
+	// aborts the session.
+	OnPeer func(peer *PeerConn, r *http.Request) error
 }
 
 // ServeHTTP handles the WebSocket signaling upgrade and message loop.
@@ -69,6 +75,16 @@ func (h *SignalingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer h.PeerManager.RemovePeer(peer.ID)
 
 	slog.Info("webrtc: signaling session started", "peer", peer.ID)
+
+	// Optional per-peer setup (e.g. bridging media into a session). Runs before
+	// the signaling loop so any server-added tracks are included in the answer.
+	if h.OnPeer != nil {
+		if err := h.OnPeer(peer, r); err != nil {
+			slog.Error("webrtc: OnPeer setup failed", "peer", peer.ID, "err", err)
+			conn.Close(websocket.StatusInternalError, "peer setup failed")
+			return
+		}
+	}
 
 	// Register ICE candidate trickle callback.
 	ctx := r.Context()
