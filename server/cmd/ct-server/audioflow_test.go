@@ -7,12 +7,12 @@ import (
 	"math"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/oklog/ulid/v2"
 	"github.com/pion/ice/v4"
 	"github.com/pion/rtp"
 	pionwebrtc "github.com/pion/webrtc/v4"
@@ -20,7 +20,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"nhooyr.io/websocket"
 
-	crosstalk "github.com/aleksclark/crosstalk/server"
 	"github.com/aleksclark/crosstalk/server/mixer"
 )
 
@@ -167,7 +166,7 @@ func newMediaClient(t *testing.T, name, wsURL string) *mediaClient {
 			return
 		}
 		init := c.ToJSON()
-		msg, _ := json.Marshal(map[string]any{"type": "ice", "candidate": init})
+		msg, _ := json.Marshal(map[string]any{"type": "candidate", "candidate": init})
 		_ = ws.Write(ctx, websocket.MessageText, msg)
 	})
 
@@ -200,9 +199,9 @@ func (mc *mediaClient) readSignaling(ctx context.Context) {
 			return
 		}
 		var msg struct {
-			Type      string                          `json:"type"`
-			SDP       string                          `json:"sdp"`
-			Candidate *pionwebrtc.ICECandidateInit    `json:"candidate"`
+			Type      string                       `json:"type"`
+			SDP       string                       `json:"sdp"`
+			Candidate *pionwebrtc.ICECandidateInit `json:"candidate"`
 		}
 		if err := json.Unmarshal(data, &msg); err != nil {
 			continue
@@ -226,7 +225,7 @@ func (mc *mediaClient) readSignaling(ctx context.Context) {
 			_ = mc.pc.SetLocalDescription(ans)
 			ansMsg, _ := json.Marshal(map[string]string{"type": "answer", "sdp": ans.SDP})
 			_ = mc.ws.Write(ctx, websocket.MessageText, ansMsg)
-		case "ice":
+		case "ice", "candidate":
 			if msg.Candidate != nil {
 				_ = mc.pc.AddICECandidate(*msg.Candidate)
 			}
@@ -355,40 +354,24 @@ func TestIntegrationAudioFlowABCToTranslatorToBroadcast(t *testing.T) {
 	}
 	assert.True(t, sawSession, "translator should see the assigned session")
 
-	// ── 3. Register connecting sources (ABC + translator mic) ──────────────
-	abcSource := &crosstalk.Source{
-		ID: ulid.Make().String(), SessionID: session.ID,
-		Name: "Booth A (ABC)", Origin: crosstalk.OriginABC, Connected: true,
-	}
-	translatorSource := &crosstalk.Source{
-		ID: ulid.Make().String(), SessionID: session.ID,
-		Name: "Maria (Translator)", Origin: crosstalk.OriginTranslator, Connected: true,
-	}
-	require.NoError(t, env.sources.Create(ctx, abcSource))
-	require.NoError(t, env.sources.Create(ctx, translatorSource))
-
-	// ── 4. Configure the mix (admin, via REST) ─────────────────────────────
-	// Feed carries only the ABC; broadcast carries only the translator.
-	setMix(t, env, adminToken, session.ID, feedCh.ID, []mixEntry{
-		{abcSource.ID, false, 1.0},
-		{translatorSource.ID, true, 1.0},
-	})
-	setMix(t, env, adminToken, session.ID, broadcastCh.ID, []mixEntry{
-		{abcSource.ID, true, 1.0},
-		{translatorSource.ID, false, 1.0},
-	})
-
-	// ── 5. Connect real WebRTC peers to the session signaling endpoint ─────
+	// ── 3. Connect real WebRTC peers to the SFU, declaring produce/listen ──
+	// Routing is expressed by which channels each peer produces into / listens
+	// to; the server auto-registers a Source + mix entry per produced channel.
+	//
+	//   ABC         produces → "Floor Feed"
+	//   Translator  listens  ← "Floor Feed", produces → "English Broadcast"
+	//   Broadcast   listens  ← "English Broadcast"
 	wsBase := strings.Replace(env.server.URL, "http://", "ws://", 1) + "/api/sessions/" + session.ID + "/ws"
-	abcWS := fmt.Sprintf("%s?source_id=%s", wsBase, abcSource.ID)
-	translatorWS := fmt.Sprintf("%s?source_id=%s&listen_channel=%s", wsBase, translatorSource.ID, feedCh.ID)
-	broadcastWS := fmt.Sprintf("%s?listen_channel=%s", wsBase, broadcastCh.ID)
+	abcWS := fmt.Sprintf("%s?produce=%s", wsBase, url.QueryEscape(feedCh.Name))
+	translatorWS := fmt.Sprintf("%s?produce=%s&listen=%s",
+		wsBase, url.QueryEscape(broadcastCh.Name), url.QueryEscape(feedCh.Name))
+	broadcastWS := fmt.Sprintf("%s?listen=%s", wsBase, url.QueryEscape(broadcastCh.Name))
 
 	abc := newMediaClient(t, "abc", abcWS)
 	translatorClient := newMediaClient(t, "translator", translatorWS)
 	broadcast := newMediaClient(t, "broadcast", broadcastWS)
 
-	// ── 6. Each producing source emits a randomly selected (distinct) tone ──
+	// ── 4. Each producing source emits a randomly selected (distinct) tone ──
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	abcTone := toneMenu[rng.Intn(len(toneMenu))]
 	translatorTone := abcTone
@@ -438,7 +421,8 @@ type sessionResp struct {
 }
 
 type channelResp struct {
-	ID string `json:"id"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 func createSession(t *testing.T, env *testEnv, token, name string) sessionResp {
@@ -463,24 +447,4 @@ func createChannel(t *testing.T, env *testEnv, token, sessionID, name, typ strin
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&c))
 	require.NotEmpty(t, c.ID)
 	return c
-}
-
-type mixEntry struct {
-	sourceID string
-	muted    bool
-	level    float64
-}
-
-func setMix(t *testing.T, env *testEnv, token, sessionID, channelID string, entries []mixEntry) {
-	t.Helper()
-	parts := make([]string, 0, len(entries))
-	for _, e := range entries {
-		parts = append(parts, fmt.Sprintf(`{"source_id":%q,"muted":%t,"level":%g}`,
-			e.sourceID, e.muted, e.level))
-	}
-	body := fmt.Sprintf(`{"entries":[%s]}`, strings.Join(parts, ","))
-	resp := env.doRequest(t, http.MethodPut,
-		"/api/sessions/"+sessionID+"/channels/"+channelID+"/mix", token, body)
-	defer resp.Body.Close()
-	require.Equal(t, http.StatusOK, resp.StatusCode)
 }

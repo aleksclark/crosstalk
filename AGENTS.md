@@ -47,27 +47,20 @@ spec/            Design specification (living document)
 
 ## When to Run Integration Tests
 
-**Any change to `server/` or `web/` must pass `task test:integration` before merging.** This runs both Go in-process integration tests and the full Playwright browser suite against a real server with real SQLite.
+**Any change to `server/` or `web/` must pass the tests before merging.** `task test:integration` runs the Go in-process integration + audio-flow tests against a real PostgreSQL. `task test:e2e` runs the full Playwright browser suite (admin, translator, and broadcast SPAs) against a real server + PostgreSQL, including the golden real-audio test.
 
-The Playwright suite (`test/playwright/specs/`) exercises every routed view of the admin SPA:
+The Playwright suite (`test/playwright/specs/`) drives the real SPAs:
 
-| Spec file | Views covered |
+| Spec file | Coverage |
 |---|---|
-| `login.spec.ts` | `/login` — auth flow, invalid credentials |
-| `navigation.spec.ts` | Layout nav bar, logout, auth guard, active link |
-| `dashboard.spec.ts` | `/dashboard` — stat cards, recent sessions, quick test |
-| `template-editor.spec.ts` | `/templates`, `/templates/:id` — CRUD, roles, mappings, validation |
-| `session-list.spec.ts` | `/sessions` — list, create, end, empty state |
-| `session-detail.spec.ts` | `/sessions/:id` — status, clients, bindings, assign peers |
-| `session-connect.spec.ts` | `/sessions/:id/connect` — WebRTC debug, mic, logs, volume |
-| `templates.spec.ts` | `/templates` — create, edit, delete via UI |
-| `sessions.spec.ts` | `/sessions` — create from template, connect view |
-| `quick-test.spec.ts` | `/dashboard` — quick test button → connect |
-| `assign-peer.spec.ts` | API + assign UI on detail/connect pages |
+| `admin.spec.ts` | Admin SPA: login → dashboard, session create, translator CRUD (persists across reload + can authenticate) |
+| `translator.spec.ts` | Translator SPA: login via translate interface, assigned session visible, auth survives reload |
+| `golden-audio.spec.ts` | End-to-end **real audio**: floor→feed→translator and translator→broadcast→listener, driven entirely through the SPAs with Chromium fake-mic tones, verified by decoding the audio each listener receives (AnalyserNode FFT) |
 
-Run the suite locally:
+Run the suites locally:
 ```
-task test:integration
+task test:integration   # Go integration + audio-flow (needs PostgreSQL)
+task test:e2e           # SPA-driven Playwright + real audio (needs PostgreSQL + Chromium)
 ```
 
 ## Commands

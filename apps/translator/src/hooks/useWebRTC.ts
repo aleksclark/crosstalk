@@ -26,6 +26,12 @@ export interface UseWebRTCOptions {
   sessionId: string;
   token: string;
   audioDeviceId?: string;
+  // Optional explicit SFU routing. When omitted the server routes by role
+  // (translators listen to feed channels and produce into broadcast channels).
+  // Comma-separated channel names; "type:feed" / "type:broadcast" select all
+  // channels of a type.
+  produce?: string;
+  listen?: string;
 }
 
 export interface UseWebRTCReturn {
@@ -46,7 +52,7 @@ export interface UseWebRTCReturn {
 }
 
 export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
-  const { sessionId, token, audioDeviceId } = options;
+  const { sessionId, token, audioDeviceId, produce, listen } = options;
 
   const [connectionState, setConnectionState] = useState<RTCPeerConnectionState>("new");
   const [iceState, setIceState] = useState<RTCIceConnectionState>("new");
@@ -173,7 +179,10 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
 
     // WebSocket signaling
     const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${wsProtocol}//${window.location.host}/api/sessions/${sessionId}/ws?token=${token}`;
+    const params = new URLSearchParams({ token });
+    if (produce) params.set("produce", produce);
+    if (listen) params.set("listen", listen);
+    const wsUrl = `${wsProtocol}//${window.location.host}/api/sessions/${sessionId}/ws?${params.toString()}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
@@ -186,19 +195,17 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
       addEvent("signaling", `Received: ${msg.type}`);
 
       if (msg.type === "answer") {
-        const desc = new RTCSessionDescription(msg.sdp);
-        await pc.setRemoteDescription(desc);
-        setRemoteSdp(JSON.stringify(msg.sdp, null, 2));
+        await pc.setRemoteDescription({ type: "answer", sdp: msg.sdp });
+        setRemoteSdp(msg.sdp);
         addEvent("sdp", "Remote description set (answer)");
       } else if (msg.type === "offer") {
-        const desc = new RTCSessionDescription(msg.sdp);
-        await pc.setRemoteDescription(desc);
-        setRemoteSdp(JSON.stringify(msg.sdp, null, 2));
+        await pc.setRemoteDescription({ type: "offer", sdp: msg.sdp });
+        setRemoteSdp(msg.sdp);
         addEvent("sdp", "Remote description set (offer)");
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
-        setLocalSdp(JSON.stringify(answer, null, 2));
-        ws.send(JSON.stringify({ type: "answer", sdp: answer }));
+        setLocalSdp(answer.sdp ?? null);
+        ws.send(JSON.stringify({ type: "answer", sdp: answer.sdp }));
         addEvent("sdp", "Sent answer");
       } else if (msg.type === "candidate") {
         await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
@@ -222,7 +229,7 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
 
     // Wait for WS to be open before sending
     const sendOffer = () => {
-      ws.send(JSON.stringify({ type: "offer", sdp: offer }));
+      ws.send(JSON.stringify({ type: "offer", sdp: offer.sdp }));
       addEvent("signaling", "Sent offer via WebSocket");
     };
     if (ws.readyState === WebSocket.OPEN) {
@@ -233,7 +240,7 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
 
     // Start stats polling
     statsIntervalRef.current = setInterval(pollStats, 1000);
-  }, [sessionId, token, audioDeviceId, addEvent, pollStats]);
+  }, [sessionId, token, audioDeviceId, produce, listen, addEvent, pollStats]);
 
   const disconnect = useCallback(() => {
     if (statsIntervalRef.current) {

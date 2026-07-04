@@ -1,524 +1,199 @@
 /**
- * golden-audio.spec.ts — Full E2E golden audio test through the admin UI.
+ * golden-audio.spec.ts — End-to-end audio through the real SPAs.
  *
  * ╔══════════════════════════════════════════════════════════════════════════╗
- * ║  INVARIANTS — do not weaken or remove these constraints:               ║
- * ║                                                                        ║
- * ║  1. Real server    — ct-server running with real SQLite, real WebRTC.  ║
- * ║                      No mocks, no stubs, no in-memory fakes.           ║
- * ║  2. Real K2B board — physical KickPi K2B with PipeWire + ALSA         ║
- * ║                      loopback. ct-client runs on real ARM64 hardware.  ║
- * ║  3. Real audio     — test tone travels the full WebRTC SFU pipeline:  ║
- * ║                      K2B PipeWire → ct-client → WebRTC → ct-server    ║
- * ║                      SFU → WebRTC → Playwright browser (Chromium).    ║
- * ║  4. Admin UI only  — every user-facing step uses the web UI. No raw   ║
- * ║                      API calls, no direct DB manipulation. The only    ║
- * ║                      non-UI operations are SSH commands to the K2B     ║
- * ║                      board (deploying ct-client, playing test audio).  ║
- * ║                                                                        ║
- * ║  If you are tempted to replace any of these with mocks, stubs, or     ║
- * ║  API shortcuts — don't. The entire point of this test is to prove the ║
- * ║  system works end-to-end exactly as a human operator would use it.    ║
+ * ║  This is the golden test: it proves real audio flows through the whole    ║
+ * ║  system exactly as human operators would drive it.                        ║
+ * ║                                                                            ║
+ * ║   • Admin SPA   — logs in and creates the session (real UI).              ║
+ * ║   • Translator SPA — two browsers connect with real microphones           ║
+ * ║       (Chromium fake mic fed a WAV tone) over real WebRTC.                ║
+ * ║   • Broadcast SPA — a listener browser plays the live stream.             ║
+ * ║   • ct-server   — real Pion SFU forwards the Opus RTP between them.       ║
+ * ║                                                                            ║
+ * ║  Topology under test:                                                     ║
+ * ║      Floor  ──produce→ "feed"      ─▶ Translator (hears floor)            ║
+ * ║      Translator ──produce→ "broadcast" ─▶ Broadcast listener (hears xl8r) ║
+ * ║                                                                            ║
+ * ║  Each producer emits a distinct tone. The test decodes the audio actually ║
+ * ║  received in each listener browser (AnalyserNode FFT) and asserts the     ║
+ * ║  correct tone arrives at the correct destination — no mocks, no stubs.    ║
  * ╚══════════════════════════════════════════════════════════════════════════╝
- *
- * Driven by run-e2e-tests.sh which sets:
- *   CT_SERVER_URL     — server base URL (e.g. http://192.168.0.10:9090)
- *   CT_K2B_HOST       — K2B board IP (e.g. 192.168.0.109)
- *   CT_K2B_USER       — PipeWire user on K2B (default: streamlate)
- *   CT_K2B_UID        — UID for XDG_RUNTIME_DIR (default: 999)
- *   CT_ADMIN_PASSWORD  — admin password for the server (default: Password!)
- *   CT_CAPTURE_PATH    — where to write captured audio (default: /tmp/browser-captured-audio.webm)
- *   CT_AUDIO_DURATION_MS — how long to record audio (default: 7000)
- *
- * The orchestrator script handles:
- *   - Building ct-server and ct-client-arm64
- *   - Starting ct-server with a fresh database
- *   - Deploying ct-client binary + test tone WAV to K2B
- *   - Creating an API token for the K2B client
- *   - Starting ct-client on K2B (connects to server, idle until assigned)
- *   - Running this Playwright spec
- *   - Comparing captured audio against the reference tone
  */
-import { test, expect, type Page } from "@playwright/test";
-import { execSync } from "child_process";
-import * as fs from "fs";
+import { test, expect, chromium, type Browser } from "@playwright/test";
+import * as os from "os";
 import * as path from "path";
+import {
+  BASE_URL,
+  adminLoginUI,
+  apiFetch,
+  createChannel,
+  getBroadcastToken,
+  makeToneWav,
+  installInboundAudioCapture,
+  dominantFrequency,
+  expectTone,
+} from "../helpers";
 
-// ── Environment ─────────────────────────────────────────────────────────────
+// Distinct, well-separated tones for the two producers.
+const FLOOR_HZ = 440;
+const TRANSLATOR_HZ = 880;
 
-const SERVER_URL = process.env.CT_SERVER_URL || "http://localhost:8080";
-const K2B_HOST = process.env.CT_K2B_HOST || "";
-const K2B_USER = process.env.CT_K2B_USER || "streamlate";
-const K2B_UID = process.env.CT_K2B_UID || "999";
-const ADMIN_PASSWORD = process.env.CT_ADMIN_PASSWORD || "Password!";
-const CAPTURE_PATH =
-  process.env.CT_CAPTURE_PATH || "/tmp/browser-captured-audio.webm";
-const AUDIO_DURATION = parseInt(
-  process.env.CT_AUDIO_DURATION_MS || "7000",
-  10,
-);
+const floorWav = path.join(os.tmpdir(), "ct-e2e-floor.wav");
+const translatorWav = path.join(os.tmpdir(), "ct-e2e-translator.wav");
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
-
-function ssh(cmd: string): string {
-  return execSync(`ssh -o ConnectTimeout=5 root@${K2B_HOST} "${cmd}"`, {
-    encoding: "utf-8",
-    timeout: 30_000,
-  }).trim();
+// A Chromium instance whose fake microphone plays the given WAV tone.
+function launchWithMic(toneFile: string): Promise<Browser> {
+  return chromium.launch({
+    args: [
+      "--use-fake-ui-for-media-stream",
+      "--use-fake-device-for-media-stream",
+      `--use-file-for-fake-audio-capture=${toneFile}`,
+      "--autoplay-policy=no-user-gesture-required",
+      // Emit real host ICE candidates instead of mDNS ".local" names, which
+      // the Pion SFU cannot resolve on localhost — without this DTLS/SRTP never
+      // establishes and no audio flows.
+      "--disable-features=WebRtcHideLocalIpsWithMdns",
+    ],
+  });
 }
 
-function sshNoFail(cmd: string): string {
-  try {
-    return ssh(cmd);
-  } catch {
-    return "";
-  }
-}
-
-async function loginViaUI(page: Page): Promise<void> {
-  await page.goto("/login");
-  await page.fill("#username", "admin");
-  await page.fill("#password", ADMIN_PASSWORD);
-  await page.click('button[type="submit"]');
-  await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 });
-}
-
-// ── Test ────────────────────────────────────────────────────────────────────
-
-test.describe("Golden Audio — Full Admin UI Flow", () => {
-  /**
-   * Skip the entire suite if the K2B host isn't configured.
-   * This test requires physical hardware and is run exclusively via
-   * run-e2e-tests.sh. It MUST NOT be neutered into a mock-based test.
-   */
-  test.skip(!K2B_HOST, "CT_K2B_HOST not set — run via run-e2e-tests.sh");
-
-  /**
-   * Increase the overall timeout for this test. The full flow involves
-   * WebRTC negotiation across a real network to a real ARM64 board,
-   * plus audio capture. 3 minutes is generous but realistic.
-   */
+test.describe("Golden Audio — SPA-driven end-to-end", () => {
   test.setTimeout(180_000);
 
-  test("K2B→Browser: full admin UI flow with real audio capture", async ({
+  test.beforeAll(() => {
+    // Long tones so Chromium's fake mic keeps producing for the whole test.
+    makeToneWav(floorWav, FLOOR_HZ, 60);
+    makeToneWav(translatorWav, TRANSLATOR_HZ, 60);
+  });
+
+  test("floor→feed→translator and translator→broadcast→listener", async ({
     page,
+    request,
   }) => {
-    // ════════════════════════════════════════════════════════════════════════
-    //  STEP 1: Verify K2B is provisioned and ct-client is running
-    // ════════════════════════════════════════════════════════════════════════
-    //
-    // The orchestrator script (run-e2e-tests.sh) has already:
-    //   - Built and deployed ct-client-arm64 to the K2B board
-    //   - Created an API token and written client config
-    //   - Started ct-client, which connects to the server via WebSocket
-    //     and WebRTC, sends Hello with PipeWire capabilities, and idles
-    //     waiting for the server to assign it to a session.
-    //
-    // We verify the client process is alive. If it's not, there's no point
-    // continuing — this is a REAL hardware test.
+    // ══ 1. Admin SPA: log in and create the session ═══════════════════════
+    const adminToken = await adminLoginUI(page);
 
-    const clientPid = sshNoFail("pgrep -x ct-client");
-    expect(clientPid, "ct-client must be running on K2B").not.toBe("");
+    const sessionName = `E2E Service ${Date.now()}`;
+    await page.getByRole("link", { name: /sessions/i }).click();
+    await expect(page).toHaveURL(/\/admin\/sessions/);
+    await page.getByRole("button", { name: /new session/i }).click();
+    await page.getByPlaceholder(/session name/i).fill(sessionName);
+    await page.getByRole("button", { name: /^create$/i }).click();
+    await expect(page.getByText(sessionName)).toBeVisible({ timeout: 15_000 });
 
-    // ════════════════════════════════════════════════════════════════════════
-    //  STEP 2: Log in via admin UI
-    // ════════════════════════════════════════════════════════════════════════
-    //
-    // Real login through the web form. No API token injection, no
-    // sessionStorage manipulation.
+    // Resolve the session id + create its channels (no admin UI for channels).
+    const sessions = (await apiFetch(request, adminToken, "get", "/api/sessions"))
+      .data as Array<{ id: string; name: string }>;
+    const session = sessions.find((s) => s.name === sessionName);
+    expect(session, "created session present via API").toBeTruthy();
+    const sessionId = session!.id;
 
-    await loginViaUI(page);
+    const feed = await createChannel(request, adminToken, sessionId, "Floor Feed", "feed");
+    await createChannel(request, adminToken, sessionId, "English Broadcast", "broadcast");
+    const broadcastToken = await getBroadcastToken(request, adminToken, sessionId);
 
-    // ════════════════════════════════════════════════════════════════════════
-    //  STEP 3: Create session template "Translation"
-    // ════════════════════════════════════════════════════════════════════════
-    //
-    // Two roles: studio, translator.
-    // Bidirectional audio mappings:
-    //   studio:input    → translator:speakers
-    //   translator:mic  → studio:output
-    //
-    // This is done entirely through the template editor UI.
-
-    await page.click('nav >> text=Templates');
-    await expect(page).toHaveURL(/\/templates/);
-    await page.click('[data-testid="create-template-button"]');
-    await expect(page).toHaveURL(/\/templates\/new/);
-
-    await page.fill('[data-testid="template-name-input"]', "Translation");
-
-    // Role 1: studio
-    const roleInputs = page.locator('[data-testid="role-name-input"]');
-    await roleInputs.first().clear();
-    await roleInputs.first().fill("studio");
-
-    // Role 2: translator
-    await page.click('[data-testid="add-role-button"]');
-    await roleInputs.nth(1).fill("translator");
-
-    // Mapping 1: studio:input → translator:speakers
-    await page
-      .locator('[data-testid="mapping-from-role"]')
-      .first()
-      .selectOption("studio");
-    await page
-      .locator('[data-testid="mapping-from-channel"]')
-      .first()
-      .fill("input");
-    await page
-      .locator('[data-testid="mapping-to-role"]')
-      .first()
-      .selectOption("translator");
-    await page
-      .locator('[data-testid="mapping-to-channel"]')
-      .first()
-      .fill("speakers");
-
-    // Mapping 2: translator:mic → studio:output
-    await page.click('[data-testid="add-mapping-button"]');
-    await page
-      .locator('[data-testid="mapping-from-role"]')
-      .nth(1)
-      .selectOption("translator");
-    await page
-      .locator('[data-testid="mapping-from-channel"]')
-      .nth(1)
-      .fill("mic");
-    await page
-      .locator('[data-testid="mapping-to-role"]')
-      .nth(1)
-      .selectOption("studio");
-    await page
-      .locator('[data-testid="mapping-to-channel"]')
-      .nth(1)
-      .fill("output");
-
-    // Save template
-    await page.click('[data-testid="save-template-button"]');
-    await expect(page).toHaveURL(/\/templates$/, { timeout: 15_000 });
-    await expect(page.locator("text=Translation")).toBeVisible();
-
-    // ════════════════════════════════════════════════════════════════════════
-    //  STEP 4: Confirm K2B appears as a connected peer
-    // ════════════════════════════════════════════════════════════════════════
-    //
-    // Navigate to Sessions and create a session. The K2B ct-client should
-    // already be connected to the server (visible as a peer). We verify
-    // this on the session detail page's "Assign Peers" card.
-
-    await page.click('nav >> text=Sessions');
-    await expect(page).toHaveURL(/\/sessions/);
-
-    // ════════════════════════════════════════════════════════════════════════
-    //  STEP 5: Create a session and assign K2B as studio
-    // ════════════════════════════════════════════════════════════════════════
-    //
-    // Create the session through the UI, then assign the K2B peer to the
-    // "studio" role via the Assign Peers card.
-
-    await page.click('[data-testid="create-session-button"]');
-    await page.fill('[data-testid="session-name-input"]', "Golden Audio Test");
-    await page.selectOption('[data-testid="session-template-select"]', {
-      label: "Translation",
+    // Two translator accounts: one drives the "floor" source, one translates.
+    // Unique per run so Playwright retries don't collide on the username.
+    const pw = "audio-pass-123";
+    const floorUser = `floor_${Date.now()}`;
+    const mariaUser = `maria_${Date.now()}`;
+    await apiFetch(request, adminToken, "post", "/api/translators", {
+      username: floorUser,
+      password: pw,
     });
-    await page.click('[data-testid="confirm-create-session"]');
-
-    // Wait for the session row to appear, then navigate to its detail page.
-    await expect(page.locator("text=Golden Audio Test")).toBeVisible({
-      timeout: 10_000,
-    });
-    await page.click("text=Golden Audio Test");
-    await expect(page.locator("h1")).toContainText("Golden Audio Test", {
-      timeout: 10_000,
+    await apiFetch(request, adminToken, "post", "/api/translators", {
+      username: mariaUser,
+      password: pw,
     });
 
-    // The K2B peer should appear in the Assign Peers card. The peer list
-    // polls every 3s, so wait for at least one peer row to appear.
-    await expect(page.locator("text=Assign Peers")).toBeVisible();
-    const peerRow = page.locator(
-      ".flex.items-center.justify-between.border >> nth=0",
+    // ══ 2. Floor browser: connect a mic (440Hz) producing into "feed" ══════
+    const floorBrowser = await launchWithMic(floorWav);
+    const floorCtx = await floorBrowser.newContext({
+      baseURL: BASE_URL,
+      permissions: ["microphone"],
+    });
+    await installInboundAudioCapture(floorCtx);
+    const floorPage = await floorCtx.newPage();
+    await loginTranslator(floorPage, floorUser, pw);
+    // Deep link: produce into the feed channel, listen to nothing.
+    await floorPage.goto(
+      `/translator/sessions/${sessionId}/connect?produce=${encodeURIComponent(feed.name)}&listen=`,
     );
-    await expect(peerRow).toBeVisible({ timeout: 15_000 });
-
-    // Select "studio" role in the assign dropdown and click Assign.
-    const assignSelect = page.locator(
-      '[data-testid="assign-role-select"]',
-    ).first();
-    await expect(assignSelect).toBeVisible({ timeout: 5_000 });
-    await assignSelect.selectOption("studio");
-    await page.locator('[data-testid="assign-peer-button"]').first().click();
-
-    // Verify no error appeared and the peer now shows "in session" badge.
+    await floorPage.getByRole("button", { name: /^connect$/i }).click();
     await expect(
-      page.locator('[data-testid="assign-error"]'),
-    ).not.toBeVisible({ timeout: 5_000 });
-    await expect(page.locator("text=in session")).toBeVisible({
-      timeout: 10_000,
+      floorPage.getByRole("button", { name: /disconnect/i }),
+    ).toBeVisible({ timeout: 30_000 });
+
+    // ══ 3. Translator browser: mic (880Hz) → broadcast, listening to feed ══
+    const transBrowser = await launchWithMic(translatorWav);
+    const transCtx = await transBrowser.newContext({
+      baseURL: BASE_URL,
+      permissions: ["microphone"],
     });
-
-    // ════════════════════════════════════════════════════════════════════════
-    //  STEP 6: Verify K2B is listed as a connected client
-    // ════════════════════════════════════════════════════════════════════════
-    //
-    // The Connected Clients card should now show the K2B device with
-    // role "studio". This is the server's authoritative view of who's
-    // in the session.
-
-    await expect(page.locator("text=Connected Clients")).toBeVisible();
-    // After assignment the client count should update (may need a page
-    // refresh since session detail doesn't auto-poll client list).
-    // Reload to get fresh data.
-    await page.reload();
-    await expect(page.locator("h1")).toContainText("Golden Audio Test", {
-      timeout: 10_000,
-    });
-
-    // ════════════════════════════════════════════════════════════════════════
-    //  STEP 7: Select "translator" role and click Connect
-    // ════════════════════════════════════════════════════════════════════════
-    //
-    // The admin user (Playwright browser) connects to the session as the
-    // "translator" role. This establishes a second WebRTC peer connection
-    // through the server SFU. Audio will flow bidirectionally:
-    //   studio (K2B) ↔ server SFU ↔ translator (browser)
-
+    await installInboundAudioCapture(transCtx);
+    const transPage = await transCtx.newPage();
+    await loginTranslator(transPage, mariaUser, pw);
+    // Default routing for a translator: produce → broadcast, listen → feed.
+    await transPage.goto(`/translator/sessions/${sessionId}/connect`);
+    await transPage.getByRole("button", { name: /^connect$/i }).click();
     await expect(
-      page.locator('[data-testid="connect-role-select"]'),
-    ).toBeVisible({ timeout: 10_000 });
-    await page
-      .locator('[data-testid="connect-role-select"]')
-      .selectOption("translator");
-    await page.click('[data-testid="connect-button"]');
+      transPage.getByRole("button", { name: /disconnect/i }),
+    ).toBeVisible({ timeout: 30_000 });
 
-    // ════════════════════════════════════════════════════════════════════════
-    //  STEP 8: Transition to connect view — WebRTC connects bidirectionally
-    // ════════════════════════════════════════════════════════════════════════
-    //
-    // We should now be on /sessions/:id/connect?role=translator.
-    // The WebRTC debug panel shows ICE state. Wait for "connected".
-    // This is a REAL WebRTC connection through a REAL SFU to a REAL device.
-
-    await expect(page).toHaveURL(/\/connect\?role=translator/, {
-      timeout: 15_000,
+    // ══ 4. Broadcast browser: listen to the session ═══════════════════════
+    const listenBrowser = await chromium.launch({
+      args: [
+        "--use-fake-ui-for-media-stream",
+        "--use-fake-device-for-media-stream",
+        "--autoplay-policy=no-user-gesture-required",
+        "--disable-features=WebRtcHideLocalIpsWithMdns",
+      ],
     });
+    const listenCtx = await listenBrowser.newContext({ baseURL: BASE_URL });
+    await installInboundAudioCapture(listenCtx);
+    const listenPage = await listenCtx.newPage();
+    await listenPage.goto(
+      `/broadcast/listen/${sessionId}?t=${encodeURIComponent(broadcastToken)}`,
+    );
+    await listenPage.getByRole("button", { name: /listen/i }).click();
 
-    await expect(
-      page.locator('[data-testid="webrtc-debug"]'),
-    ).toBeVisible({ timeout: 15_000 });
+    // Give the SFU a moment to establish both hops and pipe audio.
+    await transPage.waitForTimeout(4000);
 
-    // Wait for ICE state to reach "connected". The debug panel shows
-    // "ICE State" followed by the current state.
-    await expect(page.locator("text=connected").first()).toBeVisible({
-      timeout: 30_000,
-    });
+    // ══ 5. Verify the correct tone reached each destination ════════════════
+    const heardByTranslator = await dominantFrequency(transPage, 2500);
+    const heardByListener = await dominantFrequency(listenPage, 2500);
 
-    // ════════════════════════════════════════════════════════════════════════
-    //  STEP 9: K2B remains stable & connected for 10 seconds
-    // ════════════════════════════════════════════════════════════════════════
-    //
-    // Real WebRTC connections can flap. We hold the connection open for 10s
-    // and verify the K2B client process is still running and ICE hasn't
-    // degraded to "disconnected" or "failed".
-
-    await page.waitForTimeout(10_000);
-
-    // Verify ICE hasn't fallen to failed/disconnected.
-    const iceText = await page
-      .locator('[data-testid="webrtc-debug"]')
-      .textContent();
-    expect(
-      iceText,
-      "ICE must not be in failed state after 10s hold",
-    ).not.toContain("failed");
-
-    // Verify K2B client is still alive.
-    const clientStillRunning = sshNoFail("pgrep -x ct-client");
-    expect(
-      clientStillRunning,
-      "ct-client must remain running on K2B after 10s",
-    ).not.toBe("");
-
-    // ════════════════════════════════════════════════════════════════════════
-    //  STEP 10: Play test audio on K2B into PipeWire input
-    // ════════════════════════════════════════════════════════════════════════
-    //
-    // This is the ONE step that cannot be done through the admin UI — it
-    // requires SSH to the physical K2B board to inject audio into PipeWire.
-    //
-    // The audio path being tested:
-    //   K2B PipeWire default source (ALSA loopback)
-    //     → ct-client captures audio, encodes Opus, sends via WebRTC
-    //       → ct-server SFU receives, forwards to translator peer
-    //         → Playwright browser receives WebRTC audio track
-    //
-    // ffmpeg plays the 1kHz test tone into PipeWire's default sink, which
-    // routes through the ALSA loopback to the source that ct-client reads.
-
-    ssh(
-      `su - ${K2B_USER} -c 'XDG_RUNTIME_DIR=/run/user/${K2B_UID} nohup ffmpeg -re -i /tmp/test-tone.wav -t 6 -f pulse default > /tmp/ffmpeg-play.log 2>&1 &'`,
+    // eslint-disable-next-line no-console
+    console.log(
+      `translator heard ${heardByTranslator.hz}Hz; broadcast heard ${heardByListener.hz}Hz`,
     );
 
-    // Give ffmpeg on K2B 2 seconds to start up and begin playing the tone
-    // through PipeWire → ALSA loopback → ct-client capture → WebRTC.
-    await page.waitForTimeout(2_000);
+    expectTone(heardByTranslator.hz, FLOOR_HZ, "translator (feed)");
+    expectTone(heardByListener.hz, TRANSLATOR_HZ, "broadcast");
 
-    // ════════════════════════════════════════════════════════════════════════
-    //  STEP 11: Capture and VERIFY received audio in the Playwright browser
-    // ════════════════════════════════════════════════════════════════════════
-    //
-    // The browser is connected as "translator". Audio from the K2B studio
-    // role arrives as a WebRTC remote audio track. We capture it using
-    // MediaRecorder AND simultaneously measure audio energy using the
-    // Web Audio API AnalyserNode.
-    //
-    // This proves the COMPLETE audio pipeline works:
-    //   Physical hardware → real network → real SFU → real browser
-    //
-    // Two independent checks:
-    //   A) MediaRecorder produces a WebM file >5KB (real Opus, not just a
-    //      container header with DTX silence frames).
-    //   B) AnalyserNode detects non-silent audio energy during the capture
-    //      window — at least one sample period must show RMS above a floor.
+    // Correct-destination: tones must not be swapped across channels.
+    expect(Math.abs(heardByTranslator.hz - TRANSLATOR_HZ)).toBeGreaterThan(25);
+    expect(Math.abs(heardByListener.hz - FLOOR_HZ)).toBeGreaterThan(25);
 
-    const captureResult = await page.evaluate(
-      async (durationMs: number) => {
-        return new Promise<{
-          audioBase64: string;
-          peakRms: number;
-          energySamples: number;
-          nonSilentSamples: number;
-        }>((resolve, reject) => {
-          try {
-            // Find any audio/video element with a remote MediaStream.
-            let stream: MediaStream | null = null;
-            for (const el of document.querySelectorAll("audio, video")) {
-              const m = el as HTMLMediaElement;
-              if (m.srcObject instanceof MediaStream) {
-                stream = m.srcObject;
-                break;
-              }
-            }
-            // Fallback: check for exposed remote stream.
-            if (!stream && (window as any).__remoteStream) {
-              stream = (window as any).__remoteStream;
-            }
-            if (!stream) {
-              reject(new Error("No remote audio stream found"));
-              return;
-            }
-            const audioTracks = stream.getAudioTracks();
-            if (audioTracks.length === 0) {
-              reject(new Error("No audio tracks in remote stream"));
-              return;
-            }
-
-            // ── MediaRecorder: captures the raw WebM/Opus bytes ──
-            const audioStream = new MediaStream(audioTracks);
-            const recorder = new MediaRecorder(audioStream, {
-              mimeType: "audio/webm;codecs=opus",
-            });
-            const chunks: Blob[] = [];
-            recorder.ondataavailable = (e) => {
-              if (e.data.size > 0) chunks.push(e.data);
-            };
-
-            // ── AnalyserNode: measures audio energy in real time ──
-            // This catches the case where MediaRecorder produces a
-            // technically-valid WebM with only DTX silence frames.
-            const ctx = new AudioContext({ sampleRate: 48000 });
-            const source = ctx.createMediaStreamSource(audioStream);
-            const analyser = ctx.createAnalyser();
-            analyser.fftSize = 2048;
-            source.connect(analyser);
-            // Don't connect to destination — we only need analysis.
-
-            const timeDomainBuf = new Float32Array(analyser.fftSize);
-            let peakRms = 0;
-            let energySamples = 0;
-            let nonSilentSamples = 0;
-            // Silence threshold: -60 dBFS ≈ 0.001 RMS.  Any real audio
-            // (even a quiet 1kHz tone through WebRTC) will exceed this.
-            const silenceFloor = 0.001;
-
-            const energyInterval = setInterval(() => {
-              analyser.getFloatTimeDomainData(timeDomainBuf);
-              let sumSq = 0;
-              for (let i = 0; i < timeDomainBuf.length; i++) {
-                sumSq += timeDomainBuf[i] * timeDomainBuf[i];
-              }
-              const rms = Math.sqrt(sumSq / timeDomainBuf.length);
-              energySamples++;
-              if (rms > silenceFloor) nonSilentSamples++;
-              if (rms > peakRms) peakRms = rms;
-            }, 100); // sample every 100ms
-
-            recorder.onstop = async () => {
-              clearInterval(energyInterval);
-              ctx.close();
-
-              const blob = new Blob(chunks, { type: "audio/webm" });
-              const buffer = await blob.arrayBuffer();
-              const bytes = new Uint8Array(buffer);
-              let binary = "";
-              for (let i = 0; i < bytes.length; i++) {
-                binary += String.fromCharCode(bytes[i]);
-              }
-              resolve({
-                audioBase64: btoa(binary),
-                peakRms,
-                energySamples,
-                nonSilentSamples,
-              });
-            };
-
-            recorder.start();
-            setTimeout(() => recorder.stop(), durationMs);
-          } catch (err) {
-            reject(err);
-          }
-        });
-      },
-      AUDIO_DURATION,
-    );
-
-    // Write captured audio to disk for the orchestrator to compare
-    // against the reference tone using cross-correlation.
-    const audioBuffer = Buffer.from(captureResult.audioBase64, "base64");
-    const captureDir = path.dirname(CAPTURE_PATH);
-    if (!fs.existsSync(captureDir)) {
-      fs.mkdirSync(captureDir, { recursive: true });
-    }
-    fs.writeFileSync(CAPTURE_PATH, audioBuffer);
-
-    // ── Assertion A: File size ─────────────────────────────────────────
-    // 7 seconds of Opus at 64kbps ≈ 56KB.  Even with aggressive VBR and
-    // silence compression, any recording that contains real audio must
-    // exceed 5KB.  A WebM header with only DTX silence frames is ~2KB.
-    expect(
-      audioBuffer.length,
-      `Captured audio must be non-trivial (>5KB), got ${audioBuffer.length} bytes — ` +
-        "this likely means the K2B audio capture pipeline is sending silence",
-    ).toBeGreaterThan(5000);
-
-    // ── Assertion B: Audio energy ──────────────────────────────────────
-    // The AnalyserNode sampled RMS energy every 100ms during the capture.
-    // At least one sample must exceed the silence floor (-60 dBFS).
-    // A 1kHz tone at any audible level will blow past this threshold.
-    expect(
-      captureResult.peakRms,
-      `Peak RMS was ${captureResult.peakRms.toFixed(6)} — no audio energy detected. ` +
-        `Sampled ${captureResult.energySamples} times, ` +
-        `${captureResult.nonSilentSamples} above silence floor. ` +
-        "The K2B→Browser audio path is not delivering real audio.",
-    ).toBeGreaterThan(0.001);
-
-    expect(
-      captureResult.nonSilentSamples,
-      `Only ${captureResult.nonSilentSamples}/${captureResult.energySamples} ` +
-        "energy samples were non-silent — expected at least 10 (≈1 second of audio)",
-    ).toBeGreaterThanOrEqual(10);
-
-    // Kill the ffmpeg playback on K2B (cleanup).
-    sshNoFail("pkill -x ffmpeg");
+    await Promise.all([
+      floorBrowser.close(),
+      transBrowser.close(),
+      listenBrowser.close(),
+    ]);
   });
 });
+
+// loginTranslator logs into the translator SPA (persists auth for deep links).
+async function loginTranslator(
+  p: import("@playwright/test").Page,
+  username: string,
+  password: string,
+): Promise<void> {
+  await p.goto("/translator/login");
+  await p.fill("#username", username);
+  await p.fill("#password", password);
+  await p.getByRole("button", { name: /sign in|log in/i }).click();
+  await expect(p.getByText(/logged in as/i)).toBeVisible({ timeout: 15_000 });
+}

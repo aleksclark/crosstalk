@@ -25,6 +25,23 @@ interface AuthState {
 
 const AuthContext = createContext<AuthState | null>(null);
 
+const STORAGE_KEY = "crosstalk_translator_auth";
+
+interface StoredAuth {
+  token: string;
+  refreshToken: string | null;
+  user: User | null;
+}
+
+function loadStored(): StoredAuth | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as StoredAuth) : null;
+  } catch {
+    return null;
+  }
+}
+
 interface JwtClaims {
   sub?: string;
   role?: string;
@@ -44,10 +61,11 @@ function decodeJwt(token: string): JwtClaims | null {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(null);
-  const [user, setUser] = useState<User | null>(null);
-  const refreshTokenRef = useRef<string | null>(null);
-  const tokenRef = useRef<string | null>(null);
+  const stored = loadStored();
+  const [token, setToken] = useState<string | null>(stored?.token ?? null);
+  const [user, setUser] = useState<User | null>(stored?.user ?? null);
+  const refreshTokenRef = useRef<string | null>(stored?.refreshToken ?? null);
+  const tokenRef = useRef<string | null>(stored?.token ?? null);
 
   const login = useCallback(async (username: string, password: string) => {
     const client = createApiClient({ baseUrl: window.location.origin });
@@ -64,14 +82,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // The login response returns only tokens; derive the user (id/role) from
     // the JWT so role-based UI works.
     const claims = decodeJwt(data.access_token);
-    setUser(
-      claims
-        ? {
-            id: claims.sub ?? "",
-            username,
-            role: (claims.role as User["role"]) ?? "translator",
-          }
-        : null
+    const u: User | null = claims
+      ? {
+          id: claims.sub ?? "",
+          username,
+          role: (claims.role as User["role"]) ?? "translator",
+        }
+      : null;
+    setUser(u);
+
+    // Persist so the session survives reloads and deep links (e.g. opening a
+    // /sessions/:id/connect URL directly).
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        token: data.access_token,
+        refreshToken: data.refresh_token,
+        user: u,
+      } satisfies StoredAuth),
     );
   }, []);
 
@@ -80,6 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refreshTokenRef.current = null;
     setToken(null);
     setUser(null);
+    localStorage.removeItem(STORAGE_KEY);
   }, []);
 
   const getToken = useCallback(() => {

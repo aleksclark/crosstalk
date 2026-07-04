@@ -13,22 +13,21 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/pion/ice/v4"
 	"github.com/pion/webrtc/v4"
-
 )
 
 // PeerState summarizes a peer's current connection state.
 type PeerState struct {
-	ID              string `json:"id"`
+	ID              string    `json:"id"`
 	CreatedAt       time.Time `json:"created_at"`
-	ICEState        string `json:"ice_state"`
-	DTLSState       string `json:"dtls_state"`
-	SignalingState   string `json:"signaling_state"`
-	ICEGathering    string `json:"ice_gathering_state"`
-	DataChannelOpen bool   `json:"data_channel_open"`
-	ClientType      string `json:"client_type,omitempty"`
-	ClientName      string `json:"client_name,omitempty"`
-	LastOffer       string `json:"last_offer,omitempty"`
-	LastAnswer      string `json:"last_answer,omitempty"`
+	ICEState        string    `json:"ice_state"`
+	DTLSState       string    `json:"dtls_state"`
+	SignalingState  string    `json:"signaling_state"`
+	ICEGathering    string    `json:"ice_gathering_state"`
+	DataChannelOpen bool      `json:"data_channel_open"`
+	ClientType      string    `json:"client_type,omitempty"`
+	ClientName      string    `json:"client_name,omitempty"`
+	LastOffer       string    `json:"last_offer,omitempty"`
+	LastAnswer      string    `json:"last_answer,omitempty"`
 }
 
 // PeerConn wraps a Pion PeerConnection with full event instrumentation.
@@ -40,12 +39,12 @@ type PeerConn struct {
 	events  *EventRing
 	control *webrtc.DataChannel
 
-	mu          sync.Mutex
-	clientType  string
-	clientName  string
-	lastOffer   string
-	lastAnswer  string
-	dcOpen      bool
+	mu         sync.Mutex
+	clientType string
+	clientName string
+	lastOffer  string
+	lastAnswer string
+	dcOpen     bool
 
 	// onNegotiationNeeded is called when the server creates a new offer for
 	// server-initiated renegotiation.
@@ -59,6 +58,20 @@ type PeerConn struct {
 	// onClose, if set, is invoked once when the peer is closed. Used to tear
 	// down session-mixer bridges.
 	onClose func()
+
+	// onBeforeAnswer, if set, runs during HandleOffer after the remote offer is
+	// applied but before the answer is created. It is the point at which the
+	// SFU adds subscription tracks so they bind to the client's already-offered
+	// transceivers (avoiding an extra renegotiation round-trip).
+	onBeforeAnswer func()
+}
+
+// OnBeforeAnswer registers a callback invoked during HandleOffer, after the
+// remote description is set and before the answer is created.
+func (c *PeerConn) OnBeforeAnswer(f func()) {
+	c.mu.Lock()
+	c.onBeforeAnswer = f
+	c.mu.Unlock()
 }
 
 // OnClose registers a callback invoked once when the peer connection closes.
@@ -91,13 +104,13 @@ func (c *PeerConn) State() PeerState {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	ps := PeerState{
-		ID:            c.ID,
-		CreatedAt:     c.CreatedAt,
-		ClientType:    c.clientType,
-		ClientName:    c.clientName,
+		ID:              c.ID,
+		CreatedAt:       c.CreatedAt,
+		ClientType:      c.clientType,
+		ClientName:      c.clientName,
 		DataChannelOpen: c.dcOpen,
-		LastOffer:     c.lastOffer,
-		LastAnswer:    c.lastAnswer,
+		LastOffer:       c.lastOffer,
+		LastAnswer:      c.lastAnswer,
 	}
 	if c.pc != nil {
 		ps.ICEState = c.pc.ICEConnectionState().String()
@@ -136,6 +149,15 @@ func (c *PeerConn) HandleOffer(offer webrtc.SessionDescription) (webrtc.SessionD
 
 	if err := c.pc.SetRemoteDescription(offer); err != nil {
 		return webrtc.SessionDescription{}, fmt.Errorf("webrtc: set remote description: %w", err)
+	}
+
+	// Let the SFU attach subscription tracks now — they bind to the client's
+	// already-offered transceivers, so the answer needs no extra m-line.
+	c.mu.Lock()
+	beforeAnswer := c.onBeforeAnswer
+	c.mu.Unlock()
+	if beforeAnswer != nil {
+		beforeAnswer()
 	}
 
 	answer, err := c.pc.CreateAnswer(nil)

@@ -27,6 +27,13 @@ tasks:
     cmds:
       - cd server && go test ./cmd/ct-server/ -run Integration -v -count=1
 
+  test:e2e:
+    desc: Run the SPA-driven end-to-end suite (Playwright + real audio). Builds the
+      SPAs, embeds them in ct-server, starts it against a fresh PostgreSQL, and
+      drives the admin/translator/broadcast apps in real browsers.
+    cmds:
+      - bash test/run-e2e.sh {{.CLI_ARGS}}
+
   test:all:
     desc: Run all tests (unit + integration)
     cmds:

@@ -40,9 +40,11 @@ type SignalingHandler struct {
 
 	// OnPeer, if set, is called with each freshly created peer (and the
 	// originating request) before the signaling loop begins. It is the hook
-	// used to bridge a peer's media into a session mixer. Returning an error
-	// aborts the session.
-	OnPeer func(peer *PeerConn, r *http.Request) error
+	// used to bridge a peer's media into a session mixer. It returns
+	// initiateOffer=true to request a server-initiated SDP offer (for
+	// receive-only peers that publish no track of their own). Returning an
+	// error aborts the session.
+	OnPeer func(peer *PeerConn, r *http.Request) (initiateOffer bool, err error)
 }
 
 // ServeHTTP handles the WebSocket signaling upgrade and message loop.
@@ -78,8 +80,11 @@ func (h *SignalingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Optional per-peer setup (e.g. bridging media into a session). Runs before
 	// the signaling loop so any server-added tracks are included in the answer.
+	var initiateOffer bool
 	if h.OnPeer != nil {
-		if err := h.OnPeer(peer, r); err != nil {
+		var err error
+		initiateOffer, err = h.OnPeer(peer, r)
+		if err != nil {
 			slog.Error("webrtc: OnPeer setup failed", "peer", peer.ID, "err", err)
 			conn.Close(websocket.StatusInternalError, "peer setup failed")
 			return
@@ -94,8 +99,10 @@ func (h *SignalingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		candidate := c.ToJSON()
 		seq := msgSeq.Add(1)
+		// Emit "candidate" — the type the browser SPAs (and Go test client)
+		// expect for trickled ICE.
 		msg := SignalMessage{
-			Type:      "ice",
+			Type:      "candidate",
 			Candidate: &candidate,
 			Seq:       seq,
 		}
@@ -106,7 +113,7 @@ func (h *SignalingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		peer.events.Push(MakeEvent(peer.ID, EventSignalingMessage, map[string]any{
 			"direction": "outbound",
-			"type":      "ice",
+			"type":      "candidate",
 			"seq":       seq,
 		}))
 		if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
@@ -136,6 +143,12 @@ func (h *SignalingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			slog.Debug("webrtc: send renegotiation offer failed", "peer", peer.ID, "err", err)
 		}
 	})
+
+	// For receive-only peers (e.g. broadcast listeners) the server drives
+	// negotiation: creating the offer now includes the tracks added in OnPeer.
+	if initiateOffer {
+		peer.Negotiate()
+	}
 
 	// Read loop: process signaling messages.
 	h.readLoop(ctx, conn, peer)
@@ -186,7 +199,7 @@ func (h *SignalingHandler) readLoop(ctx context.Context, conn *websocket.Conn, p
 			h.handleOffer(ctx, conn, peer, msg)
 		case "answer":
 			h.handleAnswer(peer, msg)
-		case "ice":
+		case "ice", "candidate":
 			h.handleICE(peer, msg)
 		default:
 			slog.Warn("webrtc: unknown signaling type", "peer", peer.ID, "type", msg.Type)

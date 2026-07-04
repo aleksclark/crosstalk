@@ -16,10 +16,18 @@ export function SessionConnectPage() {
 
   const token = getToken();
 
+  // Optional SFU routing overrides via ?produce=&listen= (used for deep-linked
+  // producer/listener roles and by the e2e suite). Absent → server routes by role.
+  const search = new URLSearchParams(window.location.search);
+  const produce = search.get("produce") ?? undefined;
+  const listen = search.get("listen") ?? undefined;
+
   const webrtc = useWebRTC({
     sessionId: sessionId ?? "",
     token: token ?? "",
     audioDeviceId: selectedDevice || undefined,
+    produce,
+    listen,
   });
 
   // Enumerate audio devices
