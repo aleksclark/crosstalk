@@ -21,6 +21,7 @@ import (
 	"github.com/aleksclark/crosstalk/server/auth"
 	"github.com/aleksclark/crosstalk/server/pgtest"
 	"github.com/aleksclark/crosstalk/server/postgres"
+	"github.com/aleksclark/crosstalk/server/webrtc"
 )
 
 // testEnv holds a fully wired integration test environment.
@@ -64,6 +65,7 @@ func setupIntegrationServer(t *testing.T) *testEnv {
 		RefreshTokens: refreshTokenStore,
 		Recordings:    recordingStore,
 		Auth:          authService,
+		PeerManager:   webrtc.NewPeerManagerWithAPI(nil),
 	}
 
 	cfg := api.Config{Addr: ":0", JWTSecret: "integration-test-secret"}
@@ -522,4 +524,35 @@ func TestIntegrationMixOperations(t *testing.T) {
 			assert.Equal(t, 1.2, e.Level)
 		}
 	}
+}
+
+// TestIntegrationDebugAPI verifies the admin debug API is mounted, requires an
+// admin token, and returns live (initially empty) peer state rather than stubs.
+func TestIntegrationDebugAPI(t *testing.T) {
+	env := setupIntegrationServer(t)
+	env.createAdminUser(t, "admin", "admin-pass-123")
+	token := env.login(t, "admin", "admin-pass-123")
+
+	// Unauthenticated request is rejected.
+	unauth := env.doRequest(t, http.MethodGet, "/api/debug/peers", "", "")
+	defer unauth.Body.Close()
+	assert.Equal(t, http.StatusUnauthorized, unauth.StatusCode)
+
+	// Authenticated admin gets a real (empty) peer list.
+	resp := env.doRequest(t, http.MethodGet, "/api/debug/peers", token, "")
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var peers struct {
+		Count int              `json:"count"`
+		Peers []map[string]any `json:"peers"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&peers))
+	assert.Equal(t, 0, peers.Count)
+	assert.Empty(t, peers.Peers)
+
+	// Events for a non-existent peer return 404.
+	missing := env.doRequest(t, http.MethodGet, "/api/debug/peers/nope/events", token, "")
+	defer missing.Body.Close()
+	assert.Equal(t, http.StatusNotFound, missing.StatusCode)
 }
