@@ -5,9 +5,9 @@ primary_region = "iad"
   dockerfile = "deploy/Dockerfile"
 
 [env]
-  CROSSTALK_CONFIG = "/data/config.json"
   FLY_UDP_BIND_HOST = "fly-global-services"
   CT_UDP_MUX_PORT = "5000"
+  CT_ADDR = ":8080"
 
 [http_service]
   internal_port = 8080
