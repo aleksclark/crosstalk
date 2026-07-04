@@ -15,7 +15,7 @@ type DebugHandler struct {
 // RegisterRoutes registers all debug API endpoints on the given mux.
 // Expects a mux that handles path routing (e.g., chi or stdlib ServeMux).
 func (h *DebugHandler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/debug/peers", h.handleListPeers)
+	mux.HandleFunc("GET /api/debug/peers", h.HandleListPeers)
 	mux.HandleFunc("GET /api/debug/peers/{id}", h.handlePeerDetail)
 	mux.HandleFunc("GET /api/debug/peers/{id}/events", h.handlePeerEvents)
 	mux.HandleFunc("GET /api/debug/peers/{id}/sdp", h.handlePeerSDP)
@@ -28,21 +28,21 @@ func (h *DebugHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	switch {
 	case path == "/api/debug/peers" && r.Method == "GET":
-		h.handleListPeers(w, r)
+		h.HandleListPeers(w, r)
 	case strings.HasSuffix(path, "/events") && r.Method == "GET":
 		// Extract peer ID from /api/debug/peers/{id}/events.
-		h.handlePeerEventsFromPath(w, r)
+		h.HandlePeerEventsFromPath(w, r)
 	case strings.HasSuffix(path, "/sdp") && r.Method == "GET":
-		h.handlePeerSDPFromPath(w, r)
+		h.HandlePeerSDPFromPath(w, r)
 	case strings.HasPrefix(path, "/api/debug/peers/") && r.Method == "GET":
-		h.handlePeerDetailFromPath(w, r)
+		h.HandlePeerDetailFromPath(w, r)
 	default:
 		http.NotFound(w, r)
 	}
 }
 
-// handleListPeers returns all active peers with their connection state.
-func (h *DebugHandler) handleListPeers(w http.ResponseWriter, _ *http.Request) {
+// HandleListPeers returns all active peers with their connection state.
+func (h *DebugHandler) HandleListPeers(w http.ResponseWriter, _ *http.Request) {
 	states := h.PeerManager.PeerStates()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"peers": states,
@@ -56,7 +56,7 @@ func (h *DebugHandler) handlePeerDetail(w http.ResponseWriter, r *http.Request) 
 	h.peerDetail(w, id)
 }
 
-func (h *DebugHandler) handlePeerDetailFromPath(w http.ResponseWriter, r *http.Request) {
+func (h *DebugHandler) HandlePeerDetailFromPath(w http.ResponseWriter, r *http.Request) {
 	id := extractPeerID(r.URL.Path)
 	h.peerDetail(w, id)
 }
@@ -77,7 +77,7 @@ func (h *DebugHandler) handlePeerEvents(w http.ResponseWriter, r *http.Request) 
 	h.peerEvents(w, id)
 }
 
-func (h *DebugHandler) handlePeerEventsFromPath(w http.ResponseWriter, r *http.Request) {
+func (h *DebugHandler) HandlePeerEventsFromPath(w http.ResponseWriter, r *http.Request) {
 	id := extractPeerID(r.URL.Path)
 	h.peerEvents(w, id)
 }
@@ -101,7 +101,7 @@ func (h *DebugHandler) handlePeerSDP(w http.ResponseWriter, r *http.Request) {
 	h.peerSDP(w, id)
 }
 
-func (h *DebugHandler) handlePeerSDPFromPath(w http.ResponseWriter, r *http.Request) {
+func (h *DebugHandler) HandlePeerSDPFromPath(w http.ResponseWriter, r *http.Request) {
 	id := extractPeerID(r.URL.Path)
 	h.peerSDP(w, id)
 }

@@ -16,6 +16,7 @@ import (
 
 	crosstalk "github.com/aleksclark/crosstalk/server"
 	"github.com/aleksclark/crosstalk/server/auth"
+	"github.com/aleksclark/crosstalk/server/webrtc"
 )
 
 // Services holds all service dependencies for the API.
@@ -33,6 +34,9 @@ type Services struct {
 	// WebApps maps a URL path prefix ("/admin") to a filesystem serving that
 	// SPA's build output. Registered with history-API fallback.
 	WebApps map[string]fs.FS
+	// PeerManager, when set, enables the WebRTC signaling endpoint and the
+	// admin debug API (live peer state + per-peer event logs).
+	PeerManager *webrtc.PeerManager
 }
 
 // Config holds API configuration.
@@ -82,6 +86,7 @@ func NewServer(cfg Config, svc Services, log *slog.Logger) *Server {
 
 	s.registerRoutes()
 	s.mountWebApps()
+	s.mountWebRTC()
 	return s
 }
 
