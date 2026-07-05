@@ -40,6 +40,15 @@ type Connection struct {
 	// onTrack is called when a remote audio track is received.
 	onTrack func(*webrtc.TrackRemote, *webrtc.RTPReceiver)
 
+	// publishTrackID, when non-empty, makes Connect add a sendrecv Opus audio
+	// track to the peer connection before the initial offer, so the ABC's
+	// microphone is negotiated up-front (SFU model — the server forwards it
+	// into the assigned session's feed).
+	publishTrackID string
+	// onPublishReady is called with the published local track once it is added,
+	// so the caller can start feeding it captured audio.
+	onPublishReady func(*webrtc.TrackLocalStaticRTP)
+
 	ctx    context.Context
 	cancel context.CancelFunc
 }
@@ -97,6 +106,16 @@ func WithOnUnbindChannel(fn func(*UnbindChannelMsg)) ConnectionOption {
 func WithOnTrack(fn func(*webrtc.TrackRemote, *webrtc.RTPReceiver)) ConnectionOption {
 	return func(c *Connection) {
 		c.onTrack = fn
+	}
+}
+
+// WithPublishAudio makes the connection add a sendrecv Opus audio track (with
+// the given track ID) to the peer connection before the initial SDP offer, and
+// invokes onReady with the created track so the caller can feed it audio.
+func WithPublishAudio(trackID string, onReady func(*webrtc.TrackLocalStaticRTP)) ConnectionOption {
+	return func(c *Connection) {
+		c.publishTrackID = trackID
+		c.onPublishReady = onReady
 	}
 }
 
@@ -196,6 +215,39 @@ func (c *Connection) Connect(ctx context.Context) error {
 			slog.Error("failed to send ICE candidate", "error", err)
 		}
 	})
+
+	// Publish a source audio track before the offer, if requested. Using a
+	// sendrecv transceiver lets the ABC both send its mic and receive booth
+	// return audio on a single m-line.
+	if c.publishTrackID != "" {
+		track, terr := webrtc.NewTrackLocalStaticRTP(
+			webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus},
+			c.publishTrackID, c.publishTrackID,
+		)
+		if terr != nil {
+			pc.Close()
+			wsConn.Close(websocket.StatusNormalClosure, "")
+			return fmt.Errorf("creating publish track: %w", terr)
+		}
+		sender, terr := pc.AddTrack(track)
+		if terr != nil {
+			pc.Close()
+			wsConn.Close(websocket.StatusNormalClosure, "")
+			return fmt.Errorf("adding publish track: %w", terr)
+		}
+		// Drain RTCP so the sender doesn't stall.
+		go func() {
+			buf := make([]byte, 1500)
+			for {
+				if _, _, rerr := sender.Read(buf); rerr != nil {
+					return
+				}
+			}
+		}()
+		if c.onPublishReady != nil {
+			c.onPublishReady(track)
+		}
+	}
 
 	// 3. Create control data channel
 	dc, err := pc.CreateDataChannel("control", &webrtc.DataChannelInit{

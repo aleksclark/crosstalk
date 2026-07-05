@@ -19,6 +19,7 @@ import (
 	"time"
 
 	crosstalk "github.com/aleksclark/crosstalk/cli"
+	"github.com/aleksclark/crosstalk/cli/display"
 	"github.com/aleksclark/crosstalk/cli/pipewire"
 	"github.com/aleksclark/crosstalk/cli/pion"
 	"github.com/aleksclark/crosstalk/cli/protov2"
@@ -77,6 +78,7 @@ func (c *ABCConfig) ToCLIConfig() *crosstalk.Config {
 type ABCClient struct {
 	cfg         *ABCConfig
 	pwSvc       crosstalk.PipeWireService
+	disp        *display.Service
 	connFactory func(serverURL, token string, opts ...pion.ConnectionOption) pion.ConnectionInterface
 
 	mu               sync.Mutex
@@ -227,8 +229,27 @@ func (c *ABCClient) connectOnce(ctx context.Context) error {
 				}
 			}
 		}),
+		// Publish the booth microphone up-front. The server (SFU) forwards this
+		// track into the ABC's assigned session feed channel.
+		pion.WithPublishAudio("abc-mic", func(track *webrtc.TrackLocalStaticRTP) {
+			go func() {
+				if err := pion.CaptureSource(ctx, c.cfg.SourceName, track); err != nil && ctx.Err() == nil {
+					slog.Error("abc: audio capture failed", "source", c.cfg.SourceName, "error", err)
+				}
+			}()
+		}),
+		// Play booth return audio (the broadcast mix) to the sink.
+		pion.WithOnTrack(func(remote *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
+			if remote.Kind() != webrtc.RTPCodecTypeAudio {
+				return
+			}
+			go func() {
+				if err := pion.PlaybackSink(ctx, c.cfg.SinkName, remote); err != nil && ctx.Err() == nil {
+					slog.Error("abc: audio playback failed", "sink", c.cfg.SinkName, "error", err)
+				}
+			}()
+		}),
 	}
-
 	var conn pion.ConnectionInterface
 	if c.connFactory != nil {
 		conn = c.connFactory(c.cfg.ServerURL, c.cfg.Token, connOpts...)
@@ -290,6 +311,10 @@ func (c *ABCClient) connectOnce(ctx context.Context) error {
 			c.assignedSession = welcome.AssignedSessionID
 			c.mu.Unlock()
 		}
+		if c.disp != nil {
+			c.disp.Status().SetControlState("connected")
+			c.disp.Status().SetSession(welcome.AssignedSessionID, "abc", welcome.AssignedSessionID != "")
+		}
 	case <-time.After(5 * time.Second):
 		slog.Warn("abc: timeout waiting for Welcome message")
 	case <-ctx.Done():
@@ -313,6 +338,10 @@ func (c *ABCClient) connectOnce(ctx context.Context) error {
 			c.mu.Lock()
 			c.connected = false
 			c.mu.Unlock()
+			if c.disp != nil {
+				c.disp.Status().SetControlState("disconnected")
+				c.disp.Status().SetSession("", "", false)
+			}
 			conn.Close()
 			return nil
 		case reason := <-restartCh:
@@ -321,6 +350,9 @@ func (c *ABCClient) connectOnce(ctx context.Context) error {
 			c.connected = false
 			c.restartRequested = true
 			c.mu.Unlock()
+			if c.disp != nil {
+				c.disp.Status().SetControlState("connecting")
+			}
 			conn.Close()
 			return nil
 		case sessionID := <-sessionAssignCh:
@@ -328,6 +360,9 @@ func (c *ABCClient) connectOnce(ctx context.Context) error {
 			c.assignedSession = sessionID
 			c.mu.Unlock()
 			slog.Info("abc: session assigned, joining", "session_id", sessionID)
+			if c.disp != nil {
+				c.disp.Status().SetSession(sessionID, "abc", sessionID != "")
+			}
 			// Join the session via v1 proto (JoinSession is field 4 in both v1).
 			if err := conn.SendJoinSession(sessionID, "abc"); err != nil {
 				slog.Error("abc: failed to join session", "session_id", sessionID, "error", err)
@@ -369,6 +404,9 @@ func main() {
 	path := *configPath
 	if path == "" {
 		path = os.Getenv("CT_ABC_CONFIG")
+	}
+	if path == "" {
+		path = os.Getenv("CROSSTALK_CONFIG")
 	}
 	if path == "" {
 		path = "ct-abc.json"
@@ -422,6 +460,23 @@ func main() {
 
 	// Run the ABC client.
 	client := NewABCClient(cfg, pwSvc)
+
+	// Set up the SPI status display if enabled.
+	if useDisplay() {
+		spiPath := os.Getenv("DISPLAY_SPI_DEVICE")
+		if spiPath == "" {
+			spiPath = "/dev/spidev0.1"
+		}
+		disp := display.NewService(spiPath, 71, 76) // DC=PC7(71), RST=PC12(76)
+		disp.Status().SetServer(cfg.ServerURL, "connecting")
+		client.disp = disp
+		go func() {
+			if err := disp.Run(ctx); err != nil {
+				slog.Error("display service failed", "error", err)
+			}
+		}()
+	}
+
 	if err := client.Run(ctx); err != nil {
 		if ctx.Err() != nil {
 			slog.Info("ct-abc shutting down")
@@ -430,4 +485,10 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
+
+// useDisplay reports whether the SPI status display should be driven.
+func useDisplay() bool {
+	v := os.Getenv("USE_DISPLAY")
+	return strings.EqualFold(v, "true") || v == "1"
 }
