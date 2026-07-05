@@ -360,6 +360,24 @@ func TestIntegrationABCAuthentication(t *testing.T) {
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&updatedABC))
 	require.NotNil(t, updatedABC.SessionID)
 	assert.Equal(t, sess.ID, *updatedABC.SessionID)
+
+	// 7. The ABC's API token authenticates against /api/webrtc/token — this is
+	// how the headless CLI (KickPi board) obtains a signaling token. A JWT is
+	// NOT required for ABCs.
+	resp = env.doRequest(t, http.MethodPost, "/api/webrtc/token", abcResult.Token, "")
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode, "ABC token should authenticate for webrtc token")
+	var wrtc struct {
+		Token     string `json:"token"`
+		ExpiresAt string `json:"expires_at"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&wrtc))
+	assert.NotEmpty(t, wrtc.Token)
+
+	// A bogus token is rejected.
+	bad := env.doRequest(t, http.MethodPost, "/api/webrtc/token", "not-a-real-token", "")
+	defer bad.Body.Close()
+	assert.Equal(t, http.StatusUnauthorized, bad.StatusCode)
 }
 
 // TestIntegrationRBACEnforcement tests that translator role users cannot
