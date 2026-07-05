@@ -543,7 +543,7 @@ func (c *Connection) readSignalingLoop(ctx context.Context) error {
 			}
 			slog.Info("sent renegotiation answer")
 
-		case "ice":
+		case "ice", "candidate":
 			if len(msg.Candidate) == 0 || string(msg.Candidate) == "null" {
 				continue
 			}
