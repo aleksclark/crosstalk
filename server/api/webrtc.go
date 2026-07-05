@@ -1,14 +1,31 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	pionwebrtc "github.com/pion/webrtc/v4"
 
+	crosstalk "github.com/aleksclark/crosstalk/server"
+	"github.com/aleksclark/crosstalk/server/auth"
 	"github.com/aleksclark/crosstalk/server/sessionrtc"
 	"github.com/aleksclark/crosstalk/server/webrtc"
 )
+
+// lookupABC resolves a raw API token to its ABC record, or nil if the token is
+// empty or unknown.
+func (s *Server) lookupABC(ctx context.Context, token string) *crosstalk.ABC {
+	if token == "" || s.services.ABCs == nil {
+		return nil
+	}
+	abc, err := s.services.ABCs.GetByTokenHash(ctx, auth.HashToken(token))
+	if err != nil {
+		return nil
+	}
+	return abc
+}
 
 // mountWebRTC wires the WebRTC signaling endpoints and the admin debug API onto
 // the router. It is a no-op when no PeerManager is configured (e.g. unit tests
@@ -19,14 +36,49 @@ func (s *Server) mountWebRTC() {
 		return
 	}
 
-	// Generic signaling endpoint. Peers (CLI/ABC clients) connect here; each
-	// connection registers a peer in the PeerManager, which the debug API and
-	// the admin Debug page then reflect as live state.
-	signaling := &webrtc.SignalingHandler{
-		PeerManager:   pm,
-		ServerVersion: "3.0.0",
-	}
-	s.router.Handle("/ws/signaling", signaling)
+	// Generic signaling endpoint. Headless clients (ABC boards) connect here
+	// with their API token. Each connection registers a peer in the
+	// PeerManager (visible on the admin Debug page). When the token belongs to
+	// an ABC assigned to a session, the peer is bridged into that session as an
+	// "abc" producer so its microphone reaches the session's feed channel.
+	s.router.Get("/ws/signaling", func(w http.ResponseWriter, r *http.Request) {
+		token := r.URL.Query().Get("token")
+		abc := s.lookupABC(r.Context(), token)
+
+		handler := &webrtc.SignalingHandler{
+			PeerManager:   pm,
+			ServerVersion: "3.0.0",
+			OnPeer: func(peer *webrtc.PeerConn, req *http.Request) (bool, error) {
+				assigned := ""
+				if abc != nil && abc.SessionID != nil {
+					assigned = *abc.SessionID
+				}
+
+				// Install the control-protocol handler once the client opens
+				// its "control" data channel (the server adopts, not creates).
+				peer.OnControlChannel(func(*pionwebrtc.DataChannel) {
+					ctrl := &webrtc.ControlHandler{
+						Peer:              peer,
+						ServerVersion:     "3.0.0",
+						AssignedSessionID: assigned,
+					}
+					ctrl.Install()
+				})
+
+				// Bridge an assigned ABC as a producer into its session's feed
+				// (and let it listen to the broadcast for booth return audio).
+				if s.services.SessionMedia != nil && assigned != "" {
+					return false, s.services.SessionMedia.Bridge(req.Context(), peer, assigned, sessionrtc.BridgeOpts{
+						Role:    "abc",
+						Produce: []string{"type:feed"},
+						Listen:  []string{"type:broadcast"},
+					})
+				}
+				return false, nil
+			},
+		}
+		handler.ServeHTTP(w, r)
+	})
 
 	// Debug API — admin-only. Returns live peer state and per-peer event logs.
 	dbg := &webrtc.DebugHandler{PeerManager: pm}

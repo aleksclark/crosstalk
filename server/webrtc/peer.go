@@ -59,6 +59,11 @@ type PeerConn struct {
 	// down session-mixer bridges.
 	onClose func()
 
+	// onControlChannel, if set, is invoked when the peer's "control" data
+	// channel is adopted (created by the remote offerer). Used to install the
+	// control-protocol handler.
+	onControlChannel func(*webrtc.DataChannel)
+
 	// onBeforeAnswer, if set, runs during HandleOffer after the remote offer is
 	// applied but before the answer is created. It is the point at which the
 	// SFU adds subscription tracks so they bind to the client's already-offered
@@ -79,6 +84,21 @@ func (c *PeerConn) OnClose(f func()) {
 	c.mu.Lock()
 	c.onClose = f
 	c.mu.Unlock()
+}
+
+// OnControlChannel registers a callback invoked when the peer's "control" data
+// channel is adopted (opened by the remote offerer). The server does not create
+// its own control channel — doing so alongside the client's causes an SCTP
+// stream collision — so it adopts the one the client offers.
+func (c *PeerConn) OnControlChannel(f func(*webrtc.DataChannel)) {
+	c.mu.Lock()
+	c.onControlChannel = f
+	dc := c.control
+	c.mu.Unlock()
+	// If the channel already arrived before this hook was registered, fire now.
+	if dc != nil && f != nil {
+		f(dc)
+	}
 }
 
 // OnRemoteTrack registers a handler invoked when a remote media track arrives.
@@ -431,39 +451,46 @@ func (pm *PeerManager) CreatePeerConnection() (*PeerConn, error) {
 	// Instrument all callbacks for verbose event capture.
 	pm.instrumentPeer(conn)
 
-	// Create control data channel.
-	dc, err := pc.CreateDataChannel("control", &webrtc.DataChannelInit{})
-	if err != nil {
-		_ = pc.Close()
-		return nil, fmt.Errorf("webrtc: creating control data channel: %w", err)
-	}
-	conn.control = dc
-
-	dc.OnOpen(func() {
+	// Adopt the remote-created "control" data channel rather than creating our
+	// own. Both sides creating a "control" channel collides on SCTP stream IDs
+	// and aborts the association; the offerer (CLI/ABC) opens it, we adopt it.
+	pc.OnDataChannel(func(dc *webrtc.DataChannel) {
+		if dc.Label() != "control" {
+			return
+		}
 		conn.mu.Lock()
-		conn.dcOpen = true
+		conn.control = dc
+		cb := conn.onControlChannel
 		conn.mu.Unlock()
-		conn.events.Push(MakeEvent(conn.ID, EventDataChannelOpen, map[string]string{
-			"label": dc.Label(),
-		}))
-		slog.Info("webrtc: data channel opened", "peer", conn.ID, "label", dc.Label())
-	})
 
-	dc.OnClose(func() {
-		conn.mu.Lock()
-		conn.dcOpen = false
-		conn.mu.Unlock()
-		conn.events.Push(MakeEvent(conn.ID, EventDataChannelClose, map[string]string{
-			"label": dc.Label(),
-		}))
-		slog.Info("webrtc: data channel closed", "peer", conn.ID, "label", dc.Label())
-	})
+		dc.OnOpen(func() {
+			conn.mu.Lock()
+			conn.dcOpen = true
+			conn.mu.Unlock()
+			conn.events.Push(MakeEvent(conn.ID, EventDataChannelOpen, map[string]string{
+				"label": dc.Label(),
+			}))
+			slog.Info("webrtc: data channel opened", "peer", conn.ID, "label", dc.Label())
+		})
+		dc.OnClose(func() {
+			conn.mu.Lock()
+			conn.dcOpen = false
+			conn.mu.Unlock()
+			conn.events.Push(MakeEvent(conn.ID, EventDataChannelClose, map[string]string{
+				"label": dc.Label(),
+			}))
+			slog.Info("webrtc: data channel closed", "peer", conn.ID, "label", dc.Label())
+		})
+		dc.OnError(func(err error) {
+			conn.events.Push(MakeEvent(conn.ID, EventDataChannelError, map[string]string{
+				"error": err.Error(),
+			}))
+			slog.Error("webrtc: data channel error", "peer", conn.ID, "err", err)
+		})
 
-	dc.OnError(func(err error) {
-		conn.events.Push(MakeEvent(conn.ID, EventDataChannelError, map[string]string{
-			"error": err.Error(),
-		}))
-		slog.Error("webrtc: data channel error", "peer", conn.ID, "err", err)
+		if cb != nil {
+			cb(dc)
+		}
 	})
 
 	pm.mu.Lock()

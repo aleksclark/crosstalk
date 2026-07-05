@@ -16,9 +16,13 @@ type ControlHandler struct {
 	Peer          *PeerConn
 	ServerVersion string
 
+	// AssignedSessionID, when set, is sent back to the client in the Welcome so
+	// an ABC knows which session it has been bridged into.
+	AssignedSessionID string
+
 	// Callbacks for application-level processing.
-	OnHello         func(peer *PeerConn, hello *crosstalkv2.Hello)
-	OnSourceStatus  func(peer *PeerConn, status *crosstalkv2.SourceStatus)
+	OnHello        func(peer *PeerConn, hello *crosstalkv2.Hello)
+	OnSourceStatus func(peer *PeerConn, status *crosstalkv2.SourceStatus)
 }
 
 // Install registers the message handler on the peer's control data channel.
@@ -84,14 +88,16 @@ func (h *ControlHandler) handleHello(hello *crosstalkv2.Hello) {
 	welcome := &crosstalkv2.ControlMessage{
 		Payload: &crosstalkv2.ControlMessage_Welcome{
 			Welcome: &crosstalkv2.Welcome{
-				PeerId:        h.Peer.ID,
-				ServerVersion: h.ServerVersion,
+				PeerId:            h.Peer.ID,
+				ServerVersion:     h.ServerVersion,
+				AssignedSessionId: h.AssignedSessionID,
 			},
 		},
 	}
 	h.Peer.events.Push(MakeEvent(h.Peer.ID, EventControlWelcome, map[string]string{
-		"peer_id":        h.Peer.ID,
-		"server_version": h.ServerVersion,
+		"peer_id":             h.Peer.ID,
+		"server_version":      h.ServerVersion,
+		"assigned_session_id": h.AssignedSessionID,
 	}))
 
 	if err := h.sendMessage(welcome); err != nil {
