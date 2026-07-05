@@ -221,6 +221,28 @@ func (s *Server) handleListChannels(ctx context.Context, input *ListChannelsRequ
 	return resp, nil
 }
 
+func (s *Server) handleListSources(ctx context.Context, input *ListSourcesRequest) (*ListSourcesResponse, error) {
+	claims, err := s.requireAuth(ctx, input.Authorization)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.requireRole(claims, "admin", "translator"); err != nil {
+		return nil, err
+	}
+
+	sources, err := s.services.Sources.List(ctx, input.ID)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to list sources")
+	}
+
+	resp := &ListSourcesResponse{}
+	resp.Body.Data = make([]SourceOut, len(sources))
+	for i, src := range sources {
+		resp.Body.Data[i] = sourceToOut(src)
+	}
+	return resp, nil
+}
+
 func (s *Server) handleCreateChannel(ctx context.Context, input *CreateChannelRequest) (*CreateChannelResponse, error) {
 	claims, err := s.requireAuth(ctx, input.Authorization)
 	if err != nil {
@@ -803,6 +825,19 @@ func channelToOut(c crosstalk.Channel) ChannelOut {
 		Name:      c.Name,
 		Type:      string(c.Type),
 		CreatedAt: c.CreatedAt,
+	}
+}
+
+func sourceToOut(s crosstalk.Source) SourceOut {
+	return SourceOut{
+		ID:        s.ID,
+		SessionID: s.SessionID,
+		Name:      s.Name,
+		Origin:    string(s.Origin),
+		PeerID:    s.PeerID,
+		Connected: s.Connected,
+		FirstSeen: s.FirstSeen,
+		LastSeen:  s.LastSeen,
 	}
 }
 

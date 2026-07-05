@@ -210,6 +210,15 @@ func (s *Server) registerRoutes() {
 	}, s.handleListChannels)
 
 	huma.Register(s.api, huma.Operation{
+		OperationID: "list-sources",
+		Method:      http.MethodGet,
+		Path:        "/api/sessions/{id}/sources",
+		Summary:     "List audio sources in a session",
+		Tags:        []string{"Sources"},
+		Security:    []map[string][]string{{"bearerAuth": {}}},
+	}, s.handleListSources)
+
+	huma.Register(s.api, huma.Operation{
 		OperationID: "create-channel",
 		Method:      http.MethodPost,
 		Path:        "/api/sessions/{id}/channels",

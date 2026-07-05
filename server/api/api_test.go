@@ -316,3 +316,49 @@ func TestPublicBroadcastEndpoint(t *testing.T) {
 	assert.Equal(t, session.ID, broadcast.SessionID)
 	assert.Equal(t, "Public Test", broadcast.SessionName)
 }
+
+func TestListSourcesEndpoint(t *testing.T) {
+	ts, _, users := setupTestServer(t)
+	token := createAdminAndLogin(t, ts, users)
+
+	// Create a session.
+	body := `{"name":"Sources Test"}`
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/sessions", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var session struct {
+		ID string `json:"id"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&session))
+
+	// List sources for the session (authorized, empty).
+	req, _ = http.NewRequest(http.MethodGet, ts.URL+"/api/sessions/"+session.ID+"/sources", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err = http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var result struct {
+		Data []struct {
+			ID        string `json:"id"`
+			Name      string `json:"name"`
+			Origin    string `json:"origin"`
+			Connected bool   `json:"connected"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	assert.Empty(t, result.Data)
+
+	// Unauthenticated request is rejected.
+	req, _ = http.NewRequest(http.MethodGet, ts.URL+"/api/sessions/"+session.ID+"/sources", nil)
+	resp, err = http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+}

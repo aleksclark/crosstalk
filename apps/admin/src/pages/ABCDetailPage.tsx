@@ -67,13 +67,6 @@ export function ABCDetailPage() {
     );
   }
 
-  // Demo connection history
-  const connectionHistory = [
-    { time: "2024-01-15 14:30:00", event: "Connected", duration: "2h 15m" },
-    { time: "2024-01-15 12:00:00", event: "Disconnected", duration: "-" },
-    { time: "2024-01-15 09:45:00", event: "Connected", duration: "2h 15m" },
-  ];
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -146,35 +139,6 @@ export function ABCDetailPage() {
             {new Date(abc.created_at).toLocaleString()}
           </p>
         </div>
-      </div>
-
-      {/* Connection history */}
-      <div className="bg-card border border-border rounded-lg p-4">
-        <h2 className="text-lg font-semibold mb-3">Connection History</h2>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border">
-              <th className="text-left py-2 text-muted-foreground font-medium">
-                Time
-              </th>
-              <th className="text-left py-2 text-muted-foreground font-medium">
-                Event
-              </th>
-              <th className="text-left py-2 text-muted-foreground font-medium">
-                Duration
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {connectionHistory.map((entry, i) => (
-              <tr key={i} className="border-b border-border/50">
-                <td className="py-2 text-muted-foreground">{entry.time}</td>
-                <td className="py-2">{entry.event}</td>
-                <td className="py-2 text-muted-foreground">{entry.duration}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
       </div>
     </div>
   );

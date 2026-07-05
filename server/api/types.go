@@ -244,6 +244,30 @@ type UpdateMixResponse struct {
 	}
 }
 
+// --- Sources ---
+
+type SourceOut struct {
+	ID        string    `json:"id" doc:"Source ULID"`
+	SessionID string    `json:"session_id" doc:"Parent session ID"`
+	Name      string    `json:"name" doc:"Source name"`
+	Origin    string    `json:"origin" doc:"How the source connected (abc, translator, admin)"`
+	PeerID    *string   `json:"peer_id,omitempty" doc:"Associated peer ID"`
+	Connected bool      `json:"connected" doc:"Whether the source is currently connected"`
+	FirstSeen time.Time `json:"first_seen" doc:"First time the source was seen"`
+	LastSeen  time.Time `json:"last_seen" doc:"Last time the source was seen"`
+}
+
+type ListSourcesRequest struct {
+	Authorization string `header:"Authorization" doc:"Bearer token"`
+	ID            string `path:"id" doc:"Session ID"`
+}
+
+type ListSourcesResponse struct {
+	Body struct {
+		Data []SourceOut `json:"data"`
+	}
+}
+
 // --- ABCs ---
 
 type ABCOut struct {

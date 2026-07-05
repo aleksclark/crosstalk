@@ -359,6 +359,13 @@ type ListSessionsResponseBody struct {
 	Data   *[]SessionOut `json:"data"`
 }
 
+// ListSourcesResponseBody defines model for ListSourcesResponseBody.
+type ListSourcesResponseBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string      `json:"$schema,omitempty"`
+	Data   *[]SourceOut `json:"data"`
+}
+
 // ListTranslatorsResponseBody defines model for ListTranslatorsResponseBody.
 type ListTranslatorsResponseBody struct {
 	// Schema A URL to the JSON Schema for this object.
@@ -532,6 +539,33 @@ type SessionOut struct {
 
 	// UpdatedAt Last update time
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// SourceOut defines model for SourceOut.
+type SourceOut struct {
+	// Connected Whether the source is currently connected
+	Connected bool `json:"connected"`
+
+	// FirstSeen First time the source was seen
+	FirstSeen time.Time `json:"first_seen"`
+
+	// Id Source ULID
+	Id string `json:"id"`
+
+	// LastSeen Last time the source was seen
+	LastSeen time.Time `json:"last_seen"`
+
+	// Name Source name
+	Name string `json:"name"`
+
+	// Origin How the source connected (abc, translator, admin)
+	Origin string `json:"origin"`
+
+	// PeerId Associated peer ID
+	PeerId *string `json:"peer_id,omitempty"`
+
+	// SessionId Parent session ID
+	SessionId string `json:"session_id"`
 }
 
 // TranslatorOut defines model for TranslatorOut.
@@ -774,6 +808,12 @@ type UpdateMixParams struct {
 
 // ListSessionRecordingsParams defines parameters for ListSessionRecordings.
 type ListSessionRecordingsParams struct {
+	// Authorization Bearer token
+	Authorization *string `json:"Authorization,omitempty"`
+}
+
+// ListSourcesParams defines parameters for ListSources.
+type ListSourcesParams struct {
 	// Authorization Bearer token
 	Authorization *string `json:"Authorization,omitempty"`
 }
@@ -1041,6 +1081,9 @@ type ClientInterface interface {
 
 	// ListSessionRecordings request
 	ListSessionRecordings(ctx context.Context, id string, params *ListSessionRecordingsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListSources request
+	ListSources(ctx context.Context, id string, params *ListSourcesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListTranslators request
 	ListTranslators(ctx context.Context, params *ListTranslatorsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1488,6 +1531,18 @@ func (c *Client) UpdateMix(ctx context.Context, id string, chId string, params *
 
 func (c *Client) ListSessionRecordings(ctx context.Context, id string, params *ListSessionRecordingsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListSessionRecordingsRequest(c.Server, id, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListSources(ctx context.Context, id string, params *ListSourcesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListSourcesRequest(c.Server, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -2928,6 +2983,55 @@ func NewListSessionRecordingsRequest(server string, id string, params *ListSessi
 	return req, nil
 }
 
+// NewListSourcesRequest generates requests for ListSources
+func NewListSourcesRequest(server string, id string, params *ListSourcesParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/sessions/%s/sources", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.Authorization != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Authorization", *params.Authorization, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Authorization", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
 // NewListTranslatorsRequest generates requests for ListTranslators
 func NewListTranslatorsRequest(server string, params *ListTranslatorsParams) (*http.Request, error) {
 	var err error
@@ -3523,6 +3627,9 @@ type ClientWithResponsesInterface interface {
 
 	// ListSessionRecordingsWithResponse request
 	ListSessionRecordingsWithResponse(ctx context.Context, id string, params *ListSessionRecordingsParams, reqEditors ...RequestEditorFn) (*ListSessionRecordingsResponse, error)
+
+	// ListSourcesWithResponse request
+	ListSourcesWithResponse(ctx context.Context, id string, params *ListSourcesParams, reqEditors ...RequestEditorFn) (*ListSourcesResponse, error)
 
 	// ListTranslatorsWithResponse request
 	ListTranslatorsWithResponse(ctx context.Context, params *ListTranslatorsParams, reqEditors ...RequestEditorFn) (*ListTranslatorsResponse, error)
@@ -4335,6 +4442,37 @@ func (r ListSessionRecordingsResponse) ContentType() string {
 	return ""
 }
 
+type ListSourcesResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *ListSourcesResponseBody
+	ApplicationproblemJSONDefault *ErrorModel
+}
+
+// Status returns HTTPResponse.Status
+func (r ListSourcesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListSourcesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListSourcesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListTranslatorsResponse struct {
 	Body                          []byte
 	HTTPResponse                  *http.Response
@@ -4917,6 +5055,15 @@ func (c *ClientWithResponses) ListSessionRecordingsWithResponse(ctx context.Cont
 		return nil, err
 	}
 	return ParseListSessionRecordingsResponse(rsp)
+}
+
+// ListSourcesWithResponse request returning *ListSourcesResponse
+func (c *ClientWithResponses) ListSourcesWithResponse(ctx context.Context, id string, params *ListSourcesParams, reqEditors ...RequestEditorFn) (*ListSourcesResponse, error) {
+	rsp, err := c.ListSources(ctx, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListSourcesResponse(rsp)
 }
 
 // ListTranslatorsWithResponse request returning *ListTranslatorsResponse
@@ -5840,6 +5987,39 @@ func ParseListSessionRecordingsResponse(rsp *http.Response) (*ListSessionRecordi
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest ListRecordingsResponseBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListSourcesResponse parses an HTTP response from a ListSourcesWithResponse call
+func ParseListSourcesResponse(rsp *http.Response) (*ListSourcesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListSourcesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ListSourcesResponseBody
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

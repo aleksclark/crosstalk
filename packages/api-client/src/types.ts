@@ -269,6 +269,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sessions/{id}/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List audio sources in a session */
+        get: operations["list-sources"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/translators": {
         parameters: {
             query?: never;
@@ -697,6 +714,15 @@ export interface components {
             readonly $schema?: string;
             data: components["schemas"]["SessionOut"][] | null;
         };
+        ListSourcesResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListSourcesResponseBody.json
+             */
+            readonly $schema?: string;
+            data: components["schemas"]["SourceOut"][] | null;
+        };
         ListTranslatorsResponseBody: {
             /**
              * Format: uri
@@ -879,6 +905,30 @@ export interface components {
              * @description Last update time
              */
             updated_at: string;
+        };
+        SourceOut: {
+            /** @description Whether the source is currently connected */
+            connected: boolean;
+            /**
+             * Format: date-time
+             * @description First time the source was seen
+             */
+            first_seen: string;
+            /** @description Source ULID */
+            id: string;
+            /**
+             * Format: date-time
+             * @description Last time the source was seen
+             */
+            last_seen: string;
+            /** @description Source name */
+            name: string;
+            /** @description How the source connected (abc, translator, admin) */
+            origin: string;
+            /** @description Associated peer ID */
+            peer_id?: string;
+            /** @description Parent session ID */
+            session_id: string;
         };
         TranslatorOut: {
             /**
@@ -1889,6 +1939,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ListRecordingsResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-sources": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer token */
+                Authorization?: string;
+            };
+            path: {
+                /** @description Session ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListSourcesResponseBody"];
                 };
             };
             /** @description Error */
