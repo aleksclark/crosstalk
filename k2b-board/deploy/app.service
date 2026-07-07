@@ -68,15 +68,15 @@ ExecStartPre=+/bin/bash -c '\
   amixer -c 1 cset numid=2 31 2>/dev/null || true ; \
   amixer -c 1 cset numid=3 on 2>/dev/null || true ; \
   \
-  # USB capture card (C-Media): disable AGC for a predictable, uncompressed \
-  # translation feed and set a fixed capture gain. AGC pumps/rides gain, which \
-  # makes booth levels into the mix unpredictable. Reference by name (card id \
-  # "Device") is not supported by amixer -c, so resolve the index at runtime. \
+  # USB capture card (C-Media): enable AGC and set a fixed capture gain. The \
+  # booth feed comes through an attenuator/DC-block pad, so AGC lands levels \
+  # near full scale without clipping. Reference by name (card id "Device") is \
+  # not supported by amixer -c, so resolve the index at runtime. \
   USB_CARD="$(cat /proc/asound/cards | awk "/USB-Audio/{print \$1; exit}")" ; \
   if [ -n "$USB_CARD" ]; then \
-    amixer -c "$USB_CARD" sset "Auto Gain Control" off 2>/dev/null || true ; \
+    amixer -c "$USB_CARD" sset "Auto Gain Control" on 2>/dev/null || true ; \
     amixer -c "$USB_CARD" sset Mic 34 cap 2>/dev/null || true ; \
-    echo "USB capture card $USB_CARD: AGC off, mic gain fixed" ; \
+    echo "USB capture card $USB_CARD: AGC on, mic gain fixed" ; \
   else \
     echo "WARNING: USB audio card not found for capture setup" ; \
   fi ; \
