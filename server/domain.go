@@ -67,9 +67,12 @@ type ABC struct {
 	Name      string
 	TokenHash string
 	SessionID *string
-	Connected bool
-	LastSeen  *time.Time
-	CreatedAt time.Time
+	// MonitorChannelID is the channel the ABC listens to for booth return
+	// audio. When nil the ABC falls back to monitoring all broadcast channels.
+	MonitorChannelID *string
+	Connected        bool
+	LastSeen         *time.Time
+	CreatedAt        time.Time
 }
 
 // User represents an admin or translator account.

@@ -414,8 +414,56 @@ func TestIntegrationAudioFlowABCToTranslatorToBroadcast(t *testing.T) {
 	assert.NotEqual(t, abcTone, bcastTone, "ABC tone must not leak onto the broadcast")
 }
 
-// ── REST helpers ──────────────────────────────────────────────────────────
+// TestIntegrationTranslatorMonitorKeepsProducing is the regression test for
+// "selecting a channel to monitor stops translator→broadcast audio". When a
+// translator picks a monitor channel, the client connects with only a listen
+// selector (?listen=<feed>) and no produce param. The server must still apply
+// the translator's default produce (broadcast), so audio keeps flowing to the
+// broadcast — overriding one direction must not wipe the other.
+func TestIntegrationTranslatorMonitorKeepsProducing(t *testing.T) {
+	env := setupIntegrationServer(t)
+	ctx := context.Background()
 
+	env.createAdminUser(t, "admin", "admin-pass-123")
+	adminToken := env.login(t, "admin", "admin-pass-123")
+
+	session := createSession(t, env, adminToken, "Monitor Session")
+	feedCh := createChannel(t, env, adminToken, session.ID, "Floor Feed", "feed")
+	broadcastCh := createChannel(t, env, adminToken, session.ID, "English Broadcast", "broadcast")
+
+	wsBase := strings.Replace(env.server.URL, "http://", "ws://", 1) + "/api/sessions/" + session.ID + "/ws"
+
+	// Translator connects with ONLY a listen selector (as the monitor picker
+	// does): produce is absent and must fall back to the role default
+	// (broadcast).
+	translatorWS := fmt.Sprintf("%s?listen=%s", wsBase, url.QueryEscape(feedCh.Name))
+	translatorClient := newMediaClient(t, "translator", translatorWS)
+
+	// Broadcast listener on the broadcast channel.
+	broadcastWS := fmt.Sprintf("%s?listen=%s", wsBase, url.QueryEscape(broadcastCh.Name))
+	broadcast := newMediaClient(t, "broadcast", broadcastWS)
+
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	translatorTone := toneMenu[rng.Intn(len(toneMenu))]
+	t.Logf("Translator tone=%.0fHz", translatorTone)
+
+	const frames = 100 // ~2s
+	streamCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go translatorClient.stream(streamCtx, translatorTone, frames)
+	time.Sleep(2500 * time.Millisecond)
+
+	bcastSamples := broadcast.captured()
+	require.Greater(t, len(bcastSamples), mixer.FrameSize*10,
+		"broadcast received too little audio — translator likely not producing")
+	bcastTone, bcastRatio := detectTone(bcastSamples, toneMenu)
+	t.Logf("broadcast detected=%.0fHz (ratio %.1f)", bcastTone, bcastRatio)
+	assert.Equal(t, translatorTone, bcastTone,
+		"broadcast should hear the translator even while the translator monitors a feed")
+	assert.Greater(t, bcastRatio, 3.0, "translator tone should dominate on the broadcast")
+}
+
+// ── REST helpers ──────────────────────────────────────────────────────────
 type sessionResp struct {
 	ID string `json:"id"`
 }

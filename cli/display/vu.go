@@ -2,106 +2,78 @@ package display
 
 import (
 	"context"
-	"encoding/binary"
 	"log/slog"
-	"math"
 	"os/exec"
-	"sync"
+	"strings"
 	"syscall"
 	"time"
 )
 
-// VUMonitor reads PCM audio from PipeWire devices and computes RMS
-// levels for the VU meter display.
-type VUMonitor struct {
-	mu      sync.Mutex
-	levelIn  float64
-	levelOut float64
+// IdleMonitor reads PCM audio from an input source and feeds a LevelMeter
+// so the VU meter reflects the input port even when no session is active.
+//
+// A live capture (CaptureSource) taps the same device and feeds the meter
+// directly, so the idle monitor releases the device whenever gate() reports
+// an active capture — this avoids conflicting with single-open ALSA hw
+// devices.
+type IdleMonitor struct {
+	meter *LevelMeter
+	gate  func() bool
 }
 
-// NewVUMonitor creates a VU monitor.
-func NewVUMonitor() *VUMonitor {
-	return &VUMonitor{}
+// NewIdleMonitor creates an idle input monitor that writes PCM samples into
+// meter. gate reports whether a live capture currently owns the device; when
+// it returns true the monitor stops reading and yields the device.
+func NewIdleMonitor(meter *LevelMeter, gate func() bool) *IdleMonitor {
+	return &IdleMonitor{meter: meter, gate: gate}
 }
 
-// Levels returns the current VU levels (0.0–1.0).
-func (v *VUMonitor) Levels() (in, out float64) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	return v.levelIn, v.levelOut
-}
-
-// Run starts monitoring the given PipeWire source and sink. Blocks
-// until ctx is cancelled.
-func (v *VUMonitor) Run(ctx context.Context, sourceName, sinkName string) {
-	var wg sync.WaitGroup
-
-	if sourceName != "" {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			v.monitorDevice(ctx, sourceName, true)
-		}()
+// Run continuously monitors sourceName until ctx is cancelled.
+func (m *IdleMonitor) Run(ctx context.Context, sourceName string) {
+	if m.meter == nil || sourceName == "" {
+		return
 	}
 
-	if sinkName != "" {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			v.monitorDevice(ctx, sinkName, false)
-		}()
-	}
-
-	wg.Wait()
-}
-
-func (v *VUMonitor) monitorDevice(ctx context.Context, device string, isInput bool) {
 	for {
 		if ctx.Err() != nil {
 			return
 		}
 
-		err := v.runOnce(ctx, device, isInput)
-		if ctx.Err() != nil {
-			return
-		}
-		if err != nil {
-			slog.Debug("vu monitor: device read failed, retrying",
-				"device", device, "input", isInput, "error", err)
+		if m.active() {
+			// A live capture owns the device and feeds the meter itself.
+			if !sleep(ctx, 500*time.Millisecond) {
+				return
+			}
+			continue
 		}
 
-		// Decay to zero when not reading
-		v.mu.Lock()
-		if isInput {
-			v.levelIn = 0
-		} else {
-			v.levelOut = 0
+		if err := m.runOnce(ctx, sourceName); err != nil && ctx.Err() == nil {
+			slog.Debug("idle vu monitor: source read failed, retrying",
+				"source", sourceName, "error", err)
 		}
-		v.mu.Unlock()
 
-		select {
-		case <-ctx.Done():
+		if !sleep(ctx, 500*time.Millisecond) {
 			return
-		case <-time.After(2 * time.Second):
 		}
 	}
 }
 
-func (v *VUMonitor) runOnce(ctx context.Context, device string, isInput bool) error {
-	args := []string{
-		"--format=s16",
-		"--rate=48000",
-		"--channels=1",
-	}
+func (m *IdleMonitor) active() bool {
+	return m.gate != nil && m.gate()
+}
 
-	if isInput {
-		args = append(args, "--target="+device)
+func (m *IdleMonitor) runOnce(ctx context.Context, sourceName string) error {
+	var cmd *exec.Cmd
+	if strings.HasPrefix(sourceName, "hw:") || strings.HasPrefix(sourceName, "plughw:") {
+		cmd = exec.CommandContext(ctx, "arecord",
+			"-D", sourceName,
+			"-f", "S16_LE", "-r", "48000", "-c", "1",
+			"-t", "raw", "-")
 	} else {
-		args = append(args, "--target="+device+".monitor")
+		cmd = exec.CommandContext(ctx, "pw-record",
+			"--format=s16", "--rate=48000", "--channels=1",
+			"--target="+sourceName, "-")
 	}
-	args = append(args, "-")
-
-	cmd := exec.CommandContext(ctx, "pw-record", args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	stdout, err := cmd.StdoutPipe()
@@ -113,54 +85,29 @@ func (v *VUMonitor) runOnce(ctx context.Context, device string, isInput bool) er
 	}
 	defer cmd.Process.Kill() //nolint:errcheck
 
-	// Read 20ms frames of S16LE mono at 48kHz = 960 samples = 1920 bytes
-	const frameBytes = 1920
-	buf := make([]byte, frameBytes)
-	decay := 0.85
-
+	// 20ms frames of S16LE mono at 48kHz = 960 samples = 1920 bytes.
+	buf := make([]byte, 1920)
 	for {
 		if ctx.Err() != nil {
 			return nil
 		}
-
+		// Yield the device the moment a live capture starts.
+		if m.active() {
+			return nil
+		}
 		n, err := stdout.Read(buf)
 		if err != nil {
 			return err
 		}
-		if n < 2 {
-			continue
-		}
+		m.meter.Write(buf[:n]) //nolint:errcheck
+	}
+}
 
-		// Compute RMS of S16LE samples
-		samples := n / 2
-		var sumSq float64
-		for i := 0; i < samples; i++ {
-			s := int16(binary.LittleEndian.Uint16(buf[i*2:]))
-			sumSq += float64(s) * float64(s)
-		}
-		rms := math.Sqrt(sumSq / float64(samples))
-
-		// Normalize: S16 max is 32767. Scale so typical speech (~2000-5000 RMS)
-		// reads around 0.4-0.7 on the meter.
-		level := rms / 16000.0
-		if level > 1.0 {
-			level = 1.0
-		}
-
-		v.mu.Lock()
-		if isInput {
-			if level > v.levelIn {
-				v.levelIn = level
-			} else {
-				v.levelIn = v.levelIn*decay + level*(1-decay)
-			}
-		} else {
-			if level > v.levelOut {
-				v.levelOut = level
-			} else {
-				v.levelOut = v.levelOut*decay + level*(1-decay)
-			}
-		}
-		v.mu.Unlock()
+func sleep(ctx context.Context, d time.Duration) bool {
+	select {
+	case <-ctx.Done():
+		return false
+	case <-time.After(d):
+		return true
 	}
 }

@@ -9,6 +9,7 @@ export interface WebRTCEvent {
 export interface WebRTCStats {
   packetsReceived: number;
   packetsSent: number;
+  packetsLost: number;
   bytesReceived: number;
   bytesSent: number;
   jitter: number;
@@ -19,6 +20,7 @@ export interface ICECandidate {
   candidate: string;
   component: string;
   type: string;
+  direction: "local" | "remote";
   timestamp: number;
 }
 
@@ -38,6 +40,7 @@ export interface UseWebRTCReturn {
   connectionState: RTCPeerConnectionState;
   iceState: RTCIceConnectionState;
   signalingState: RTCSignalingState;
+  dataChannelState: RTCDataChannelState | "none";
   localSdp: string | null;
   remoteSdp: string | null;
   candidates: ICECandidate[];
@@ -57,6 +60,7 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
   const [connectionState, setConnectionState] = useState<RTCPeerConnectionState>("new");
   const [iceState, setIceState] = useState<RTCIceConnectionState>("new");
   const [signalingState, setSignalingState] = useState<RTCSignalingState>("stable");
+  const [dataChannelState, setDataChannelState] = useState<RTCDataChannelState | "none">("none");
   const [localSdp, setLocalSdp] = useState<string | null>(null);
   const [remoteSdp, setRemoteSdp] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<ICECandidate[]>([]);
@@ -64,6 +68,7 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
   const [stats, setStats] = useState<WebRTCStats>({
     packetsReceived: 0,
     packetsSent: 0,
+    packetsLost: 0,
     bytesReceived: 0,
     bytesSent: 0,
     jitter: 0,
@@ -75,6 +80,8 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const dcRef = useRef<RTCDataChannel | null>(null);
+  const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const statsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const addEvent = useCallback((type: string, detail: string) => {
@@ -88,6 +95,7 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
       const report = await pc.getStats();
       let packetsReceived = 0;
       let packetsSent = 0;
+      let packetsLost = 0;
       let bytesReceived = 0;
       let bytesSent = 0;
       let jitter = 0;
@@ -95,6 +103,7 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
       report.forEach((s) => {
         if (s.type === "inbound-rtp" && s.kind === "audio") {
           packetsReceived = s.packetsReceived ?? 0;
+          packetsLost = s.packetsLost ?? 0;
           bytesReceived = s.bytesReceived ?? 0;
           jitter = s.jitter ?? 0;
         }
@@ -106,7 +115,7 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
           roundTripTime = s.currentRoundTripTime ?? 0;
         }
       });
-      setStats({ packetsReceived, packetsSent, bytesReceived, bytesSent, jitter, roundTripTime });
+      setStats({ packetsReceived, packetsSent, packetsLost, bytesReceived, bytesSent, jitter, roundTripTime });
     } catch {
       // ignore stats errors
     }
@@ -129,6 +138,27 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
     pcRef.current = pc;
+
+    // Control data channel — the offerer opens it; the server adopts it.
+    // Its readyState surfaces in the debug panel and mirrors the server-side
+    // "data channel open" view.
+    const dc = pc.createDataChannel("control");
+    dcRef.current = dc;
+    setDataChannelState(dc.readyState);
+    dc.onopen = () => {
+      setDataChannelState(dc.readyState);
+      addEvent("dataChannel", "Control channel open");
+    };
+    dc.onclose = () => {
+      setDataChannelState(dc.readyState);
+      addEvent("dataChannel", "Control channel closed");
+    };
+    dc.onerror = (ev) => {
+      addEvent("error", `Control channel error: ${String((ev as RTCErrorEvent).error?.message ?? ev)}`);
+    };
+    dc.onmessage = (ev) => {
+      addEvent("dataChannel", `Control message (${(ev.data as string).length ?? 0} bytes)`);
+    };
 
     // Add tracks
     stream.getTracks().forEach((track) => pc.addTrack(track, stream));
@@ -162,12 +192,20 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
           candidate: ev.candidate.candidate,
           component: ev.candidate.component ?? "unknown",
           type: ev.candidate.type ?? "unknown",
+          direction: "local",
           timestamp: Date.now(),
         };
         setCandidates((prev) => [...prev, c]);
-        addEvent("iceCandidate", `${c.type} ${c.component}: ${c.candidate.slice(0, 60)}`);
-        // Send to signaling server
-        wsRef.current?.send(JSON.stringify({ type: "candidate", candidate: ev.candidate.toJSON() }));
+        addEvent("iceCandidate", `local ${c.type} ${c.component}: ${c.candidate.slice(0, 60)}`);
+        // Send to the signaling server. Candidates can be produced before the
+        // WebSocket finishes opening, so queue them and flush once it's open.
+        const payload = JSON.stringify({ type: "candidate", candidate: ev.candidate.toJSON() });
+        const sock = wsRef.current;
+        if (sock && sock.readyState === WebSocket.OPEN) {
+          sock.send(payload);
+        } else {
+          pendingCandidatesRef.current.push(ev.candidate.toJSON());
+        }
       } else {
         addEvent("iceGatheringComplete", "All ICE candidates gathered");
       }
@@ -180,14 +218,27 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
     // WebSocket signaling
     const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const params = new URLSearchParams({ token });
-    if (produce) params.set("produce", produce);
-    if (listen) params.set("listen", listen);
+    // Presence matters: a defined-but-empty value ("") means "route nothing in
+    // this direction", while an undefined value means "let the server apply the
+    // role default". The server distinguishes these via param presence, so only
+    // omit the param when it is undefined.
+    if (produce !== undefined) params.set("produce", produce);
+    if (listen !== undefined) params.set("listen", listen);
     const wsUrl = `${wsProtocol}//${window.location.host}/api/sessions/${sessionId}/ws?${params.toString()}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {
       addEvent("signaling", "WebSocket connected");
+      // Flush any ICE candidates gathered before the socket opened.
+      const pending = pendingCandidatesRef.current;
+      pendingCandidatesRef.current = [];
+      for (const cand of pending) {
+        ws.send(JSON.stringify({ type: "candidate", candidate: cand }));
+      }
+      if (pending.length > 0) {
+        addEvent("iceCandidate", `Flushed ${pending.length} queued local candidate(s)`);
+      }
     };
 
     ws.onmessage = async (ev) => {
@@ -209,7 +260,19 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
         addEvent("sdp", "Sent answer");
       } else if (msg.type === "candidate") {
         await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
-        addEvent("iceCandidate", "Added remote ICE candidate");
+        const init = msg.candidate as RTCIceCandidateInit;
+        const raw = init.candidate ?? "";
+        setCandidates((prev) => [
+          ...prev,
+          {
+            candidate: raw,
+            component: raw.includes("component") ? "unknown" : String(init.sdpMLineIndex ?? "unknown"),
+            type: raw.split(" ")[7] ?? "remote",
+            direction: "remote",
+            timestamp: Date.now(),
+          },
+        ]);
+        addEvent("iceCandidate", `remote: ${raw.slice(0, 60)}`);
       }
     };
 
@@ -247,6 +310,9 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
       clearInterval(statsIntervalRef.current);
       statsIntervalRef.current = null;
     }
+    dcRef.current?.close();
+    dcRef.current = null;
+    pendingCandidatesRef.current = [];
     wsRef.current?.close();
     wsRef.current = null;
     pcRef.current?.close();
@@ -256,6 +322,7 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
     setRemoteStream(null);
     setConnectionState("closed");
     setIceState("closed");
+    setDataChannelState("closed");
     addEvent("disconnect", "Connection closed");
   }, [localStream, addEvent]);
 
@@ -284,6 +351,7 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
     connectionState,
     iceState,
     signalingState,
+    dataChannelState,
     localSdp,
     remoteSdp,
     candidates,

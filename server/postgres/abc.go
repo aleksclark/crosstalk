@@ -50,13 +50,14 @@ func (s *ABCStore) Create(ctx context.Context, abc *crosstalk.ABC) error {
 		abc.CreatedAt = time.Now().UTC()
 	}
 	m := &abcModel{
-		ID:        abc.ID,
-		Name:      abc.Name,
-		TokenHash: abc.TokenHash,
-		SessionID: abc.SessionID,
-		Connected: abc.Connected,
-		LastSeen:  abc.LastSeen,
-		CreatedAt: abc.CreatedAt,
+		ID:               abc.ID,
+		Name:             abc.Name,
+		TokenHash:        abc.TokenHash,
+		SessionID:        abc.SessionID,
+		MonitorChannelID: abc.MonitorChannelID,
+		Connected:        abc.Connected,
+		LastSeen:         abc.LastSeen,
+		CreatedAt:        abc.CreatedAt,
 	}
 	_, err := s.db.NewInsert().Model(m).Exec(ctx)
 	return err
@@ -66,6 +67,7 @@ func (s *ABCStore) Update(ctx context.Context, abc *crosstalk.ABC) error {
 	res, err := s.db.NewUpdate().Model((*abcModel)(nil)).
 		Set("name = ?", abc.Name).
 		Set("session_id = ?", abc.SessionID).
+		Set("monitor_channel_id = ?", abc.MonitorChannelID).
 		Set("connected = ?", abc.Connected).
 		Set("last_seen = ?", abc.LastSeen).
 		Where("id = ?", abc.ID).

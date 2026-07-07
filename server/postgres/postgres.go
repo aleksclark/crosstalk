@@ -175,6 +175,13 @@ var migrations = []migration{
 )`,
 		},
 	},
+	{
+		version: 2,
+		name:    "abc_monitor_channel",
+		statements: []string{
+			`ALTER TABLE abcs ADD COLUMN IF NOT EXISTS monitor_channel_id TEXT REFERENCES channels(id) ON DELETE SET NULL`,
+		},
+	},
 }
 
 func generateToken() string {

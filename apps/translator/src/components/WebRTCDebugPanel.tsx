@@ -5,6 +5,7 @@ interface WebRTCDebugPanelProps {
   connectionState: RTCPeerConnectionState;
   iceState: RTCIceConnectionState;
   signalingState: RTCSignalingState;
+  dataChannelState: RTCDataChannelState | "none";
   localSdp: string | null;
   remoteSdp: string | null;
   candidates: ICECandidate[];
@@ -18,6 +19,7 @@ export function WebRTCDebugPanel(props: WebRTCDebugPanelProps) {
     connectionState,
     iceState,
     signalingState,
+    dataChannelState,
     localSdp,
     remoteSdp,
     candidates,
@@ -40,10 +42,11 @@ export function WebRTCDebugPanel(props: WebRTCDebugPanelProps) {
           {/* States */}
           <section>
             <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Connection States</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <StateChip label="Connection" value={connectionState} />
               <StateChip label="ICE" value={iceState} />
               <StateChip label="Signaling" value={signalingState} />
+              <StateChip label="Data Channel" value={dataChannelState} />
             </div>
           </section>
 
@@ -53,6 +56,7 @@ export function WebRTCDebugPanel(props: WebRTCDebugPanelProps) {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-gray-300">
               <StatItem label="Pkts Recv" value={stats.packetsReceived} />
               <StatItem label="Pkts Sent" value={stats.packetsSent} />
+              <StatItem label="Pkts Lost" value={stats.packetsLost} />
               <StatItem label="Bytes Recv" value={formatBytes(stats.bytesReceived)} />
               <StatItem label="Bytes Sent" value={formatBytes(stats.bytesSent)} />
               <StatItem label="Jitter" value={`${(stats.jitter * 1000).toFixed(1)}ms`} />
@@ -68,7 +72,14 @@ export function WebRTCDebugPanel(props: WebRTCDebugPanelProps) {
             <div className="max-h-32 overflow-y-auto space-y-1">
               {candidates.map((c, i) => (
                 <div key={i} className="text-xs text-gray-400 font-mono truncate">
-                  [{c.type}] {c.component}: {c.candidate.slice(0, 80)}
+                  <span
+                    className={
+                      c.direction === "local" ? "text-blue-400" : "text-purple-400"
+                    }
+                  >
+                    {c.direction}
+                  </span>{" "}
+                  [{c.type}] {c.component}: {c.candidate.slice(0, 70)}
                 </div>
               ))}
               {candidates.length === 0 && (
@@ -96,12 +107,14 @@ export function WebRTCDebugPanel(props: WebRTCDebugPanelProps) {
                 .slice()
                 .reverse()
                 .map((ev, i) => (
-                  <div key={i} className="text-xs text-gray-400 flex gap-2">
+                  <div key={i} className="text-xs flex gap-2">
                     <span className="text-gray-600 shrink-0">
                       {new Date(ev.timestamp).toLocaleTimeString()}
                     </span>
-                    <span className="text-blue-400 shrink-0">[{ev.type}]</span>
-                    <span className="truncate">{ev.detail}</span>
+                    <span className={`shrink-0 ${severityColor(ev.type, ev.detail)}`}>
+                      [{ev.type}]
+                    </span>
+                    <span className="truncate text-gray-400">{ev.detail}</span>
                   </div>
                 ))}
               {events.length === 0 && (
@@ -169,4 +182,18 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes}B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
+
+// severityColor maps an event type/detail to a Tailwind text color so the log
+// is color-coded: red for errors/failures, green for success, yellow for
+// warnings/transient states, blue otherwise.
+function severityColor(type: string, detail: string): string {
+  const s = `${type} ${detail}`.toLowerCase();
+  if (s.includes("error") || s.includes("fail")) return "text-red-400";
+  if (s.includes("closed") || s.includes("disconnect")) return "text-red-300";
+  if (s.includes("connected") || s.includes("open") || s.includes("complete"))
+    return "text-green-400";
+  if (s.includes("connecting") || s.includes("checking") || s.includes("mute"))
+    return "text-yellow-400";
+  return "text-blue-400";
 }

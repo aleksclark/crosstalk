@@ -380,7 +380,9 @@ func (s *Server) handleListABCs(ctx context.Context, input *ListABCsRequest) (*L
 	if err != nil {
 		return nil, err
 	}
-	if err := s.requireRole(claims, "admin"); err != nil {
+	// Any authenticated user may list ABCs; translators need this to see and
+	// choose booth monitors for their assigned sessions.
+	if err := s.requireRole(claims, "admin", "translator"); err != nil {
 		return nil, err
 	}
 
@@ -455,7 +457,7 @@ func (s *Server) handleUpdateABC(ctx context.Context, input *UpdateABCRequest) (
 	if err != nil {
 		return nil, err
 	}
-	if err := s.requireRole(claims, "admin"); err != nil {
+	if err := s.requireRole(claims, "admin", "translator"); err != nil {
 		return nil, err
 	}
 
@@ -464,20 +466,88 @@ func (s *Server) handleUpdateABC(ctx context.Context, input *UpdateABCRequest) (
 		return nil, huma.Error404NotFound("ABC not found")
 	}
 
+	// Translators may only change the monitor channel, and only for ABCs in a
+	// session they are assigned to. Admins may change everything.
+	isAdmin := claims.Role == "admin"
+	if !isAdmin {
+		if abc.SessionID == nil || !s.translatorAssignedTo(ctx, claims.Subject, *abc.SessionID) {
+			return nil, huma.Error403Forbidden("not assigned to this ABC's session")
+		}
+		if input.Body.Name != "" || input.Body.SessionID != nil {
+			return nil, huma.Error403Forbidden("translators may only change the monitor channel")
+		}
+	}
+
 	if input.Body.Name != "" {
 		abc.Name = input.Body.Name
 	}
+	// A nil SessionID means "leave assignment unchanged"; an empty string is an
+	// explicit request to unassign the ABC from its session.
+	routingChanged := false
 	if input.Body.SessionID != nil {
-		abc.SessionID = input.Body.SessionID
+		newSession := input.Body.SessionID
+		if *input.Body.SessionID == "" {
+			newSession = nil
+		}
+		if !strPtrEqual(abc.SessionID, newSession) {
+			routingChanged = true
+		}
+		abc.SessionID = newSession
+	}
+	// Same nil/empty-string semantics for the monitor channel selection.
+	if input.Body.MonitorChannelID != nil {
+		newMonitor := input.Body.MonitorChannelID
+		if *input.Body.MonitorChannelID == "" {
+			newMonitor = nil
+		}
+		if !strPtrEqual(abc.MonitorChannelID, newMonitor) {
+			routingChanged = true
+		}
+		abc.MonitorChannelID = newMonitor
 	}
 
 	if err := s.services.ABCs.Update(ctx, abc); err != nil {
 		return nil, huma.Error500InternalServerError("failed to update ABC")
 	}
 
+	// If the ABC's routing (session or monitor channel) changed, force the
+	// board to reconnect so it re-bridges with the new configuration. This is
+	// what makes a late assignment (board connected before being assigned)
+	// actually produce a source.
+	if routingChanged {
+		s.reconnectABC(abc.ID)
+	}
+
 	resp := &UpdateABCResponse{}
 	resp.Body = abcToOut(*abc)
 	return resp, nil
+}
+
+// strPtrEqual reports whether two *string values point to the same string (or
+// are both nil).
+func strPtrEqual(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+// translatorAssignedTo reports whether the given user is assigned to the
+// session. Errors are treated as "not assigned" (fail closed).
+func (s *Server) translatorAssignedTo(ctx context.Context, userID, sessionID string) bool {
+	if s.services.Users == nil {
+		return false
+	}
+	sessions, err := s.services.Users.GetAssignedSessions(ctx, userID)
+	if err != nil {
+		return false
+	}
+	for _, sid := range sessions {
+		if sid == sessionID {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) handleDeleteABC(ctx context.Context, input *DeleteABCRequest) (*DeleteABCResponse, error) {
@@ -853,12 +923,13 @@ func mixEntryToOut(e crosstalk.MixEntry) MixEntryOut {
 
 func abcToOut(a crosstalk.ABC) ABCOut {
 	return ABCOut{
-		ID:        a.ID,
-		Name:      a.Name,
-		SessionID: a.SessionID,
-		Connected: a.Connected,
-		LastSeen:  a.LastSeen,
-		CreatedAt: a.CreatedAt,
+		ID:               a.ID,
+		Name:             a.Name,
+		SessionID:        a.SessionID,
+		MonitorChannelID: a.MonitorChannelID,
+		Connected:        a.Connected,
+		LastSeen:         a.LastSeen,
+		CreatedAt:        a.CreatedAt,
 	}
 }
 

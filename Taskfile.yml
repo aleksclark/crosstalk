@@ -16,7 +16,7 @@ tasks:
   test:unit:ts:
     desc: Run TypeScript type checking on all apps
     cmds:
-      - pnpm --filter './web' exec tsc --noEmit
+      - pnpm --filter './apps/*' exec tsc --noEmit
       - pnpm --filter './packages/*' exec tsc --noEmit
     ignore_error: true
 
@@ -62,10 +62,10 @@ tasks:
       - cd cli && golangci-lint run ./...
 
   lint:web:
-    desc: ESLint + typecheck on web
+    desc: Lint (oxc) + typecheck the web apps (admin, broadcast, translator)
     cmds:
-      - pnpm --filter './web' exec tsc --noEmit
-      - pnpm --filter './web' exec eslint .
+      - pnpm exec oxlint apps packages
+      - pnpm --filter './apps/*' exec tsc --noEmit
 
   # ── API Client Generation ───────────────────────────────────
 

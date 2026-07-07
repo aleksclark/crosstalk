@@ -122,24 +122,26 @@ func (m *mixModel) toDomain() crosstalk.MixEntry {
 type abcModel struct {
 	bun.BaseModel `bun:"table:abcs,alias:abc"`
 
-	ID        string     `bun:"id,pk"`
-	Name      string     `bun:"name,notnull"`
-	TokenHash string     `bun:"token_hash,notnull"`
-	SessionID *string    `bun:"session_id"`
-	Connected bool       `bun:"connected,notnull"`
-	LastSeen  *time.Time `bun:"last_seen"`
-	CreatedAt time.Time  `bun:"created_at,notnull"`
+	ID               string     `bun:"id,pk"`
+	Name             string     `bun:"name,notnull"`
+	TokenHash        string     `bun:"token_hash,notnull"`
+	SessionID        *string    `bun:"session_id"`
+	MonitorChannelID *string    `bun:"monitor_channel_id"`
+	Connected        bool       `bun:"connected,notnull"`
+	LastSeen         *time.Time `bun:"last_seen"`
+	CreatedAt        time.Time  `bun:"created_at,notnull"`
 }
 
 func (m *abcModel) toDomain() crosstalk.ABC {
 	return crosstalk.ABC{
-		ID:        m.ID,
-		Name:      m.Name,
-		TokenHash: m.TokenHash,
-		SessionID: m.SessionID,
-		Connected: m.Connected,
-		LastSeen:  m.LastSeen,
-		CreatedAt: m.CreatedAt,
+		ID:               m.ID,
+		Name:             m.Name,
+		TokenHash:        m.TokenHash,
+		SessionID:        m.SessionID,
+		MonitorChannelID: m.MonitorChannelID,
+		Connected:        m.Connected,
+		LastSeen:         m.LastSeen,
+		CreatedAt:        m.CreatedAt,
 	}
 }
 

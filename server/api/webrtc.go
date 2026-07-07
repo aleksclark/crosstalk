@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	pionwebrtc "github.com/pion/webrtc/v4"
@@ -25,6 +26,72 @@ func (s *Server) lookupABC(ctx context.Context, token string) *crosstalk.ABC {
 		return nil
 	}
 	return abc
+}
+
+// setABCConnected persists an ABC's live connection state. It re-reads the ABC
+// first so a stale in-memory copy (e.g. captured at connect time, before a
+// later session/monitor assignment) cannot clobber the current routing fields
+// when only the connection flag is being toggled.
+func (s *Server) setABCConnected(ctx context.Context, abc *crosstalk.ABC, connected bool) {
+	if abc == nil || s.services.ABCs == nil {
+		return
+	}
+	current, err := s.services.ABCs.Get(ctx, abc.ID)
+	if err != nil {
+		// The ABC may have been deleted; nothing to update.
+		return
+	}
+	current.Connected = connected
+	if connected {
+		now := time.Now().UTC()
+		current.LastSeen = &now
+	}
+	if err := s.services.ABCs.Update(ctx, current); err != nil {
+		s.log.Warn("failed to update abc connection state", "abc", abc.ID, "connected", connected, "error", err)
+	}
+}
+
+// registerABCPeer records the live signaling peer for an ABC.
+func (s *Server) registerABCPeer(abcID, peerID string) {
+	s.abcPeersMu.Lock()
+	s.abcPeers[abcID] = peerID
+	s.abcPeersMu.Unlock()
+}
+
+// deregisterABCPeer clears the live peer mapping for an ABC, but only if it
+// still points at peerID (a newer connection may have already replaced it).
+func (s *Server) deregisterABCPeer(abcID, peerID string) {
+	s.abcPeersMu.Lock()
+	if s.abcPeers[abcID] == peerID {
+		delete(s.abcPeers, abcID)
+	}
+	s.abcPeersMu.Unlock()
+}
+
+// reconnectABC closes an ABC's live signaling peer, if any, so the
+// auto-reconnecting board re-establishes its connection and re-bridges with its
+// current session/monitor assignment. No-op when the ABC is not connected.
+func (s *Server) reconnectABC(abcID string) {
+	s.abcPeersMu.Lock()
+	peerID := s.abcPeers[abcID]
+	s.abcPeersMu.Unlock()
+	if peerID == "" || s.services.PeerManager == nil {
+		return
+	}
+	s.log.Info("reconnecting abc after assignment change", "abc", abcID, "peer", peerID)
+	s.services.PeerManager.RemovePeer(peerID)
+}
+
+// abcMonitorSelectors returns the Listen channel selectors for an ABC. When a
+// specific monitor channel is set (and still exists), the ABC listens only to
+// that channel by name; otherwise it falls back to all broadcast channels.
+func (s *Server) abcMonitorSelectors(ctx context.Context, abc *crosstalk.ABC) []string {
+	if abc != nil && abc.MonitorChannelID != nil && *abc.MonitorChannelID != "" && s.services.Channels != nil {
+		if ch, err := s.services.Channels.Get(ctx, *abc.MonitorChannelID); err == nil && ch != nil {
+			return []string{ch.Name}
+		}
+	}
+	return []string{"type:broadcast"}
 }
 
 // mountWebRTC wires the WebRTC signaling endpoints and the admin debug API onto
@@ -54,6 +121,21 @@ func (s *Server) mountWebRTC() {
 					assigned = *abc.SessionID
 				}
 
+				// Reflect the ABC's live connection state in the store so the
+				// admin UI shows the board as online. Headless boards connect
+				// on this websocket path (not the HTTP Bearer path), so mark
+				// connected here and clear it when the peer closes. Track the
+				// live peer so an assignment/monitor change can force a
+				// reconnect (the board auto-reconnects and re-bridges).
+				if abc != nil {
+					s.setABCConnected(req.Context(), abc, true)
+					s.registerABCPeer(abc.ID, peer.ID)
+					peer.OnClose(func() {
+						s.setABCConnected(context.Background(), abc, false)
+						s.deregisterABCPeer(abc.ID, peer.ID)
+					})
+				}
+
 				// Install the control-protocol handler once the client opens
 				// its "control" data channel (the server adopts, not creates).
 				peer.OnControlChannel(func(*pionwebrtc.DataChannel) {
@@ -65,13 +147,17 @@ func (s *Server) mountWebRTC() {
 					ctrl.Install()
 				})
 
-				// Bridge an assigned ABC as a producer into its session's feed
-				// (and let it listen to the broadcast for booth return audio).
+				// Bridge an assigned ABC as a producer into its session's feed.
+				// It listens to its configured monitor channel for booth return
+				// audio, falling back to all broadcast channels when unset.
+				// The ABC ID is a stable identity so reconnects reuse one source.
 				if s.services.SessionMedia != nil && assigned != "" {
 					return false, s.services.SessionMedia.Bridge(req.Context(), peer, assigned, sessionrtc.BridgeOpts{
-						Role:    "abc",
-						Produce: []string{"type:feed"},
-						Listen:  []string{"type:broadcast"},
+						Role:     "abc",
+						Identity: "abc:" + abc.ID,
+						Label:    abc.Name,
+						Produce:  []string{"type:feed"},
+						Listen:   s.abcMonitorSelectors(req.Context(), abc),
 					})
 				}
 				return false, nil
@@ -120,16 +206,40 @@ func (s *Server) mountSessionMedia() {
 		q := r.URL.Query()
 
 		role := "translator"
+		identity := ""
+		label := ""
 		if s.auth != nil {
-			if claims, err := s.auth.ValidateAccessToken(q.Get("token")); err == nil && claims.Role != "" {
-				role = claims.Role
+			if claims, err := s.auth.ValidateAccessToken(q.Get("token")); err == nil {
+				if claims.Role != "" {
+					role = claims.Role
+				}
+				// The JWT subject (user ID) is a stable identity across
+				// reconnects, so the same user reuses one Source instead of
+				// spawning a new one on every connect.
+				identity = claims.Subject
+				if identity != "" && s.services.Users != nil {
+					if u, uerr := s.services.Users.Get(r.Context(), identity); uerr == nil && u.Username != "" {
+						label = u.Username
+					}
+				}
 			}
 		}
 
-		produce := splitCSV(q.Get("produce"))
-		listen := splitCSV(q.Get("listen"))
-		if len(produce) == 0 && len(listen) == 0 {
-			produce, listen = defaultRoutingNames(role)
+		// Routing defaults apply per direction based on parameter *presence*.
+		// An absent produce/listen param falls back to the role default; a
+		// param that is present (even if empty) is taken literally. This lets
+		// the monitor feature override only the listen side (?listen=<ch>)
+		// while the translator keeps producing into its default broadcast, and
+		// still lets deep links fully control both directions (e.g.
+		// ?produce=<feed>&listen= to produce-only into a feed).
+		defProduce, defListen := defaultRoutingNames(role)
+		produce := defProduce
+		if q.Has("produce") {
+			produce = splitCSV(q.Get("produce"))
+		}
+		listen := defListen
+		if q.Has("listen") {
+			listen = splitCSV(q.Get("listen"))
 		}
 
 		handler := &webrtc.SignalingHandler{
@@ -137,9 +247,11 @@ func (s *Server) mountSessionMedia() {
 			ServerVersion: "3.0.0",
 			OnPeer: func(peer *webrtc.PeerConn, req *http.Request) (bool, error) {
 				err := media.Bridge(req.Context(), peer, sessionID, sessionrtc.BridgeOpts{
-					Role:    role,
-					Produce: produce,
-					Listen:  listen,
+					Role:     role,
+					Identity: identity,
+					Label:    label,
+					Produce:  produce,
+					Listen:   listen,
 				})
 				return false, err // client-offer flow
 			},

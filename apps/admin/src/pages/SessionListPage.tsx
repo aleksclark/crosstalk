@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { getApiClient } from "../lib/api";
@@ -14,7 +14,7 @@ export function SessionListPage() {
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
 
-  const fetchSessions = async () => {
+  const fetchSessions = useCallback(async () => {
     if (!token) return;
     const client = getApiClient(token);
     try {
@@ -25,11 +25,11 @@ export function SessionListPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [token]);
 
   useEffect(() => {
     fetchSessions();
-  }, [token]);
+  }, [fetchSessions]);
 
   const handleCreate = async () => {
     if (!token || !newName.trim()) return;

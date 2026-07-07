@@ -75,6 +75,14 @@ func run() error {
 		disp.SetLevelMeters(pion.InputMeter, pion.OutputMeter)
 		disp.Status().SetServer(cfg.ServerURL, "connecting")
 
+		// Continuously drive the input VU from the source device so the
+		// meter reflects the port even outside an active session. It yields
+		// the device whenever a live capture owns it.
+		idleVU := display.NewIdleMonitor(pion.InputMeter, func() bool {
+			return pion.CaptureActive.Load()
+		})
+		go idleVU.Run(ctx, cfg.SourceName)
+
 		go func() {
 			if err := disp.Run(ctx); err != nil {
 				slog.Error("display service failed", "error", err)

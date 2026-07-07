@@ -409,10 +409,11 @@ func TestIntegrationRBACEnforcement(t *testing.T) {
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
 
-	// 5. Translator CANNOT list ABCs (admin only)
+	// 5. Translator CAN list ABCs (read-only, needed to choose booth monitors
+	//    for their assigned sessions).
 	resp = env.doRequest(t, http.MethodGet, "/api/abcs", translatorToken, "")
 	defer resp.Body.Close()
-	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	// 6. Translator CANNOT create ABCs (admin only)
 	resp = env.doRequest(t, http.MethodPost, "/api/abcs", translatorToken,

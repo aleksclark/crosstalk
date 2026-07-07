@@ -271,12 +271,13 @@ type ListSourcesResponse struct {
 // --- ABCs ---
 
 type ABCOut struct {
-	ID        string     `json:"id" doc:"ABC ULID"`
-	Name      string     `json:"name" doc:"ABC name"`
-	SessionID *string    `json:"session_id,omitempty" doc:"Assigned session ID"`
-	Connected bool       `json:"connected" doc:"Whether ABC is currently connected"`
-	LastSeen  *time.Time `json:"last_seen,omitempty" doc:"Last time ABC was seen"`
-	CreatedAt time.Time  `json:"created_at" doc:"Creation time"`
+	ID               string     `json:"id" doc:"ABC ULID"`
+	Name             string     `json:"name" doc:"ABC name"`
+	SessionID        *string    `json:"session_id,omitempty" doc:"Assigned session ID"`
+	MonitorChannelID *string    `json:"monitor_channel_id,omitempty" doc:"Channel the ABC monitors for return audio"`
+	Connected        bool       `json:"connected" doc:"Whether ABC is currently connected"`
+	LastSeen         *time.Time `json:"last_seen,omitempty" doc:"Last time ABC was seen"`
+	CreatedAt        time.Time  `json:"created_at" doc:"Creation time"`
 }
 
 type ListABCsRequest struct {
@@ -317,8 +318,9 @@ type UpdateABCRequest struct {
 	Authorization string `header:"Authorization" doc:"Bearer token"`
 	ID            string `path:"id" doc:"ABC ID"`
 	Body          struct {
-		Name      string  `json:"name,omitempty" doc:"ABC name"`
-		SessionID *string `json:"session_id,omitempty" doc:"Assigned session ID"`
+		Name             string  `json:"name,omitempty" doc:"ABC name"`
+		SessionID        *string `json:"session_id,omitempty" doc:"Assigned session ID"`
+		MonitorChannelID *string `json:"monitor_channel_id,omitempty" doc:"Channel the ABC monitors for return audio"`
 	}
 }
 
@@ -351,9 +353,9 @@ type RestartABCResponse struct {
 // --- Translators ---
 
 type TranslatorOut struct {
-	ID        string   `json:"id" doc:"User ULID"`
-	Username  string   `json:"username" doc:"Username"`
-	Sessions  []string `json:"sessions,omitempty" doc:"Assigned session IDs"`
+	ID        string    `json:"id" doc:"User ULID"`
+	Username  string    `json:"username" doc:"Username"`
+	Sessions  []string  `json:"sessions,omitempty" doc:"Assigned session IDs"`
 	CreatedAt time.Time `json:"created_at" doc:"Creation time"`
 }
 

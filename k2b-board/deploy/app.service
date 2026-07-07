@@ -70,7 +70,7 @@ ExecStartPre=+/bin/bash -c '\
   \
   echo "=== Setup complete ==="'
 
-ExecStart=/usr/local/bin/ct-client
+ExecStart=/usr/local/bin/ct-abc
 Environment=CROSSTALK_CONFIG=/etc/app/crosstalk.json
 Environment=XDG_RUNTIME_DIR=/run/user/999
 Environment=PIPEWIRE_RUNTIME_DIR=/run/user/999

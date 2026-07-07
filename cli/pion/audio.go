@@ -9,6 +9,7 @@ import (
 	"net"
 	"os/exec"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -20,6 +21,11 @@ import (
 var (
 	InputMeter  = display.NewLevelMeter(0.85)
 	OutputMeter = display.NewLevelMeter(0.85)
+
+	// CaptureActive reports whether a live source capture currently owns
+	// the input device. The idle VU monitor watches this to release the
+	// device (single-open ALSA hw devices can't be captured twice).
+	CaptureActive atomic.Bool
 )
 
 const (
@@ -37,33 +43,60 @@ func CaptureSource(ctx context.Context, sourceName string, track *webrtc.TrackLo
 		return fmt.Errorf("track is nil")
 	}
 
+	// Signal the idle VU monitor to release the input device before we
+	// open it, and clear the flag when capture stops.
+	CaptureActive.Store(true)
+	defer CaptureActive.Store(false)
+
 	// Capture raw PCM from the audio source. Use arecord for ALSA hw: devices,
 	// pw-record for PipeWire nodes.
+	buildCmd := func() *exec.Cmd {
+		var c *exec.Cmd
+		if strings.HasPrefix(sourceName, "hw:") || strings.HasPrefix(sourceName, "plughw:") {
+			c = exec.CommandContext(ctx, "arecord",
+				"-D", sourceName,
+				"-f", "S16_LE", "-r", "48000", "-c", "1",
+				"-t", "raw", "-")
+		} else {
+			pwArgs := []string{
+				"--format=s16",
+				"--rate=48000",
+				"--channels=1",
+			}
+			if sourceName != "" {
+				pwArgs = append(pwArgs, "--target="+sourceName)
+			}
+			pwArgs = append(pwArgs, "-")
+			c = exec.CommandContext(ctx, "pw-record", pwArgs...)
+		}
+		c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		return c
+	}
+
+	// Retry the open: the idle monitor may still be releasing the device.
 	var pwCmd *exec.Cmd
-	if strings.HasPrefix(sourceName, "hw:") || strings.HasPrefix(sourceName, "plughw:") {
-		pwCmd = exec.CommandContext(ctx, "arecord",
-			"-D", sourceName,
-			"-f", "S16_LE", "-r", "48000", "-c", "1",
-			"-t", "raw", "-")
-	} else {
-		pwArgs := []string{
-			"--format=s16",
-			"--rate=48000",
-			"--channels=1",
+	var pcmPipe io.ReadCloser
+	for attempt := 0; ; attempt++ {
+		pwCmd = buildCmd()
+		var pipeErr error
+		pcmPipe, pipeErr = pwCmd.StdoutPipe()
+		if pipeErr != nil {
+			return fmt.Errorf("pw-record stdout: %w", pipeErr)
 		}
-		if sourceName != "" {
-			pwArgs = append(pwArgs, "--target="+sourceName)
+		if startErr := pwCmd.Start(); startErr != nil {
+			if attempt < 15 && ctx.Err() == nil {
+				slog.Warn("audio capture: input device busy, retrying",
+					"source", sourceName, "attempt", attempt+1, "error", startErr)
+				select {
+				case <-ctx.Done():
+					return nil
+				case <-time.After(200 * time.Millisecond):
+				}
+				continue
+			}
+			return fmt.Errorf("starting pw-record: %w", startErr)
 		}
-		pwArgs = append(pwArgs, "-")
-		pwCmd = exec.CommandContext(ctx, "pw-record", pwArgs...)
-	}
-	pwCmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	pcmPipe, err := pwCmd.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("pw-record stdout: %w", err)
-	}
-	if err := pwCmd.Start(); err != nil {
-		return fmt.Errorf("starting pw-record: %w", err)
+		break
 	}
 	defer pwCmd.Process.Kill() //nolint:errcheck
 

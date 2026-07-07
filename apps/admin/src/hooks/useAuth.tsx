@@ -4,10 +4,12 @@ import {
   useState,
   useCallback,
   useEffect,
+  useRef,
   type ReactNode,
 } from "react";
 import type { components } from "@crosstalk/api-client";
-import { getApiClient } from "../lib/api";
+import { getApiClient, getRawApiClient } from "../lib/api";
+import { onUnauthorized } from "../lib/errorBus";
 
 type User = components["schemas"]["UserOut"];
 
@@ -28,13 +30,18 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 const STORAGE_KEY = "crosstalk_auth";
 
+// Refresh this many milliseconds before the access token's exp so a valid
+// token is always in hand before requests are made.
+const REFRESH_SKEW_MS = 60_000;
+
 interface JwtClaims {
   sub?: string;
   role?: string;
+  exp?: number;
 }
 
 // decodeJwt reads the (unverified) payload of a JWT. The server verifies the
-// signature; the client only needs the role/subject to drive UI state.
+// signature; the client only needs the role/subject/exp to drive UI state.
 function decodeJwt(token: string): JwtClaims | null {
   try {
     const payload = token.split(".")[1];
@@ -82,8 +89,29 @@ function saveAuthState(state: AuthState) {
   );
 }
 
+// userFromToken derives the UI user from a JWT plus a known username (login
+// and refresh responses carry only tokens).
+function userFromToken(token: string, username: string): User | null {
+  const claims = decodeJwt(token);
+  if (!claims) return null;
+  return {
+    id: claims.sub ?? "",
+    username,
+    role: (claims.role as User["role"]) ?? "translator",
+    created_at: "",
+  } as User;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>(loadAuthState);
+
+  // Latest state for use inside stable callbacks (refresh/logout) without
+  // rebuilding them on every token rotation.
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  // Dedupes concurrent refreshes (e.g. several requests 401 at once).
+  const refreshInFlight = useRef<Promise<boolean> | null>(null);
 
   useEffect(() => {
     saveAuthState(state);
@@ -100,24 +128,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const token = data.access_token;
-    const refreshToken = data.refresh_token;
-
-    // The login response returns only tokens; derive the user (role) from the
-    // JWT so route guards that require an admin role work.
-    const claims = decodeJwt(token);
-    const user: User | null = claims
-      ? ({
-          id: claims.sub ?? "",
-          username,
-          role: (claims.role as User["role"]) ?? "translator",
-          created_at: "",
-        } as User)
-      : null;
+    const user = userFromToken(token, username);
 
     setState({
       user,
       token,
-      refreshToken,
+      refreshToken: data.refresh_token,
       isAuthenticated: true,
       isAdmin: user?.role === "admin",
     });
@@ -133,6 +149,68 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAdmin: false,
     });
   }, []);
+
+  // refresh exchanges the stored refresh token for a fresh access/refresh pair.
+  // Returns true on success. Uses the raw client so a failed refresh does not
+  // itself re-trigger the global 401 handler.
+  const refresh = useCallback(async (): Promise<boolean> => {
+    if (refreshInFlight.current) return refreshInFlight.current;
+    const refreshToken = stateRef.current.refreshToken;
+    if (!refreshToken) return false;
+
+    const run = (async () => {
+      const client = getRawApiClient();
+      const { data, error } = await client.POST("/api/auth/refresh", {
+        body: { refresh_token: refreshToken },
+      });
+      if (error || !data) return false;
+      const username = stateRef.current.user?.username ?? "";
+      const user = userFromToken(data.access_token, username);
+      setState({
+        user,
+        token: data.access_token,
+        refreshToken: data.refresh_token,
+        isAuthenticated: true,
+        isAdmin: user?.role === "admin",
+      });
+      return true;
+    })();
+
+    refreshInFlight.current = run;
+    try {
+      return await run;
+    } finally {
+      refreshInFlight.current = null;
+    }
+  }, []);
+
+  // Proactively refresh shortly before the access token expires so requests
+  // never race against expiry.
+  useEffect(() => {
+    if (!state.token) return;
+    const claims = decodeJwt(state.token);
+    if (!claims?.exp) return;
+    const msUntilRefresh = claims.exp * 1000 - Date.now() - REFRESH_SKEW_MS;
+    const timer = setTimeout(
+      () => {
+        void refresh();
+      },
+      Math.max(0, msUntilRefresh),
+    );
+    return () => clearTimeout(timer);
+  }, [state.token, refresh]);
+
+  // On a 401 from any API call, try one refresh; only log out (→ /login via
+  // route guards) if that fails.
+  useEffect(
+    () =>
+      onUnauthorized(() => {
+        void refresh().then((ok) => {
+          if (!ok) logout();
+        });
+      }),
+    [refresh, logout],
+  );
 
   return (
     <AuthContext.Provider value={{ ...state, login, logout }}>

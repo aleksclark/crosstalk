@@ -416,6 +416,8 @@ export interface components {
              * @description Last time ABC was seen
              */
             last_seen?: string;
+            /** @description Channel the ABC monitors for return audio */
+            monitor_channel_id?: string;
             /** @description ABC name */
             name: string;
             /** @description Assigned session ID */
@@ -956,6 +958,8 @@ export interface components {
              * @example https://example.com/schemas/UpdateABCRequestBody.json
              */
             readonly $schema?: string;
+            /** @description Channel the ABC monitors for return audio */
+            monitor_channel_id?: string;
             /** @description ABC name */
             name?: string;
             /** @description Assigned session ID */

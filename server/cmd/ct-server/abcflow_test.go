@@ -19,6 +19,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"nhooyr.io/websocket"
 
+	crosstalk "github.com/aleksclark/crosstalk/server"
 	"github.com/aleksclark/crosstalk/server/mixer"
 	crosstalkv2 "github.com/aleksclark/crosstalk/server/proto/v2"
 )
@@ -86,6 +87,94 @@ func TestIntegrationABCAudioFlow(t *testing.T) {
 	t.Logf("feed listener heard %.0fHz (ratio %.1f)", tone, ratio)
 	assert.Equal(t, abcTone, tone, "listener should hear the ABC's tone on the feed")
 	assert.Greater(t, ratio, 3.0, "ABC tone should dominate on the feed")
+}
+
+// TestIntegrationABCLateAssignment is the regression test for "the K2B board
+// doesn't show up as an audio source." A board that connects before it is
+// assigned to a session produces no source; assigning it must force the board
+// to reconnect (boards auto-reconnect) so it re-bridges and a source appears.
+func TestIntegrationABCLateAssignment(t *testing.T) {
+	env := setupIntegrationServer(t)
+	ctx := context.Background()
+
+	env.createAdminUser(t, "admin", "admin-pass-123")
+	adminToken := env.login(t, "admin", "admin-pass-123")
+
+	session := createSession(t, env, adminToken, "Booth Session")
+	createChannel(t, env, adminToken, session.ID, "Floor Feed", "feed")
+
+	// Register an ABC but DO NOT assign it to the session yet.
+	resp := env.doRequest(t, http.MethodPost, "/api/abcs", adminToken, `{"name":"Late Booth"}`)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	var abc struct {
+		ID    string `json:"id"`
+		Token string `json:"token"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&abc))
+	resp.Body.Close()
+
+	// ── Board connects while unassigned: no session, no source ──────────────
+	c1, welcome1 := newABCClient(t, env, abc.Token)
+	require.NotNil(t, welcome1)
+	assert.Empty(t, welcome1.GetAssignedSessionId(),
+		"unassigned board must not be bridged into any session")
+
+	srcs, err := env.sources.List(ctx, session.ID)
+	require.NoError(t, err)
+	assert.Empty(t, srcs, "an unassigned board must not create a source")
+
+	// ── Assign the board to the session; this must close its live peer so it
+	//    reconnects (real boards auto-reconnect). ────────────────────────────
+	resp = env.doRequest(t, http.MethodPut, "/api/abcs/"+abc.ID, adminToken,
+		fmt.Sprintf(`{"session_id":%q}`, session.ID))
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.Body.Close()
+
+	// The old peer's signaling websocket should be closed by the server.
+	assertABCPeerClosed(t, c1)
+
+	// ── Board reconnects (same token) now that it is assigned ───────────────
+	_, welcome2 := newABCClient(t, env, abc.Token)
+	require.NotNil(t, welcome2)
+	assert.Equal(t, session.ID, welcome2.GetAssignedSessionId(),
+		"reconnected board must be bridged into its assigned session")
+
+	// A source now exists for the session, reused by stable identity.
+	require.Eventually(t, func() bool {
+		s, lerr := env.sources.List(ctx, session.ID)
+		return lerr == nil && len(s) == 1
+	}, 3*time.Second, 50*time.Millisecond,
+		"assigned board must appear as exactly one audio source")
+
+	s, err := env.sources.List(ctx, session.ID)
+	require.NoError(t, err)
+	require.Len(t, s, 1)
+	assert.Equal(t, crosstalk.OriginABC, s[0].Origin)
+	assert.Equal(t, "Late Booth", s[0].Name, "source uses the ABC's name as label")
+}
+
+// assertABCPeerClosed waits until the ABC client's signaling websocket read
+// assertABCPeerClosed waits until the ABC client's peer connection drops,
+// proving the server force-closed the peer (which is what makes a real board
+// auto-reconnect and re-bridge).
+func assertABCPeerClosed(t *testing.T, ac *abcClient) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		switch ac.pc.ConnectionState() {
+		case pionwebrtc.PeerConnectionStateDisconnected,
+			pionwebrtc.PeerConnectionStateFailed,
+			pionwebrtc.PeerConnectionStateClosed:
+			return true
+		}
+		switch ac.pc.ICEConnectionState() {
+		case pionwebrtc.ICEConnectionStateDisconnected,
+			pionwebrtc.ICEConnectionStateFailed,
+			pionwebrtc.ICEConnectionStateClosed:
+			return true
+		}
+		return false
+	}, 8*time.Second, 100*time.Millisecond,
+		"assignment change did not close the ABC's peer connection")
 }
 
 // abcClient is a pion peer that mimics the headless ct-abc CLI: it opens a

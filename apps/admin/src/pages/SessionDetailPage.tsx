@@ -1,22 +1,18 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { getApiClient } from "../lib/api";
-import { MixPanel } from "../components/MixPanel";
+import { SessionAudioManager, useChannelMonitor } from "@crosstalk/session-audio";
+import { BroadcastShare } from "../components/BroadcastShare";
 import type { components } from "@crosstalk/api-client";
 
 type Session = components["schemas"]["SessionOut"];
 type Channel = components["schemas"]["ChannelOut"];
 type Source = components["schemas"]["SourceOut"];
-type MixEntry = components["schemas"]["MixEntryOut"];
+type ABC = components["schemas"]["ABCOut"];
+type Translator = components["schemas"]["TranslatorOut"];
 
-interface PanelSource {
-  id: string;
-  name: string;
-  level: number;
-  muted: boolean;
-  volume: number;
-}
+type ChannelType = "feed" | "broadcast";
 
 export function SessionDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -24,114 +20,184 @@ export function SessionDetailPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
-  const [mixByChannel, setMixByChannel] = useState<Record<string, MixEntry[]>>({});
+  const [abcs, setAbcs] = useState<ABC[]>([]);
+  const [translators, setTranslators] = useState<Translator[]>([]);
   const [recordings, setRecordings] = useState<
     components["schemas"]["RecordingOut"][]
   >([]);
   const [loading, setLoading] = useState(true);
 
+  // Channel CRUD form state
+  const [showChannelForm, setShowChannelForm] = useState(false);
+  const [editingChannelId, setEditingChannelId] = useState<string | null>(null);
+  const [channelName, setChannelName] = useState("");
+  const [channelType, setChannelType] = useState<ChannelType>("feed");
+  const [channelBusy, setChannelBusy] = useState(false);
+  const [channelError, setChannelError] = useState<string | null>(null);
+
+  // Assignment picker state
+  const [addingABC, setAddingABC] = useState(false);
+  const [addingTranslator, setAddingTranslator] = useState(false);
+
+  // Channel being monitored (listened to) by the admin, if any.
+  const [monitorChannel, setMonitorChannel] = useState<string | null>(null);
+
+  // A stable, authenticated client shared with SessionAudioManager so its
+  // fetch/persist reuse the same error handling.
+  const audioClient = useMemo(
+    () => (token ? getApiClient(token) : null),
+    [token],
+  );
+
+  const monitorAudioRef = useRef<HTMLAudioElement | null>(null);
+  const monitor = useChannelMonitor({
+    sessionId: id ?? "",
+    token: token ?? "",
+    channel: monitorChannel,
+  });
+
   useEffect(() => {
-    async function fetchAll() {
-      if (!token || !id) return;
-      const client = getApiClient(token);
-      try {
-        const [sessionRes, channelsRes, sourcesRes, recordingsRes] =
-          await Promise.all([
-            client.GET("/api/sessions/{id}", { params: { path: { id } } }),
-            client.GET("/api/sessions/{id}/channels", {
-              params: { path: { id } },
-            }),
-            client.GET("/api/sessions/{id}/sources", {
-              params: { path: { id } },
-            }),
-            client.GET("/api/sessions/{id}/recordings", {
-              params: { path: { id } },
-            }),
-          ]);
-
-        if (sessionRes.data) setSession(sessionRes.data);
-        const chans = channelsRes.data?.data ?? [];
-        setChannels(chans);
-        setSources(sourcesRes.data?.data ?? []);
-        setRecordings(recordingsRes.data?.data ?? []);
-
-        const mixEntries = await Promise.all(
-          chans.map((ch) =>
-            client.GET("/api/sessions/{id}/channels/{ch_id}/mix", {
-              params: { path: { id, ch_id: ch.id } },
-            }),
-          ),
-        );
-        const mixMap: Record<string, MixEntry[]> = {};
-        chans.forEach((ch, i) => {
-          mixMap[ch.id] = mixEntries[i].data?.data ?? [];
-        });
-        setMixByChannel(mixMap);
-      } catch {
-        // handle error
-      } finally {
-        setLoading(false);
-      }
+    const el = monitorAudioRef.current;
+    if (el && monitor.stream) {
+      el.srcObject = monitor.stream;
+      void el.play().catch(() => {});
     }
-    fetchAll();
+  }, [monitor.stream]);
+
+  const fetchAll = useCallback(async () => {
+    if (!token || !id) return;
+    const client = getApiClient(token);
+    try {
+      const [
+        sessionRes,
+        channelsRes,
+        sourcesRes,
+        recordingsRes,
+        abcsRes,
+        translatorsRes,
+      ] = await Promise.all([
+        client.GET("/api/sessions/{id}", { params: { path: { id } } }),
+        client.GET("/api/sessions/{id}/channels", { params: { path: { id } } }),
+        client.GET("/api/sessions/{id}/sources", { params: { path: { id } } }),
+        client.GET("/api/sessions/{id}/recordings", { params: { path: { id } } }),
+        client.GET("/api/abcs"),
+        client.GET("/api/translators"),
+      ]);
+
+      if (sessionRes.data) setSession(sessionRes.data);
+      const chans = channelsRes.data?.data ?? [];
+      setChannels(chans);
+      setSources(sourcesRes.data?.data ?? []);
+      setRecordings(recordingsRes.data?.data ?? []);
+      setAbcs(abcsRes.data?.data ?? []);
+      setTranslators(translatorsRes.data?.data ?? []);
+    } catch {
+      // handle error
+    } finally {
+      setLoading(false);
+    }
   }, [token, id]);
 
-  const persistMix = useCallback(
-    async (channelId: string, entries: MixEntry[]) => {
-      if (!token || !id) return;
-      const client = getApiClient(token);
-      await client.PUT("/api/sessions/{id}/channels/{ch_id}/mix", {
-        params: { path: { id, ch_id: channelId } },
-        body: {
-          entries: entries.map((e) => ({
-            source_id: e.source_id,
-            muted: e.muted,
-            level: e.level,
-          })),
-        },
-      });
-    },
-    [token, id],
-  );
+  useEffect(() => {
+    fetchAll();
+  }, [fetchAll]);
 
-  const handleMuteToggle = useCallback(
-    (channelId: string, sourceId: string, muted: boolean) => {
-      setMixByChannel((prev) => {
-        const next = (prev[channelId] ?? []).map((e) =>
-          e.source_id === sourceId ? { ...e, muted } : e,
-        );
-        void persistMix(channelId, next);
-        return { ...prev, [channelId]: next };
-      });
-    },
-    [persistMix],
-  );
+  // ── Channel CRUD ──────────────────────────────────────────────────────────
+  const resetChannelForm = () => {
+    setShowChannelForm(false);
+    setEditingChannelId(null);
+    setChannelName("");
+    setChannelType("feed");
+    setChannelError(null);
+  };
 
-  const handleVolumeChange = useCallback(
-    (channelId: string, sourceId: string, volume: number) => {
-      setMixByChannel((prev) => {
-        const next = (prev[channelId] ?? []).map((e) =>
-          e.source_id === sourceId ? { ...e, level: volume / 50 } : e,
-        );
-        void persistMix(channelId, next);
-        return { ...prev, [channelId]: next };
-      });
-    },
-    [persistMix],
-  );
+  const openCreateChannel = () => {
+    setEditingChannelId(null);
+    setChannelName("");
+    setChannelType("feed");
+    setChannelError(null);
+    setShowChannelForm(true);
+  };
 
-  const panelSourcesFor = (channelId: string): PanelSource[] => {
-    const entries = mixByChannel[channelId] ?? [];
-    return entries.map((e) => {
-      const src = sources.find((s) => s.id === e.source_id);
-      return {
-        id: e.source_id,
-        name: src?.name ?? e.source_id.slice(0, 8),
-        level: 0,
-        muted: e.muted,
-        volume: Math.round(e.level * 50),
-      };
+  const openEditChannel = (ch: Channel) => {
+    setEditingChannelId(ch.id);
+    setChannelName(ch.name);
+    setChannelType(ch.type === "broadcast" ? "broadcast" : "feed");
+    setChannelError(null);
+    setShowChannelForm(true);
+  };
+
+  const handleSaveChannel = async () => {
+    if (!token || !id || !channelName.trim()) return;
+    setChannelBusy(true);
+    setChannelError(null);
+    const client = getApiClient(token);
+    const body = { name: channelName.trim(), type: channelType };
+    const { error } = editingChannelId
+      ? await client.PUT("/api/sessions/{id}/channels/{ch_id}", {
+          params: { path: { id, ch_id: editingChannelId } },
+          body,
+        })
+      : await client.POST("/api/sessions/{id}/channels", {
+          params: { path: { id } },
+          body,
+        });
+    setChannelBusy(false);
+    if (error) {
+      setChannelError(error.detail || "Failed to save channel");
+      return;
+    }
+    resetChannelForm();
+    await fetchAll();
+  };
+
+  const handleDeleteChannel = async (chId: string) => {
+    if (!token || !id) return;
+    if (!window.confirm("Delete this channel? Its mix will be lost.")) return;
+    const client = getApiClient(token);
+    await client.DELETE("/api/sessions/{id}/channels/{ch_id}", {
+      params: { path: { id, ch_id: chId } },
     });
+    await fetchAll();
+  };
+
+  // ── ABC assignment ─────────────────────────────────────────────────────────
+  const setABCSession = async (abcId: string, sessionId: string) => {
+    if (!token) return;
+    const client = getApiClient(token);
+    await client.PUT("/api/abcs/{id}", {
+      params: { path: { id: abcId } },
+      body: { session_id: sessionId },
+    });
+    setAddingABC(false);
+    await fetchAll();
+  };
+
+  // ── Translator assignment ────────────────────────────────────────────────
+  const setTranslatorSessions = async (
+    translatorId: string,
+    sessionIds: string[],
+  ) => {
+    if (!token) return;
+    const client = getApiClient(token);
+    await client.PUT("/api/translators/{id}/sessions", {
+      params: { path: { id: translatorId } },
+      body: { session_ids: sessionIds },
+    });
+    setAddingTranslator(false);
+    await fetchAll();
+  };
+
+  const assignTranslator = (t: Translator) => {
+    if (!id) return;
+    const next = Array.from(new Set([...(t.sessions ?? []), id]));
+    void setTranslatorSessions(t.id, next);
+  };
+
+  const removeTranslator = (t: Translator) => {
+    if (!id) return;
+    const next = (t.sessions ?? []).filter((sid) => sid !== id);
+    void setTranslatorSessions(t.id, next);
   };
 
   if (loading) {
@@ -153,6 +219,15 @@ export function SessionDetailPage() {
     );
   }
 
+  const assignedABCs = abcs.filter((a) => a.session_id === id);
+  const unassignedABCs = abcs.filter((a) => a.session_id !== id);
+  const assignedTranslators = translators.filter((t) =>
+    (t.sessions ?? []).includes(id ?? ""),
+  );
+  const unassignedTranslators = translators.filter(
+    (t) => !(t.sessions ?? []).includes(id ?? ""),
+  );
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -172,57 +247,285 @@ export function SessionDetailPage() {
       </div>
 
       {/* Session info cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-card border border-border rounded-lg p-4">
           <h3 className="text-sm font-medium text-muted-foreground">
             Description
           </h3>
-          <p className="text-sm mt-2">
-            {session.description || "—"}
-          </p>
+          <p className="text-sm mt-2">{session.description || "—"}</p>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
-          <h3 className="text-sm font-medium text-muted-foreground">
-            Created
-          </h3>
+          <h3 className="text-sm font-medium text-muted-foreground">Created</h3>
           <p className="text-sm mt-2">
             {new Date(session.created_at).toLocaleString()}
           </p>
         </div>
-        <div className="bg-card border border-border rounded-lg p-4">
-          <h3 className="text-sm font-medium text-muted-foreground">
-            Broadcast URL
-          </h3>
-          <p className="text-sm font-mono mt-2 text-primary truncate">
-            /session/{session.id}/broadcast
-          </p>
-        </div>
       </div>
 
-      {/* Mix controls */}
-      <div>
-        <h2 className="text-lg font-semibold mb-3">Mix Controls</h2>
+      {/* Broadcast link + QR */}
+      <div className="bg-card border border-border rounded-lg p-4">
+        <h3 className="text-sm font-medium text-muted-foreground mb-3">
+          Broadcast Link
+        </h3>
+        <BroadcastShare sessionId={session.id} token={session.broadcast_token} />
+      </div>
+
+      {/* Channels */}
+      <div className="bg-card border border-border rounded-lg p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-semibold">Channels</h2>
+          <button
+            onClick={openCreateChannel}
+            className="bg-primary text-primary-foreground px-3 py-1.5 rounded-md text-sm font-medium hover:opacity-90"
+          >
+            + New Channel
+          </button>
+        </div>
+
+        {showChannelForm && (
+          <div className="bg-muted/40 border border-border rounded-md p-3 mb-3">
+            <h3 className="text-sm font-semibold mb-3">
+              {editingChannelId ? "Edit Channel" : "Create Channel"}
+            </h3>
+            <div className="flex items-end gap-3 flex-wrap">
+              <div className="flex-1 min-w-[160px]">
+                <label className="block text-xs text-muted-foreground mb-1">
+                  Name
+                </label>
+                <input
+                  type="text"
+                  value={channelName}
+                  onChange={(e) => setChannelName(e.target.value)}
+                  placeholder="Floor Feed"
+                  className="w-full bg-muted border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">
+                  Type
+                </label>
+                <select
+                  value={channelType}
+                  onChange={(e) => setChannelType(e.target.value as ChannelType)}
+                  className="bg-muted border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  <option value="feed">feed</option>
+                  <option value="broadcast">broadcast</option>
+                </select>
+              </div>
+              <button
+                onClick={handleSaveChannel}
+                disabled={channelBusy || !channelName.trim()}
+                className="bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-medium hover:opacity-90 disabled:opacity-50"
+              >
+                {channelBusy ? "Saving..." : editingChannelId ? "Save" : "Create"}
+              </button>
+              <button
+                onClick={resetChannelForm}
+                className="text-muted-foreground hover:text-foreground px-3 py-2 text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+            {channelError && (
+              <p className="text-xs text-red-400 mt-2">{channelError}</p>
+            )}
+          </div>
+        )}
+
         {channels.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             No channels configured for this session.
           </p>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="space-y-2">
             {channels.map((ch) => (
-              <MixPanel
+              <div
                 key={ch.id}
-                channelName={`${ch.name} — ${ch.type}`}
-                sources={panelSourcesFor(ch.id)}
-                onMuteToggle={(sourceId, muted) =>
-                  handleMuteToggle(ch.id, sourceId, muted)
-                }
-                onVolumeChange={(sourceId, volume) =>
-                  handleVolumeChange(ch.id, sourceId, volume)
-                }
-              />
+                className="flex items-center justify-between py-2 border-b border-border/50 last:border-b-0"
+              >
+                <span className="text-sm">
+                  {ch.name}
+                  <span className="text-xs text-muted-foreground ml-2 uppercase">
+                    {ch.type}
+                  </span>
+                </span>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => openEditChannel(ch)}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => handleDeleteChannel(ch.id)}
+                    className="text-xs text-red-400 hover:underline"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
             ))}
           </div>
         )}
+      </div>
+
+      {/* Assignments: ABCs & Translators */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* ABCs */}
+        <div className="bg-card border border-border rounded-lg p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-semibold">Audio Booth Connectors</h2>
+            {!addingABC && unassignedABCs.length > 0 && (
+              <button
+                onClick={() => setAddingABC(true)}
+                className="text-sm text-primary hover:underline"
+              >
+                + Assign ABC
+              </button>
+            )}
+          </div>
+
+          {addingABC && (
+            <div className="mb-3">
+              <select
+                autoFocus
+                defaultValue=""
+                onChange={(e) => e.target.value && setABCSession(e.target.value, id ?? "")}
+                onBlur={() => setAddingABC(false)}
+                className="w-full bg-muted border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                <option value="" disabled>
+                  Select an ABC to assign…
+                </option>
+                {unassignedABCs.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            {assignedABCs.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No ABCs assigned to this session.
+              </p>
+            ) : (
+              assignedABCs.map((a) => (
+                <div
+                  key={a.id}
+                  className="flex items-center justify-between py-2 border-b border-border/50 last:border-b-0"
+                >
+                  <span className="text-sm">
+                    {a.name}
+                    <span
+                      className={`text-xs ml-2 ${
+                        a.connected ? "text-green-400" : "text-gray-400"
+                      }`}
+                    >
+                      {a.connected ? "Connected" : "Offline"}
+                    </span>
+                  </span>
+                  <button
+                    onClick={() => setABCSession(a.id, "")}
+                    className="text-xs text-red-400 hover:underline"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Translators */}
+        <div className="bg-card border border-border rounded-lg p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-semibold">Translators</h2>
+            {!addingTranslator && unassignedTranslators.length > 0 && (
+              <button
+                onClick={() => setAddingTranslator(true)}
+                className="text-sm text-primary hover:underline"
+              >
+                + Assign Translator
+              </button>
+            )}
+          </div>
+
+          {addingTranslator && (
+            <div className="mb-3">
+              <select
+                autoFocus
+                defaultValue=""
+                onChange={(e) => {
+                  const t = unassignedTranslators.find(
+                    (x) => x.id === e.target.value,
+                  );
+                  if (t) assignTranslator(t);
+                }}
+                onBlur={() => setAddingTranslator(false)}
+                className="w-full bg-muted border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                <option value="" disabled>
+                  Select a translator to assign…
+                </option>
+                {unassignedTranslators.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.username}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            {assignedTranslators.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No translators assigned to this session.
+              </p>
+            ) : (
+              assignedTranslators.map((t) => (
+                <div
+                  key={t.id}
+                  className="flex items-center justify-between py-2 border-b border-border/50 last:border-b-0"
+                >
+                  <span className="text-sm">{t.username}</span>
+                  <button
+                    onClick={() => removeTranslator(t)}
+                    className="text-xs text-red-400 hover:underline"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Mix controls + monitoring */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-semibold">Mix &amp; Monitor</h2>
+          {monitorChannel && (
+            <span className="text-xs text-muted-foreground">
+              Monitoring <span className="text-foreground">{monitorChannel}</span> ·{" "}
+              {monitor.state}
+            </span>
+          )}
+        </div>
+        {audioClient && id && (
+          <SessionAudioManager
+            client={audioClient}
+            sessionId={id}
+            monitorChannel={monitorChannel}
+            onMonitorChange={setMonitorChannel}
+          />
+        )}
+        <audio ref={monitorAudioRef} autoPlay className="hidden" />
       </div>
 
       {/* Sources & Recordings */}

@@ -1,8 +1,11 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { createApiClient } from "@crosstalk/api-client";
+import { SessionAudioManager } from "@crosstalk/session-audio";
 import { useAuth } from "../hooks/useAuth";
 import { useWebRTC } from "../hooks/useWebRTC";
 import { WebRTCDebugPanel } from "../components/WebRTCDebugPanel";
+import { BroadcastShare } from "../components/BroadcastShare";
 import { VUMeter } from "../components/VUMeter";
 
 export function SessionConnectPage() {
@@ -13,22 +16,71 @@ export function SessionConnectPage() {
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>("");
   const [isConnected, setIsConnected] = useState(false);
+  const [broadcastToken, setBroadcastToken] = useState<string | null>(null);
+  // Channel the translator monitors (listens to). null → server default
+  // routing (all feed channels).
+  const [monitorChannel, setMonitorChannel] = useState<string | null>(null);
 
   const token = getToken();
+
+  const audioClient = useMemo(
+    () =>
+      token
+        ? createApiClient({ baseUrl: window.location.origin, token })
+        : null,
+    [token],
+  );
+
+  // Load the session's broadcast token so translators can share the public
+  // listener link (clickable + QR).
+  useEffect(() => {
+    if (!sessionId || !token) return;
+    const client = createApiClient({ baseUrl: window.location.origin, token });
+    client
+      .GET("/api/sessions/{id}", { params: { path: { id: sessionId } } })
+      .then(({ data }) => {
+        setBroadcastToken(data?.broadcast_token ?? null);
+      })
+      .catch(() => setBroadcastToken(null));
+  }, [sessionId, token]);
 
   // Optional SFU routing overrides via ?produce=&listen= (used for deep-linked
   // producer/listener roles and by the e2e suite). Absent → server routes by role.
   const search = new URLSearchParams(window.location.search);
   const produce = search.get("produce") ?? undefined;
-  const listen = search.get("listen") ?? undefined;
+  const listenParam = search.get("listen") ?? undefined;
+  // A deep-linked ?listen= wins; otherwise the monitor selector drives it.
+  const effectiveListen = listenParam ?? monitorChannel ?? undefined;
 
   const webrtc = useWebRTC({
     sessionId: sessionId ?? "",
     token: token ?? "",
     audioDeviceId: selectedDevice || undefined,
     produce,
-    listen,
+    listen: effectiveListen,
   });
+
+  // When the operator changes the monitored channel mid-call, transparently
+  // reconnect so the new ?listen= selector takes effect.
+  const reconnectRef = useRef(false);
+  const handleMonitorChange = useCallback(
+    (channel: string | null) => {
+      setMonitorChannel(channel);
+      if (isConnected) {
+        webrtc.disconnect();
+        reconnectRef.current = true;
+      }
+    },
+    [isConnected, webrtc],
+  );
+  useEffect(() => {
+    if (reconnectRef.current) {
+      reconnectRef.current = false;
+      void webrtc.connect();
+    }
+    // Runs after effectiveListen (monitorChannel) has updated.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [monitorChannel]);
 
   // Enumerate audio devices
   useEffect(() => {
@@ -162,11 +214,33 @@ export function SessionConnectPage() {
         </div>
       </div>
 
+      {/* Session audio: source→channel mixing + monitor selection */}
+      <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 mb-4">
+        <h2 className="text-lg font-semibold text-white mb-3">Session Audio</h2>
+        {audioClient && sessionId ? (
+          <SessionAudioManager
+            client={audioClient}
+            sessionId={sessionId}
+            monitorChannel={monitorChannel}
+            onMonitorChange={handleMonitorChange}
+          />
+        ) : (
+          <p className="text-sm text-gray-500">Sign in to manage audio.</p>
+        )}
+      </div>
+
+      {/* Broadcast link + QR */}
+      <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 mb-4">
+        <h2 className="text-lg font-semibold text-white mb-3">Broadcast Link</h2>
+        <BroadcastShare sessionId={sessionId ?? ""} token={broadcastToken} />
+      </div>
+
       {/* Debug Panel */}
       <WebRTCDebugPanel
         connectionState={webrtc.connectionState}
         iceState={webrtc.iceState}
         signalingState={webrtc.signalingState}
+        dataChannelState={webrtc.dataChannelState}
         localSdp={webrtc.localSdp}
         remoteSdp={webrtc.remoteSdp}
         candidates={webrtc.candidates}

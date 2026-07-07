@@ -468,8 +468,15 @@ func main() {
 			spiPath = "/dev/spidev0.1"
 		}
 		disp := display.NewService(spiPath, 71, 76) // DC=PC7(71), RST=PC12(76)
+		disp.SetLevelMeters(pion.InputMeter, pion.OutputMeter)
 		disp.Status().SetServer(cfg.ServerURL, "connecting")
 		client.disp = disp
+
+		// The booth mic is published continuously (WithPublishAudio → CaptureSource),
+		// which feeds InputMeter on every frame, so the input VU tracks the mic
+		// without a separate idle monitor. A second reader would contend with the
+		// single-open ALSA capture device and break the publish, so none is used.
+
 		go func() {
 			if err := disp.Run(ctx); err != nil {
 				slog.Error("display service failed", "error", err)

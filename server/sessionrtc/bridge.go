@@ -46,6 +46,14 @@ type BridgeOpts struct {
 	// Role records the source origin ("translator", "admin", "abc") for any
 	// channels this peer produces into.
 	Role string
+	// Identity is a stable, connection-independent key for the producing
+	// participant (e.g. a user ID or "abc:<id>"). Reconnects with the same
+	// Identity reuse the same Source instead of spawning a new one. When empty
+	// the (ephemeral) peer ID is used, restoring the old per-connection behavior.
+	Identity string
+	// Label is the human-friendly Source name shown in the admin mix UI. When
+	// empty a name is derived from the role and identity.
+	Label string
 	// Produce lists channel names this peer publishes audio into.
 	Produce []string
 	// Listen lists channel names this peer receives audio from.
@@ -243,7 +251,7 @@ func (f *sessionFwd) bridge(ctx context.Context, peer *webrtc.PeerConn, opts Bri
 	// Publish: register a source + mix entry per produced channel, then forward
 	// this peer's inbound RTP into those channels (gated by mute).
 	if len(produceIDs) > 0 {
-		src, err := f.ensureSource(ctx, peer.ID, opts.Role)
+		src, err := f.ensureSource(ctx, peer.ID, opts)
 		if err != nil {
 			return err
 		}
@@ -261,7 +269,7 @@ func (f *sessionFwd) bridge(ctx context.Context, peer *webrtc.PeerConn, opts Bri
 		peer.OnClose(func() {
 			_ = f.stores.Sources.Update(context.Background(), &crosstalk.Source{
 				ID: src.ID, SessionID: f.sessionID, Name: src.Name,
-				Origin: src.Origin, Connected: false,
+				Origin: src.Origin, PeerID: src.PeerID, Connected: false,
 			})
 		})
 	}
@@ -272,28 +280,81 @@ func (f *sessionFwd) bridge(ctx context.Context, peer *webrtc.PeerConn, opts Bri
 	return nil
 }
 
-// ensureSource creates (or reuses) the Source this peer publishes as.
-func (f *sessionFwd) ensureSource(ctx context.Context, peerID, role string) (*crosstalk.Source, error) {
-	origin := crosstalk.SourceOrigin(role)
+// ensureSource creates (or reuses) the Source this peer publishes as. When
+// opts.Identity is set, an existing Source with the same identity is reused
+// (marked connected again) so a translator that reconnects does not accumulate
+// a fresh source on every connect/disconnect cycle. The identity is persisted
+// in the Source's PeerID column as the durable dedup key.
+func (f *sessionFwd) ensureSource(ctx context.Context, peerID string, opts BridgeOpts) (*crosstalk.Source, error) {
+	origin := crosstalk.SourceOrigin(opts.Role)
 	switch origin {
 	case crosstalk.OriginABC, crosstalk.OriginTranslator, crosstalk.OriginAdmin:
 	default:
 		origin = crosstalk.OriginTranslator
 	}
+
+	identity := opts.Identity
+	if identity == "" {
+		// No stable identity supplied: fall back to the ephemeral peer ID,
+		// preserving the previous per-connection source behavior.
+		identity = peerID
+	}
+	label := opts.Label
+	if label == "" {
+		label = fmt.Sprintf("%s %s", opts.Role, identity)
+	}
+
+	// Reuse an existing source with the same durable identity, if any.
+	if existing := f.findSourceByIdentity(ctx, identity); existing != nil {
+		existing.Name = label
+		existing.Origin = origin
+		existing.Connected = true
+		if err := f.stores.Sources.Update(ctx, existing); err != nil {
+			return nil, fmt.Errorf("sessionrtc: reactivate source: %w", err)
+		}
+		return existing, nil
+	}
+
 	src := &crosstalk.Source{
 		ID:        ulid.Make().String(),
 		SessionID: f.sessionID,
-		// The peer ID (a ULID) is globally unique, keeping the (session, name)
-		// constraint satisfied even for same-role peers that connect together.
-		Name:      fmt.Sprintf("%s %s", role, peerID),
+		Name:      label,
 		Origin:    origin,
-		PeerID:    &peerID,
+		PeerID:    &identity,
 		Connected: true,
 	}
 	if err := f.stores.Sources.Create(ctx, src); err != nil {
+		// A concurrent connect from the same identity may have won the race and
+		// created the row first (violating UNIQUE(session, name)); reuse it.
+		if existing := f.findSourceByIdentity(ctx, identity); existing != nil {
+			existing.Connected = true
+			if uerr := f.stores.Sources.Update(ctx, existing); uerr != nil {
+				return nil, fmt.Errorf("sessionrtc: reactivate source: %w", uerr)
+			}
+			return existing, nil
+		}
 		return nil, fmt.Errorf("sessionrtc: create source: %w", err)
 	}
 	return src, nil
+}
+
+// findSourceByIdentity returns the session's source whose durable identity
+// (PeerID) matches, or nil. Errors are treated as "not found" so a lookup
+// failure degrades to creating a fresh source rather than dropping the peer.
+func (f *sessionFwd) findSourceByIdentity(ctx context.Context, identity string) *crosstalk.Source {
+	if identity == "" {
+		return nil
+	}
+	sources, err := f.stores.Sources.List(ctx, f.sessionID)
+	if err != nil {
+		return nil
+	}
+	for i := range sources {
+		if sources[i].PeerID != nil && *sources[i].PeerID == identity {
+			return &sources[i]
+		}
+	}
+	return nil
 }
 
 // ensureMixEntry makes sure (channel, source) has a mix entry (default: unmuted,

@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
@@ -57,6 +58,12 @@ type Server struct {
 	services Services
 	auth     *auth.Service
 	log      *slog.Logger
+
+	// abcPeers maps an ABC ID to its live signaling peer ID so a change to the
+	// ABC's session/monitor assignment can force the (auto-reconnecting) board
+	// to re-establish its connection and pick up the new routing.
+	abcPeersMu sync.Mutex
+	abcPeers   map[string]string
 }
 
 // NewServer creates a new API server with all routes registered.
@@ -87,6 +94,7 @@ func NewServer(cfg Config, svc Services, log *slog.Logger) *Server {
 		services: svc,
 		auth:     svc.Auth,
 		log:      log,
+		abcPeers: make(map[string]string),
 	}
 
 	s.registerRoutes()
