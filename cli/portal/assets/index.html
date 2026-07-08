@@ -74,11 +74,11 @@
 
     <label for="ssid">Network</label>
     <div class="row">
-      <select id="ssid"><option value="">Scanning…</option></select>
-      <button type="button" class="icon" id="rescan" title="Rescan">↻</button>
+      <select id="ssid"><option value="">Loading…</option></select>
+      <button type="button" class="icon" id="rescan" title="Reload list">↻</button>
     </div>
 
-    <label for="custom">Or enter a hidden network name</label>
+    <label for="custom">Network not listed? Type its name</label>
     <input id="custom" type="text" placeholder="SSID (optional)" autocapitalize="none" autocorrect="off" />
 
     <label for="pass">Password</label>
@@ -104,14 +104,14 @@
   }
 
   function scan() {
-    setStatus("Scanning for networks…", "info");
-    ssidSel.innerHTML = "<option value=''>Scanning…</option>";
+    setStatus("Loading networks…", "info");
+    ssidSel.innerHTML = "<option value=''>Loading…</option>";
     fetch("/scan").then(function (r) { return r.json(); }).then(function (d) {
       var nets = (d && d.networks) || [];
       secured = {};
       if (!nets.length) {
-        ssidSel.innerHTML = "<option value=''>No networks found</option>";
-        setStatus("No networks found. Try rescanning.", "err");
+        ssidSel.innerHTML = "<option value=''>No networks listed</option>";
+        setStatus("No networks were found in the pre-setup scan. Type your network name below.", "info");
         return;
       }
       ssidSel.innerHTML = "";

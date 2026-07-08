@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -63,39 +64,69 @@ func main() {
 		}
 	}
 
+	// Scan for networks BEFORE starting the hotspot. The single wifi radio
+	// cannot scan while it is acting as an access point, so this is the only
+	// chance to enumerate networks for the portal to display.
+	srv := portal.New(*portalAddr)
+	if nets, err := nm.Scan(ctx); err != nil {
+		slog.Warn("netcfg: pre-hotspot scan failed, portal will rely on manual entry", "error", err)
+	} else {
+		slog.Info("netcfg: scanned networks before hotspot", "count", len(nets))
+		srv.SetNetworks(nets)
+	}
+
 	if err := nm.StartHotspot(ctx, *hotspotSSID, *hotspotPass); err != nil {
 		slog.Error("netcfg: failed to start hotspot", "error", err)
 		os.Exit(1)
 	}
-	defer func() {
-		shutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := nm.StopHotspot(shutCtx); err != nil {
-			slog.Warn("netcfg: failed to stop hotspot", "error", err)
-		}
-	}()
+	var stopOnce sync.Once
+	stopHotspot := func() {
+		stopOnce.Do(func() {
+			shutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := nm.StopHotspot(shutCtx); err != nil {
+				slog.Warn("netcfg: failed to stop hotspot", "error", err)
+			}
+		})
+	}
+	defer stopHotspot()
 
-	srv := portal.New(nm, *portalAddr)
 	slog.Info("netcfg: captive portal ready",
 		"join_ssid", *hotspotSSID, "open", srv.ProbeURL())
 
-	ssid, err := srv.Run(ctx)
+	creds, err := srv.Run(ctx)
 	if err != nil && ctx.Err() == nil {
 		slog.Error("netcfg: portal error", "error", err)
 		os.Exit(1)
 	}
-	if ssid == "" {
+	if creds.SSID == "" {
 		slog.Info("netcfg: portal exited without provisioning")
 		return
 	}
 
-	slog.Info("netcfg: joined network, waiting for connectivity", "ssid", ssid)
+	// Single-radio: tear the hotspot down first so the radio can return to
+	// station mode and join the chosen network.
+	slog.Info("netcfg: credentials received, stopping hotspot to join network", "ssid", creds.SSID)
+	stopHotspot()
+
+	joinCtx, joinCancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer joinCancel()
+	if err := nm.Connect(joinCtx, creds.SSID, creds.Passphrase); err != nil {
+		// Non-fatal: exit and let systemd restart us. Since we're still offline
+		// the next run re-scans and re-raises the hotspot so the operator can
+		// retry (e.g. after a wrong password).
+		slog.Error("netcfg: failed to join network, will restart and reoffer portal",
+			"ssid", creds.SSID, "error", err)
+		os.Exit(1)
+	}
+
+	slog.Info("netcfg: joined network, waiting for connectivity", "ssid", creds.SSID)
 	confirmCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if waitOnline(confirmCtx, nm, 30*time.Second) {
-		slog.Info("netcfg: provisioning complete, online", "ssid", ssid)
+		slog.Info("netcfg: provisioning complete, online", "ssid", creds.SSID)
 	} else {
-		slog.Warn("netcfg: joined network but connectivity not confirmed", "ssid", ssid)
+		slog.Warn("netcfg: joined network but connectivity not confirmed", "ssid", creds.SSID)
 	}
 }
 
