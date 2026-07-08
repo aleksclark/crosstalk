@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>CrossTalk Setup</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #0b0f14;
+    color: #e6edf3;
+    min-height: 100vh;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 24px 16px;
+  }
+  .card {
+    width: 100%;
+    max-width: 420px;
+    background: #131a22;
+    border: 1px solid #223041;
+    border-radius: 14px;
+    padding: 22px;
+    box-shadow: 0 12px 40px rgba(0,0,0,.4);
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.sub { margin: 0 0 20px; color: #8b98a5; font-size: 14px; }
+  label { display: block; font-size: 13px; color: #b7c2cd; margin: 14px 0 6px; }
+  select, input {
+    width: 100%;
+    padding: 12px;
+    font-size: 16px;
+    background: #0b0f14;
+    border: 1px solid #2b3a4b;
+    border-radius: 9px;
+    color: #e6edf3;
+  }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row button.icon {
+    flex: 0 0 auto;
+    width: 46px; height: 46px;
+    padding: 0;
+    font-size: 18px;
+  }
+  button {
+    margin-top: 20px;
+    width: 100%;
+    padding: 13px;
+    font-size: 16px;
+    font-weight: 600;
+    background: #2f81f7;
+    color: #fff;
+    border: none;
+    border-radius: 9px;
+    cursor: pointer;
+  }
+  button.icon { margin-top: 0; background: #22303f; }
+  button:disabled { opacity: .55; cursor: default; }
+  .status { margin-top: 16px; font-size: 14px; min-height: 20px; }
+  .status.ok { color: #3fb950; }
+  .status.err { color: #f85149; }
+  .status.info { color: #d29922; }
+  .lock { color: #8b98a5; font-size: 12px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>CrossTalk Box Setup</h1>
+    <p class="sub">Choose the WiFi network this box should join.</p>
+
+    <label for="ssid">Network</label>
+    <div class="row">
+      <select id="ssid"><option value="">Scanning…</option></select>
+      <button type="button" class="icon" id="rescan" title="Rescan">↻</button>
+    </div>
+
+    <label for="custom">Or enter a hidden network name</label>
+    <input id="custom" type="text" placeholder="SSID (optional)" autocapitalize="none" autocorrect="off" />
+
+    <label for="pass">Password</label>
+    <input id="pass" type="password" placeholder="Network password" />
+
+    <button type="button" id="save">Connect</button>
+    <div class="status" id="status"></div>
+  </div>
+
+<script>
+(function () {
+  var ssidSel = document.getElementById("ssid");
+  var custom = document.getElementById("custom");
+  var pass = document.getElementById("pass");
+  var save = document.getElementById("save");
+  var rescan = document.getElementById("rescan");
+  var status = document.getElementById("status");
+  var secured = {};
+
+  function setStatus(msg, cls) {
+    status.textContent = msg;
+    status.className = "status" + (cls ? " " + cls : "");
+  }
+
+  function scan() {
+    setStatus("Scanning for networks…", "info");
+    ssidSel.innerHTML = "<option value=''>Scanning…</option>";
+    fetch("/scan").then(function (r) { return r.json(); }).then(function (d) {
+      var nets = (d && d.networks) || [];
+      secured = {};
+      if (!nets.length) {
+        ssidSel.innerHTML = "<option value=''>No networks found</option>";
+        setStatus("No networks found. Try rescanning.", "err");
+        return;
+      }
+      ssidSel.innerHTML = "";
+      nets.forEach(function (n) {
+        secured[n.SSID] = n.Secured;
+        var opt = document.createElement("option");
+        opt.value = n.SSID;
+        opt.textContent = n.SSID + (n.Secured ? " 🔒" : "") + "  (" + n.Signal + "%)";
+        ssidSel.appendChild(opt);
+      });
+      setStatus("", "");
+      syncPass();
+    }).catch(function () {
+      setStatus("Could not scan networks.", "err");
+    });
+  }
+
+  function currentSSID() {
+    return (custom.value.trim() || ssidSel.value || "").trim();
+  }
+
+  function syncPass() {
+    var s = currentSSID();
+    var needs = custom.value.trim() ? true : (s in secured ? secured[s] : true);
+    pass.disabled = !needs;
+    pass.placeholder = needs ? "Network password" : "No password required";
+  }
+
+  function connect() {
+    var ssid = currentSSID();
+    if (!ssid) { setStatus("Please choose or enter a network.", "err"); return; }
+    save.disabled = true;
+    setStatus("Connecting to " + ssid + "…", "info");
+    fetch("/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ssid: ssid, passphrase: pass.value })
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      if (d && d.error) {
+        setStatus(d.error, "err");
+        save.disabled = false;
+        return;
+      }
+      setStatus("Connecting… the box will leave this hotspot and join \"" + ssid +
+        "\". If it worked, this page will stop responding. Reconnect your phone to your normal WiFi.", "ok");
+    }).catch(function () {
+      setStatus("Request failed. Try again.", "err");
+      save.disabled = false;
+    });
+  }
+
+  ssidSel.addEventListener("change", function () { custom.value = ""; syncPass(); });
+  custom.addEventListener("input", syncPass);
+  save.addEventListener("click", connect);
+  rescan.addEventListener("click", scan);
+  scan();
+})();
+</script>
+</body>
+</html>

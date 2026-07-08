@@ -3,15 +3,15 @@ set -euo pipefail
 SSH="ssh -o ConnectTimeout=5 root@${1:?Usage: $0 <board-ip>}"
 
 echo "--- Set ahub1 to pro-audio (duplex) ---"
-$SSH 'sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 pactl set-card-profile alsa_card.platform-soc_ahub1_mach pro-audio'
+$SSH 'sudo -u app XDG_RUNTIME_DIR=/run/user/999 pactl set-card-profile alsa_card.platform-soc_ahub1_mach pro-audio'
 sleep 1
 
 echo "--- Sources ---"
-$SSH 'sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 pactl list sources short'
+$SSH 'sudo -u app XDG_RUNTIME_DIR=/run/user/999 pactl list sources short'
 
 echo ""
 echo "--- Sinks ---"
-$SSH 'sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 pactl list sinks short'
+$SSH 'sudo -u app XDG_RUNTIME_DIR=/run/user/999 pactl list sinks short'
 
 echo ""
 echo "--- ALSA capture test on ahub1 (card 2, mono) ---"

@@ -53,6 +53,16 @@ tasks:
     cmds:
       - cd cli && CGO_ENABLED=1 go build -o ../bin/ct-client ./cmd/ct-client
 
+  build:netcfg:
+    desc: Build WiFi captive-portal provisioning binary
+    cmds:
+      - cd cli && CGO_ENABLED=0 go build -o ../bin/ct-netcfg ./cmd/ct-netcfg
+
+  build:netcfg:arm64:
+    desc: Cross-compile the WiFi provisioning binary for the K2B (aarch64)
+    cmds:
+      - cd cli && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o ../bin/ct-netcfg-arm64 ./cmd/ct-netcfg
+
   # ── Lint Tasks ─────────────────────────────────────────────────
 
   lint:go:

@@ -7,7 +7,7 @@ $SSH "journalctl -u app --no-pager -l 2>/dev/null | grep -iE 'pw-cat|playback.*e
 
 echo ""
 echo "--- Test pw-cat to audiocodec directly ---"
-$SSH 'sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 bash -c '\''
+$SSH 'sudo -u app XDG_RUNTIME_DIR=/run/user/999 bash -c '\''
 echo "Test 1: pw-cat -p with --target (pro-audio name)"
 python3 -c "
 import struct, math, sys
@@ -43,8 +43,8 @@ echo "exit: $?"
 
 echo ""
 echo "--- Default sink ---"
-$SSH "sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 PULSE_RUNTIME_PATH=/run/user/999/pulse pactl get-default-sink"
+$SSH "sudo -u app XDG_RUNTIME_DIR=/run/user/999 PULSE_RUNTIME_PATH=/run/user/999/pulse pactl get-default-sink"
 
 echo ""
 echo "--- Sink node IDs ---"
-$SSH "sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 pw-cli list-objects Node 2>/dev/null | grep -B1 -A2 'Audio/Sink' | head -20"
+$SSH "sudo -u app XDG_RUNTIME_DIR=/run/user/999 pw-cli list-objects Node 2>/dev/null | grep -B1 -A2 'Audio/Sink' | head -20"

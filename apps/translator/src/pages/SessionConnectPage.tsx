@@ -1,12 +1,12 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { createApiClient } from "@crosstalk/api-client";
 import { SessionAudioManager } from "@crosstalk/session-audio";
+import { VUMeter, useAudioLevel } from "@crosstalk/theme";
 import { useAuth } from "../hooks/useAuth";
 import { useWebRTC } from "../hooks/useWebRTC";
 import { WebRTCDebugPanel } from "../components/WebRTCDebugPanel";
 import { BroadcastShare } from "../components/BroadcastShare";
-import { VUMeter } from "../components/VUMeter";
 
 export function SessionConnectPage() {
   const { id: sessionId } = useParams<{ id: string }>();
@@ -17,9 +17,6 @@ export function SessionConnectPage() {
   const [selectedDevice, setSelectedDevice] = useState<string>("");
   const [isConnected, setIsConnected] = useState(false);
   const [broadcastToken, setBroadcastToken] = useState<string | null>(null);
-  // Channel the translator monitors (listens to). null → server default
-  // routing (all feed channels).
-  const [monitorChannel, setMonitorChannel] = useState<string | null>(null);
 
   const token = getToken();
 
@@ -44,43 +41,22 @@ export function SessionConnectPage() {
       .catch(() => setBroadcastToken(null));
   }, [sessionId, token]);
 
-  // Optional SFU routing overrides via ?produce=&listen= (used for deep-linked
-  // producer/listener roles and by the e2e suite). Absent → server routes by role.
+  // Optional SFU routing overrides via ?produce=&listen= (deep links / e2e).
+  // The mic connection is produce-only by default: monitoring of every channel
+  // is handled independently by SessionAudioManager (receive-only per-channel
+  // monitors), so the mic connection does not also listen (which would double
+  // the audio). An explicit ?listen= still overrides.
   const search = new URLSearchParams(window.location.search);
   const produce = search.get("produce") ?? undefined;
-  const listenParam = search.get("listen") ?? undefined;
-  // A deep-linked ?listen= wins; otherwise the monitor selector drives it.
-  const effectiveListen = listenParam ?? monitorChannel ?? undefined;
+  const listen = search.get("listen") ?? "";
 
   const webrtc = useWebRTC({
     sessionId: sessionId ?? "",
     token: token ?? "",
     audioDeviceId: selectedDevice || undefined,
     produce,
-    listen: effectiveListen,
+    listen,
   });
-
-  // When the operator changes the monitored channel mid-call, transparently
-  // reconnect so the new ?listen= selector takes effect.
-  const reconnectRef = useRef(false);
-  const handleMonitorChange = useCallback(
-    (channel: string | null) => {
-      setMonitorChannel(channel);
-      if (isConnected) {
-        webrtc.disconnect();
-        reconnectRef.current = true;
-      }
-    },
-    [isConnected, webrtc],
-  );
-  useEffect(() => {
-    if (reconnectRef.current) {
-      reconnectRef.current = false;
-      void webrtc.connect();
-    }
-    // Runs after effectiveListen (monitorChannel) has updated.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [monitorChannel]);
 
   // Enumerate audio devices
   useEffect(() => {
@@ -116,9 +92,8 @@ export function SessionConnectPage() {
     webrtc.disconnect();
   };
 
-  // Audio level meters
+  // Mic input level (pre-transmit).
   const inputLevel = useAudioLevel(webrtc.localStream);
-  const outputLevel = useAudioLevel(webrtc.remoteStream);
 
   return (
     <div className="min-h-screen p-4 max-w-2xl mx-auto">
@@ -136,11 +111,11 @@ export function SessionConnectPage() {
 
       {/* Connection Controls */}
       <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 space-y-4 mb-4">
-        <h2 className="text-lg font-semibold text-white">Audio Connection</h2>
+        <h2 className="text-lg font-semibold text-white">Microphone</h2>
 
         {/* Mic selector */}
         <div>
-          <label className="block text-sm text-gray-400 mb-1">Microphone</label>
+          <label className="block text-sm text-gray-400 mb-1">Input device</label>
           <select
             value={selectedDevice}
             onChange={(e) => setSelectedDevice(e.target.value)}
@@ -207,22 +182,18 @@ export function SessionConnectPage() {
           </span>
         </div>
 
-        {/* VU Meters */}
-        <div className="space-y-2">
-          <VUMeter label="Input (Mic)" level={inputLevel} />
-          <VUMeter label="Output (Speaker)" level={outputLevel} />
-        </div>
+        {/* Mic input level */}
+        <VUMeter label="Input (Mic)" level={inputLevel} />
       </div>
 
-      {/* Session audio: source→channel mixing + monitor selection */}
+      {/* Session audio: monitor every channel + source→channel mixing */}
       <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 mb-4">
         <h2 className="text-lg font-semibold text-white mb-3">Session Audio</h2>
-        {audioClient && sessionId ? (
+        {audioClient && sessionId && token ? (
           <SessionAudioManager
             client={audioClient}
+            token={token}
             sessionId={sessionId}
-            monitorChannel={monitorChannel}
-            onMonitorChange={handleMonitorChange}
           />
         ) : (
           <p className="text-sm text-gray-500">Sign in to manage audio.</p>
@@ -249,56 +220,4 @@ export function SessionConnectPage() {
       />
     </div>
   );
-}
-
-// Hook for computing audio level from a MediaStream
-function useAudioLevel(stream: MediaStream | null): number {
-  const [level, setLevel] = useState(0);
-  const animFrameRef = useRef<number>(0);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const ctxRef = useRef<AudioContext | null>(null);
-
-  const update = useCallback(() => {
-    const analyser = analyserRef.current;
-    if (!analyser) {
-      setLevel(0);
-      return;
-    }
-    const data = new Uint8Array(analyser.fftSize);
-    analyser.getByteTimeDomainData(data);
-    let sum = 0;
-    for (let i = 0; i < data.length; i++) {
-      const v = (data[i]! - 128) / 128;
-      sum += v * v;
-    }
-    const rms = Math.sqrt(sum / data.length);
-    setLevel(Math.min(1, rms * 3)); // amplify for visibility
-    animFrameRef.current = requestAnimationFrame(update);
-  }, []);
-
-  useEffect(() => {
-    if (!stream || stream.getAudioTracks().length === 0) {
-      setLevel(0);
-      return;
-    }
-
-    const ctx = new AudioContext();
-    ctxRef.current = ctx;
-    const source = ctx.createMediaStreamSource(stream);
-    const analyser = ctx.createAnalyser();
-    analyser.fftSize = 256;
-    source.connect(analyser);
-    analyserRef.current = analyser;
-
-    animFrameRef.current = requestAnimationFrame(update);
-
-    return () => {
-      cancelAnimationFrame(animFrameRef.current);
-      analyserRef.current = null;
-      ctx.close();
-      ctxRef.current = null;
-    };
-  }, [stream, update]);
-
-  return level;
 }

@@ -7,7 +7,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=streamlate
+User=app
 Group=audio
 SupplementaryGroups=video spi
 
@@ -43,7 +43,7 @@ ExecStartPre=+/bin/bash -c '\
   for g in 71 76; do \
     echo $g > /sys/class/gpio/export 2>/dev/null || true ; \
     echo out > /sys/class/gpio/gpio$g/direction 2>/dev/null || true ; \
-    chown streamlate /sys/class/gpio/gpio$g/value /sys/class/gpio/gpio$g/direction 2>/dev/null || true ; \
+    chown app /sys/class/gpio/gpio$g/value /sys/class/gpio/gpio$g/direction 2>/dev/null || true ; \
   done ; \
   \
   # Set SPI device permissions \
@@ -52,13 +52,13 @@ ExecStartPre=+/bin/bash -c '\
   \
   # Ensure spi group exists and user is in it \
   groupadd -f spi 2>/dev/null || true ; \
-  usermod -aG spi streamlate 2>/dev/null || true ; \
+  usermod -aG spi app 2>/dev/null || true ; \
   \
   echo "=== Audio setup ===" ; \
   \
   # Activate PipeWire audio card profiles \
-  sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 pactl set-card-profile alsa_card.platform-5096000.codec pro-audio 2>/dev/null || true ; \
-  sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 pactl set-card-profile alsa_card.platform-soc_ahub1_mach pro-audio 2>/dev/null || true ; \
+  sudo -u app XDG_RUNTIME_DIR=/run/user/999 pactl set-card-profile alsa_card.platform-5096000.codec pro-audio 2>/dev/null || true ; \
+  sudo -u app XDG_RUNTIME_DIR=/run/user/999 pactl set-card-profile alsa_card.platform-soc_ahub1_mach pro-audio 2>/dev/null || true ; \
   \
   # Enable ALSA audiocodec DAC -> LINEOUT mixer path \
   amixer -c 1 cset numid=4 on 2>/dev/null || true ; \

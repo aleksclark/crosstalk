@@ -4,7 +4,7 @@
 - **Board**: KickPi K2B V2 (Allwinner H618, sun50iw9)
 - **SoC**: Allwinner H618 (quad Cortex-A53, 1GB RAM)
 - **Storage**: 14.5GB eMMC (mmcblk2)
-- **Network**: WiFi (brcm), no ethernet
+- **Network**: WiFi (brcm) + built-in ethernet
 - **Audio**: onboard audiocodec (card 0), HDMI (card 1), snd-aloop virtual (card 2)
 - **Kernel**: 6.12.47-current-sunxi64 (aarch64)
 - **DTB**: sun50i-h618-kickpi-k2b-v2.dtb
@@ -22,7 +22,7 @@
 
 ## SSH Access
 - Root: `ssh -i ~/.ssh/id_rsa root@<board-ip>`
-- Application user `app` (uid 999, groups: systemd-journal, audio)
+- Application user `app` (uid 999, groups: systemd-journal, audio, video, spi)
 - Lingering enabled for app user
 
 ## Audio Stack
@@ -81,8 +81,61 @@ k2b-board/scripts/provision-display-fb.sh <board-ip>
 - Binary: `/usr/local/bin/ct-client` (aarch64 static)
 - Config: `/etc/app/crosstalk.json`
 - Systemd: `/etc/systemd/system/app.service`
-- Runs as user `streamlate`, groups `audio`, `video`
+- Runs as user `app`, groups `audio`, `video`
 - Restart: `sudo systemctl restart app`
+
+## WiFi Provisioning (Captive Portal)
+
+When the box can't reach its configured WiFi network, `ct-netcfg` raises a WiFi
+hotspot and a captive-portal web UI so WiFi credentials can be entered from a
+phone. No SSH or serial console required.
+
+- Binary: `/usr/local/bin/ct-netcfg` (aarch64 static, no CGO)
+- Systemd: `/etc/systemd/system/ct-netcfg.service` (runs as `root`)
+- Code: `cli/cmd/ct-netcfg`, `cli/netcfg` (nmcli wrapper), `cli/portal` (web UI)
+
+### Flow
+1. On boot `ct-netcfg` waits up to `CT_NETCFG_ONLINE_TIMEOUT` (default 45s) for
+   NetworkManager to report full connectivity.
+2. If still offline it:
+   - brings up the wired ethernet interface in DHCP mode (`nmcli device
+     connect <eth>`) as a fallback management/connectivity path, and
+   - runs `nmcli device wifi hotspot` to bring up an AP (default SSID
+     `CrossTalk-Setup`, password `crosstalk`) and writes a wildcard DNS record
+     to `/etc/NetworkManager/dnsmasq-shared.d/ct-captive.conf` so every lookup
+     resolves to the AP — this triggers the captive-portal prompt on the phone.
+3. The portal (port 80) serves a page to scan networks and enter a password.
+   Submitting posts to `/connect`, which runs `nmcli device wifi connect`. The
+   portal is reachable both over the hotspot (`http://10.42.0.1/`) and over the
+   wired ethernet lease (logged at startup).
+4. On success the hotspot is torn down and the process exits; `app.service`
+   then reconnects to the server over the new WiFi.
+
+The unit `Restart=always`, so it keeps offering the portal until the box is
+provisioned and re-checks connectivity if WiFi drops later.
+
+### Provisioning from a phone
+1. Join the `CrossTalk-Setup` WiFi (password `crosstalk`).
+2. The captive-portal sign-in sheet opens automatically (or browse to
+   `http://10.42.0.1/`).
+3. Pick your network, enter the password, tap **Connect**.
+
+### Config (env in the unit)
+| Variable | Default | Purpose |
+|---|---|---|
+| `CT_NETCFG_HOTSPOT_SSID` | `CrossTalk-Setup` | Hotspot network name |
+| `CT_NETCFG_HOTSPOT_PASS` | `crosstalk` | Hotspot password (8+ chars, blank = open) |
+| `CT_NETCFG_PORTAL_ADDR` | `:80` | Portal listen address |
+| `CT_NETCFG_ONLINE_TIMEOUT` | `45s` | Wait for existing WiFi before starting the hotspot |
+| `CT_NETCFG_IFACE` | (auto) | Wireless interface, blank lets NM choose |
+
+### Deploy
+```bash
+task build:netcfg:arm64
+k2b-board/scripts/deploy-netcfg.sh <board-ip> bin/ct-netcfg-arm64
+```
+`provision-k2b.sh` also installs the unit; set `NETCFG_BINARY=bin/ct-netcfg-arm64`
+to deploy the binary during provisioning.
 
 ## Image Build
 - Built with Armbian build framework

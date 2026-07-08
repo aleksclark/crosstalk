@@ -3,7 +3,7 @@ set -euo pipefail
 SSH="ssh -o ConnectTimeout=5 root@${1:?Usage: $0 <board-ip>}"
 
 echo "--- Generate and play a test tone via PipeWire ---"
-$SSH 'sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 bash -c '\''
+$SSH 'sudo -u app XDG_RUNTIME_DIR=/run/user/999 bash -c '\''
 # Generate 2s of 440Hz sine wave as raw S16LE
 python3 -c "
 import struct, math, sys

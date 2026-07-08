@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/oklog/ulid/v2"
+	"github.com/pion/rtp"
 	pionwebrtc "github.com/pion/webrtc/v4"
 
 	crosstalk "github.com/aleksclark/crosstalk/server"
@@ -124,9 +125,61 @@ type sessionFwd struct {
 
 // channelHub carries one channel's forwarded audio to all subscribers via a
 // single shared local track.
+//
+// Multiple sources may forward into the same channel (e.g. a booth and a
+// translator both assigned to a broadcast channel). Their RTP streams have
+// independent sequence-number and timestamp spaces, so the hub rewrites every
+// outgoing packet into ONE continuous, monotonic stream. Without this, when a
+// source with higher sequence numbers stops, the remaining source's lower
+// sequence numbers look "stale" to the listener's jitter buffer and playback
+// stalls until the receiver is recreated (a page reload).
 type channelHub struct {
 	channel crosstalk.Channel
 	track   *pionwebrtc.TrackLocalStaticRTP
+
+	mu       sync.Mutex
+	seq      uint16
+	ts       uint32
+	haveLast bool
+	lastInTS uint32
+}
+
+// writeRTP forwards one packet onto the channel's shared track, rewriting the
+// sequence number to the hub's monotonic counter and advancing the timestamp by
+// a sane per-packet delta so the outbound stream stays continuous across source
+// switches. The incoming packet is not mutated (it may be written to several
+// hubs), so a shallow copy with a rewritten header is sent.
+func (h *channelHub) writeRTP(pkt *rtp.Packet) error {
+	seq, ts := h.nextHeader(pkt.Timestamp)
+	out := *pkt
+	out.Header = pkt.Header
+	out.Header.SequenceNumber = seq
+	out.Header.Timestamp = ts
+	return h.track.WriteRTP(&out)
+}
+
+// nextHeader advances the hub's monotonic sequence/timestamp counters for one
+// outbound packet, given the inbound packet's timestamp. Sequence numbers are
+// strictly monotonic regardless of which source fed the packet; the timestamp
+// advances by the source's own inter-packet delta when it looks sane, else by a
+// default 20ms Opus frame (covering first packet and source-switch
+// discontinuities). Split out from writeRTP so the rewrite is unit-testable.
+func (h *channelHub) nextHeader(inTS uint32) (seq uint16, ts uint32) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.seq++
+	const defaultDelta = 960 // 20ms at 48kHz
+	var delta uint32 = defaultDelta
+	if h.haveLast {
+		d := inTS - h.lastInTS   // wrap-safe (uint32)
+		if d > 0 && d <= 12000 { // up to 250ms — within one continuous source
+			delta = d
+		}
+	}
+	h.haveLast = true
+	h.lastInTS = inTS
+	h.ts += delta
+	return h.seq, h.ts
 }
 
 // resolveChannels loads the session's channels once and builds name/type
@@ -248,8 +301,11 @@ func (f *sessionFwd) bridge(ctx context.Context, peer *webrtc.PeerConn, opts Bri
 		}
 	}
 
-	// Publish: register a source + mix entry per produced channel, then forward
-	// this peer's inbound RTP into those channels (gated by mute).
+	// Publish: register a source + a mix entry per produced channel (so it is
+	// visible/controllable in the admin mix UI), then forward this peer's
+	// inbound RTP. Which channels actually receive the audio is driven by the
+	// mix table (any channel with an unmuted entry for this source), so admin/
+	// translator mix edits route audio without a reconnect.
 	if len(produceIDs) > 0 {
 		src, err := f.ensureSource(ctx, peer.ID, opts)
 		if err != nil {
@@ -264,7 +320,7 @@ func (f *sessionFwd) bridge(ctx context.Context, peer *webrtc.PeerConn, opts Bri
 			if track.Kind() != pionwebrtc.RTPCodecTypeAudio {
 				return
 			}
-			go f.forward(src.ID, produceIDs, track)
+			go f.forward(src.ID, track)
 		})
 		peer.OnClose(func() {
 			_ = f.stores.Sources.Update(context.Background(), &crosstalk.Source{
@@ -378,27 +434,33 @@ func (f *sessionFwd) ensureMixEntry(ctx context.Context, channelID, sourceID str
 	return nil
 }
 
-// forward copies RTP from a remote track into every produced channel's shared
-// track, skipping channels where this source is currently muted.
-func (f *sessionFwd) forward(sourceID string, channelIDs []string, track *pionwebrtc.TrackRemote) {
+// forward copies RTP from a remote source track into every channel that has an
+// unmuted mix entry for the source. The target set is recomputed periodically
+// so admin/translator mix edits — assigning the source to a channel, removing
+// it, or muting it — take effect without decoding or a reconnect. The mix table
+// is the single source of truth for routing.
+func (f *sessionFwd) forward(sourceID string, track *pionwebrtc.TrackRemote) {
 	f.logger.Info("sessionrtc: forwarding source track",
-		"source", sourceID, "channels", channelIDs, "codec", track.Codec().MimeType)
-	// Cache of muted state per channel, refreshed periodically so admin mute
-	// changes take effect without decoding or reconnecting.
-	muted := make(map[string]bool, len(channelIDs))
+		"source", sourceID, "codec", track.Codec().MimeType)
+
+	// active is the set of channel IDs currently receiving this source.
+	var active []string
 	var lastRefresh time.Time
 	refresh := func() {
-		for _, chID := range channelIDs {
+		var next []string
+		for _, chID := range f.allChannelIDs() {
 			entries, err := f.stores.Mix.GetMix(context.Background(), chID)
 			if err != nil {
 				continue
 			}
 			for _, e := range entries {
-				if e.SourceID == sourceID {
-					muted[chID] = e.Muted
+				if e.SourceID == sourceID && !e.Muted {
+					next = append(next, chID)
+					break
 				}
 			}
 		}
+		active = next
 		lastRefresh = time.Now()
 	}
 	refresh()
@@ -412,13 +474,21 @@ func (f *sessionFwd) forward(sourceID string, channelIDs []string, track *pionwe
 		if time.Since(lastRefresh) > 500*time.Millisecond {
 			refresh()
 		}
-		for _, chID := range channelIDs {
-			if muted[chID] {
-				continue
-			}
+		for _, chID := range active {
 			if h := f.hub(chID); h != nil {
-				_ = h.track.WriteRTP(pkt)
+				_ = h.writeRTP(pkt)
 			}
 		}
 	}
+}
+
+// allChannelIDs returns a snapshot of the session's resolved channel IDs.
+func (f *sessionFwd) allChannelIDs() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]string, 0, len(f.channels))
+	for id := range f.channels {
+		out = append(out, id)
+	}
+	return out
 }

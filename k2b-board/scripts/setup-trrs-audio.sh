@@ -12,24 +12,24 @@ export XDG_RUNTIME_DIR=/run/user/999
 export PULSE_RUNTIME_PATH=/run/user/999/pulse
 
 # Activate audiocodec card with pro-audio profile (TRRS jack)
-sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 pactl set-card-profile alsa_card.platform-5096000.codec pro-audio
+sudo -u app XDG_RUNTIME_DIR=/run/user/999 pactl set-card-profile alsa_card.platform-5096000.codec pro-audio
 echo "Activated audiocodec card (pro-audio)"
 
 # Check what appeared
 echo ""
 echo "--- Sinks ---"
-sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 pactl list sinks short
+sudo -u app XDG_RUNTIME_DIR=/run/user/999 pactl list sinks short
 echo ""
 echo "--- Sources ---"
-sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 pactl list sources short
+sudo -u app XDG_RUNTIME_DIR=/run/user/999 pactl list sources short
 echo ""
 echo "--- Quick capture test from audiocodec ---"
-sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 timeout 1 pw-record --target=alsa_output.platform-5096000.codec.pro-output-0 /dev/null 2>&1 || true
-sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 timeout 1 pw-record /dev/null 2>&1 | head -3 || true
+sudo -u app XDG_RUNTIME_DIR=/run/user/999 timeout 1 pw-record --target=alsa_output.platform-5096000.codec.pro-output-0 /dev/null 2>&1 || true
+sudo -u app XDG_RUNTIME_DIR=/run/user/999 timeout 1 pw-record /dev/null 2>&1 | head -3 || true
 
 echo ""
 echo "--- Full source/sink names ---"
-sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 pactl list sinks 2>/dev/null | grep -E "Name:|Description:"
+sudo -u app XDG_RUNTIME_DIR=/run/user/999 pactl list sinks 2>/dev/null | grep -E "Name:|Description:"
 echo "---"
-sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 pactl list sources 2>/dev/null | grep -E "Name:|Description:"
+sudo -u app XDG_RUNTIME_DIR=/run/user/999 pactl list sources 2>/dev/null | grep -E "Name:|Description:"
 '

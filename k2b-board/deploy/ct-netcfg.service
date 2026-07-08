@@ -1,0 +1,29 @@
+[Unit]
+Description=CrossTalk WiFi Provisioning (captive portal)
+Documentation=file:///opt/crosstalk/k2b-board/docs/README.md
+# Start after NetworkManager is available. This runs alongside the main app
+# service: if the box has no WiFi connectivity it raises a hotspot + captive
+# portal so an operator can enter WiFi credentials from a phone. Once the box
+# joins a network the hotspot is torn down and this unit exits cleanly.
+After=NetworkManager.service
+Wants=NetworkManager.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+# Must run as root to control NetworkManager and write the captive dnsmasq
+# redirect under /etc/NetworkManager/dnsmasq-shared.d.
+User=root
+ExecStart=/usr/local/bin/ct-netcfg
+Environment=CT_NETCFG_HOTSPOT_SSID=CrossTalk-Setup
+Environment=CT_NETCFG_HOTSPOT_PASS=crosstalk
+Environment=CT_NETCFG_PORTAL_ADDR=:80
+Environment=CT_NETCFG_ONLINE_TIMEOUT=45s
+Environment=CT_NETCFG_LOG_LEVEL=info
+# Retry periodically so the box keeps offering the portal until it is
+# provisioned, and re-checks connectivity if WiFi drops later.
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target

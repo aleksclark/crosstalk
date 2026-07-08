@@ -3,7 +3,7 @@ set -euo pipefail
 SSH="ssh -o ConnectTimeout=5 root@${1:?Usage: $0 <board-ip>}"
 
 echo "--- PipeWire card profiles ---"
-$SSH "sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 PULSE_RUNTIME_PATH=/run/user/999/pulse pactl list cards 2>/dev/null"
+$SSH "sudo -u app XDG_RUNTIME_DIR=/run/user/999 PULSE_RUNTIME_PATH=/run/user/999/pulse pactl list cards 2>/dev/null"
 
 echo ""
 echo "--- ALSA capture test on audiocodec (card 1) ---"
@@ -17,4 +17,4 @@ $SSH "ls -la /tmp/alsa-test2.wav 2>/dev/null; rm -f /tmp/alsa-test2.wav"
 
 echo ""
 echo "--- Set ahub1 profile to duplex ---"
-$SSH "sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 PULSE_RUNTIME_PATH=/run/user/999/pulse pactl list cards short 2>/dev/null"
+$SSH "sudo -u app XDG_RUNTIME_DIR=/run/user/999 PULSE_RUNTIME_PATH=/run/user/999/pulse pactl list cards short 2>/dev/null"

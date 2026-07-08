@@ -130,7 +130,7 @@ echo "Configuring systemd drop-in for app.service..."
 $SSH "mkdir -p /etc/systemd/system/app.service.d"
 $SSH "cat > /etc/systemd/system/app.service.d/crosstalk.conf" <<EOUNIT
 [Service]
-User=streamlate
+User=app
 Environment=CROSSTALK_CONFIG=${K2B_CFG}
 Environment=XDG_RUNTIME_DIR=/run/user/999
 EOUNIT

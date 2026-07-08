@@ -1,0 +1,28 @@
+{
+  "name": "@crosstalk/theme",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    },
+    "./theme.css": "./theme.css",
+    "./preset": {
+      "types": "./tailwind-preset.d.ts",
+      "import": "./tailwind-preset.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "react": "^18.3.1",
+    "typescript": "^5.7.0"
+  }
+}

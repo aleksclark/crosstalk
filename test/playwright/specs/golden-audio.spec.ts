@@ -32,6 +32,7 @@ import {
   makeToneWav,
   installInboundAudioCapture,
   dominantFrequency,
+  dominantFrequencies,
   expectTone,
 } from "../helpers";
 
@@ -162,19 +163,29 @@ test.describe("Golden Audio — SPA-driven end-to-end", () => {
     await transPage.waitForTimeout(4000);
 
     // ══ 5. Verify the correct tone reached each destination ════════════════
-    const heardByTranslator = await dominantFrequency(transPage, 2500);
+    // The translator monitors every session channel, so it receives multiple
+    // inbound streams (the floor feed AND the broadcast it produces into).
+    // Assert the floor tone is present among them (the floor→feed→translator
+    // hop works).
+    const translatorTones = await dominantFrequencies(transPage, 2500);
     const heardByListener = await dominantFrequency(listenPage, 2500);
 
     // eslint-disable-next-line no-console
     console.log(
-      `translator heard ${heardByTranslator.hz}Hz; broadcast heard ${heardByListener.hz}Hz`,
+      `translator streams heard ${translatorTones.join(", ")}Hz; broadcast heard ${heardByListener.hz}Hz`,
     );
 
-    expectTone(heardByTranslator.hz, FLOOR_HZ, "translator (feed)");
+    const translatorHeardFloor = translatorTones.some(
+      (hz) => Math.abs(hz - FLOOR_HZ) <= 25,
+    );
+    expect(
+      translatorHeardFloor,
+      `translator (feed): expected a ~${FLOOR_HZ}Hz stream among [${translatorTones.join(", ")}]`,
+    ).toBe(true);
+
     expectTone(heardByListener.hz, TRANSLATOR_HZ, "broadcast");
 
-    // Correct-destination: tones must not be swapped across channels.
-    expect(Math.abs(heardByTranslator.hz - TRANSLATOR_HZ)).toBeGreaterThan(25);
+    // Correct-destination: the floor tone must not leak onto the broadcast.
     expect(Math.abs(heardByListener.hz - FLOOR_HZ)).toBeGreaterThan(25);
 
     await Promise.all([

@@ -84,14 +84,20 @@ func (s *Server) reconnectABC(abcID string) {
 
 // abcMonitorSelectors returns the Listen channel selectors for an ABC. When a
 // specific monitor channel is set (and still exists), the ABC listens only to
-// that channel by name; otherwise it falls back to all broadcast channels.
+// that channel by name. When no monitor channel is set, the ABC listens to
+// nothing ("None") — it purely produces its mic into the session. This avoids a
+// default self-loopback and keeps the booth's single audio m-line free to
+// reliably carry its mic upstream.
 func (s *Server) abcMonitorSelectors(ctx context.Context, abc *crosstalk.ABC) []string {
-	if abc != nil && abc.MonitorChannelID != nil && *abc.MonitorChannelID != "" && s.services.Channels != nil {
+	if abc == nil || abc.MonitorChannelID == nil || *abc.MonitorChannelID == "" {
+		return nil
+	}
+	if s.services.Channels != nil {
 		if ch, err := s.services.Channels.Get(ctx, *abc.MonitorChannelID); err == nil && ch != nil {
 			return []string{ch.Name}
 		}
 	}
-	return []string{"type:broadcast"}
+	return nil
 }
 
 // mountWebRTC wires the WebRTC signaling endpoints and the admin debug API onto

@@ -5,6 +5,13 @@ import tailwindcss from "@tailwindcss/vite";
 export default defineConfig({
   base: "/broadcast/",
   plugins: [react(), tailwindcss()],
+  // Ensure a single React instance across the app and workspace packages
+  // (@crosstalk/theme). Without this a second React copy is bundled and its
+  // hooks run with a null dispatcher ("Cannot read properties of null
+  // (reading 'useState')").
+  resolve: {
+    dedupe: ["react", "react-dom"],
+  },
   build: {
     outDir: "dist",
     sourcemap: true,

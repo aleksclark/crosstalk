@@ -7,7 +7,7 @@ for vol in 31 20 15 10 5; do
     echo ""
     echo "=== LINEOUT volume: $vol ==="
     $SSH "amixer -c 1 cset numid=2 $vol >/dev/null"
-    $SSH 'sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 bash -c '\''
+    $SSH 'sudo -u app XDG_RUNTIME_DIR=/run/user/999 bash -c '\''
 python3 -c "
 import struct, math, sys
 rate=48000; freq=440; dur=2

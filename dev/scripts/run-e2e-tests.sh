@@ -14,7 +14,7 @@
 #
 # Environment:
 #   K2B_HOST      Board IP          (default 192.168.0.109)
-#   K2B_USER      PipeWire user     (default streamlate)
+#   K2B_USER      PipeWire user     (default app)
 #   HOST_IP       Host IP reachable from K2B (auto-detected)
 #   E2E_THRESHOLD Cross-corr pass   (default 0.90)
 #   E2E_KEEP_TMP  Set to 1 to keep temp dir
@@ -32,7 +32,7 @@ die()   { fail "$*"; exit 1; }
 
 # ── Configuration ────────────────────────────────────────────────────────────
 K2B_HOST="${K2B_HOST:-192.168.0.109}"
-K2B_USER="${K2B_USER:-streamlate}"
+K2B_USER="${K2B_USER:-app}"
 K2B_UID=999
 THRESHOLD="${E2E_THRESHOLD:-0.90}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

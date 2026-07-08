@@ -273,6 +273,81 @@ export function expectTone(
   ).toBeLessThanOrEqual(tolHz);
 }
 
+/**
+ * Analyze EVERY inbound audio stream and return each one's dominant frequency
+ * in Hz. Used when a page monitors multiple channels at once (e.g. the
+ * translator, which monitors every session channel) so a test can assert a
+ * given tone is present among the received streams rather than assuming a
+ * single stream.
+ */
+export async function dominantFrequencies(
+  page: Page,
+  windowMs = 2000,
+): Promise<number[]> {
+  return page.evaluate(async (windowMsInner) => {
+    // @ts-expect-error test-only global
+    const streams: MediaStream[] = window.__ctInboundStreams || [];
+    if (streams.length === 0) return [];
+
+    const AudioCtx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext })
+        .webkitAudioContext;
+    const ctx = new AudioCtx();
+    if (ctx.state === "suspended") await ctx.resume();
+
+    const analysers = streams.map((stream) => {
+      const src = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 8192;
+      src.connect(analyser);
+      const silent = ctx.createGain();
+      silent.gain.value = 0;
+      analyser.connect(silent);
+      silent.connect(ctx.destination);
+      return analyser;
+    });
+
+    const bins = analysers[0]!.frequencyBinCount;
+    const binHz = ctx.sampleRate / analysers[0]!.fftSize;
+    const minBin = Math.ceil(150 / binHz);
+    const data = new Float32Array(bins);
+    const counts = analysers.map(() => new Map<number, number>());
+
+    const start = performance.now();
+    while (performance.now() - start < windowMsInner) {
+      analysers.forEach((analyser, idx) => {
+        analyser.getFloatFrequencyData(data);
+        let maxDb = -Infinity;
+        let maxBin = 0;
+        for (let i = minBin; i < bins; i++) {
+          if (data[i] > maxDb) {
+            maxDb = data[i];
+            maxBin = i;
+          }
+        }
+        if (maxDb > -90) {
+          counts[idx]!.set(maxBin, (counts[idx]!.get(maxBin) ?? 0) + 1);
+        }
+      });
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    ctx.close();
+
+    return counts.map((c) => {
+      let modalBin = 0;
+      let best = 0;
+      for (const [bin, n] of c) {
+        if (n > best) {
+          best = n;
+          modalBin = bin;
+        }
+      }
+      return Math.round(modalBin * binHz);
+    });
+  }, windowMs);
+}
+
 /** Diagnostic: report the last peer connection's state + RTP byte counters. */
 export async function rtcReport(page: Page): Promise<string> {
   return page.evaluate(async () => {

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { VUMeter } from "@crosstalk/theme";
 import { parseBroadcastParams } from "./params";
 import { fetchBroadcastInfo, BroadcastApiError, type BroadcastInfo } from "./api";
 import { useBroadcastListener } from "./use-broadcast-listener";
@@ -124,6 +125,12 @@ function ListenerView({ sessionId, token, info, listening, onListen, debug }: Li
             >
               {broadcast.paused ? "▶ Resume" : "⏸ Pause"}
             </button>
+
+            {/* Signal level (measured before the volume control) */}
+            <div className="space-y-2">
+              <span className="text-sm text-slate-400">Signal</span>
+              <VUMeter level={broadcast.level} showValue={false} />
+            </div>
 
             {/* Volume */}
             <div className="space-y-2">

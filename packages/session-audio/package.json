@@ -16,7 +16,8 @@
     "react": ">=18"
   },
   "dependencies": {
-    "@crosstalk/api-client": "workspace:*"
+    "@crosstalk/api-client": "workspace:*",
+    "@crosstalk/theme": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",

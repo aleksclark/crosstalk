@@ -15,19 +15,19 @@ $SSH "cat /proc/asound/pcm"
 
 echo ""
 echo "--- PipeWire sinks ---"
-$SSH "sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 PULSE_RUNTIME_PATH=/run/user/999/pulse pactl list sinks short"
+$SSH "sudo -u app XDG_RUNTIME_DIR=/run/user/999 PULSE_RUNTIME_PATH=/run/user/999/pulse pactl list sinks short"
 
 echo ""
 echo "--- PipeWire sources ---"
-$SSH "sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 PULSE_RUNTIME_PATH=/run/user/999/pulse pactl list sources short"
+$SSH "sudo -u app XDG_RUNTIME_DIR=/run/user/999 PULSE_RUNTIME_PATH=/run/user/999/pulse pactl list sources short"
 
 echo ""
 echo "--- PipeWire cards ---"
-$SSH "sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 PULSE_RUNTIME_PATH=/run/user/999/pulse pactl list cards short"
+$SSH "sudo -u app XDG_RUNTIME_DIR=/run/user/999 PULSE_RUNTIME_PATH=/run/user/999/pulse pactl list cards short"
 
 echo ""
 echo "--- PipeWire card details (USB) ---"
-$SSH "sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 PULSE_RUNTIME_PATH=/run/user/999/pulse pactl list cards 2>/dev/null | grep -A30 -i usb || echo '(no USB card found in pactl)'"
+$SSH "sudo -u app XDG_RUNTIME_DIR=/run/user/999 PULSE_RUNTIME_PATH=/run/user/999/pulse pactl list cards 2>/dev/null | grep -A30 -i usb || echo '(no USB card found in pactl)'"
 
 echo ""
 echo "--- ALSA USB mixer ---"

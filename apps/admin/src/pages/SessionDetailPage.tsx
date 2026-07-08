@@ -1,8 +1,8 @@
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { getApiClient } from "../lib/api";
-import { SessionAudioManager, useChannelMonitor } from "@crosstalk/session-audio";
+import { SessionAudioManager } from "@crosstalk/session-audio";
 import { BroadcastShare } from "../components/BroadcastShare";
 import type { components } from "@crosstalk/api-client";
 
@@ -39,30 +39,12 @@ export function SessionDetailPage() {
   const [addingABC, setAddingABC] = useState(false);
   const [addingTranslator, setAddingTranslator] = useState(false);
 
-  // Channel being monitored (listened to) by the admin, if any.
-  const [monitorChannel, setMonitorChannel] = useState<string | null>(null);
-
   // A stable, authenticated client shared with SessionAudioManager so its
   // fetch/persist reuse the same error handling.
   const audioClient = useMemo(
     () => (token ? getApiClient(token) : null),
     [token],
   );
-
-  const monitorAudioRef = useRef<HTMLAudioElement | null>(null);
-  const monitor = useChannelMonitor({
-    sessionId: id ?? "",
-    token: token ?? "",
-    channel: monitorChannel,
-  });
-
-  useEffect(() => {
-    const el = monitorAudioRef.current;
-    if (el && monitor.stream) {
-      el.srcObject = monitor.stream;
-      void el.play().catch(() => {});
-    }
-  }, [monitor.stream]);
 
   const fetchAll = useCallback(async () => {
     if (!token || !id) return;
@@ -508,24 +490,14 @@ export function SessionDetailPage() {
 
       {/* Mix controls + monitoring */}
       <div>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold">Mix &amp; Monitor</h2>
-          {monitorChannel && (
-            <span className="text-xs text-muted-foreground">
-              Monitoring <span className="text-foreground">{monitorChannel}</span> ·{" "}
-              {monitor.state}
-            </span>
-          )}
-        </div>
-        {audioClient && id && (
+        <h2 className="text-lg font-semibold mb-3">Mix &amp; Monitor</h2>
+        {audioClient && id && token && (
           <SessionAudioManager
             client={audioClient}
+            token={token}
             sessionId={id}
-            monitorChannel={monitorChannel}
-            onMonitorChange={setMonitorChannel}
           />
         )}
-        <audio ref={monitorAudioRef} autoPlay className="hidden" />
       </div>
 
       {/* Sources & Recordings */}

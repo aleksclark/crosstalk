@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useAudioLevel } from "@crosstalk/theme";
 import type { BroadcastInfo } from "./api";
 
 export type ConnectionState = "idle" | "connecting" | "live" | "error" | "closed";
@@ -26,6 +27,9 @@ export interface UseBroadcastListenerReturn {
   paused: boolean;
   togglePause: () => void;
   listenerCount: number;
+  // Received-signal level (0..1), measured PRIOR to the volume control so the
+  // meter reflects the incoming broadcast regardless of local volume.
+  level: number;
   debugInfo: DebugInfo;
 }
 
@@ -59,14 +63,12 @@ export function useBroadcastListener(
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const gainRef = useRef<GainNode | null>(null);
-  const audioCtxRef = useRef<AudioContext | null>(null);
+  // The raw received stream, tapped for the pre-volume level meter.
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const level = useAudioLevel(stream);
 
   const setVolume = useCallback((v: number) => {
     setVolumeState(v);
-    if (gainRef.current) {
-      gainRef.current.gain.value = v;
-    }
     if (audioRef.current) {
       audioRef.current.volume = v;
     }
@@ -129,35 +131,22 @@ export function useBroadcastListener(
     pc.ontrack = (e) => {
       const stream = e.streams[0] ?? new MediaStream([e.track]);
 
-      // Create audio element for playback
+      // Play through a single HTML audio element. Volume (0–1) is handled by
+      // the element's own gain. A previous version ALSO routed the same stream
+      // through a Web Audio graph to ctx.destination, which produced two
+      // simultaneous playbacks of the same audio — the source of the echo.
       const audio = new Audio();
       audio.srcObject = stream;
       audio.volume = volume;
       audioRef.current = audio;
 
-      // iOS: resume AudioContext on user gesture (already handled by Listen button)
+      // Autoplay is unlocked by the user's Listen-button gesture.
       void audio.play().catch(() => {
-        // Will be resumed by user interaction
+        // Will be resumed by user interaction.
       });
 
-      // Try AudioContext for gain control
-      try {
-        const ctx = new AudioContext();
-        audioCtxRef.current = ctx;
-        const source = ctx.createMediaStreamSource(stream);
-        const gain = ctx.createGain();
-        gain.gain.value = volume;
-        gainRef.current = gain;
-        source.connect(gain);
-        gain.connect(ctx.destination);
-
-        // iOS AudioContext resume
-        if (ctx.state === "suspended") {
-          void ctx.resume();
-        }
-      } catch {
-        // Fallback to HTML Audio element (already set up)
-      }
+      // Expose the raw stream for the pre-volume level meter.
+      setStream(stream);
     };
 
     // WebSocket signaling
@@ -216,12 +205,10 @@ export function useBroadcastListener(
       ws.close();
       pc.close();
       audioRef.current?.pause();
-      audioCtxRef.current?.close().catch(() => {});
       pcRef.current = null;
       wsRef.current = null;
       audioRef.current = null;
-      gainRef.current = null;
-      audioCtxRef.current = null;
+      setStream(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, sessionId, token]);
@@ -234,6 +221,7 @@ export function useBroadcastListener(
     paused,
     togglePause,
     listenerCount,
+    level,
     debugInfo,
   };
 }

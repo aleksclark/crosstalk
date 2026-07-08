@@ -17,5 +17,5 @@ amixer -c 1 contents | grep -A2 "Output Mixer\|LINEOUT"
 
 echo ""
 echo "--- Test: play a tone to audiocodec ---"
-$SSH 'sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 timeout 3 speaker-test -D alsa_output.platform-5096000.codec.pro-output-0 -t sine -f 440 -l 1 2>&1 | head -5 || echo "speaker-test not available, trying pw-play..."'
-$SSH 'sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 timeout 3 pw-play --target=alsa_output.platform-5096000.codec.pro-output-0 /usr/share/sounds/alsa/Front_Left.wav 2>&1 || echo "pw-play test done"'
+$SSH 'sudo -u app XDG_RUNTIME_DIR=/run/user/999 timeout 3 speaker-test -D alsa_output.platform-5096000.codec.pro-output-0 -t sine -f 440 -l 1 2>&1 | head -5 || echo "speaker-test not available, trying pw-play..."'
+$SSH 'sudo -u app XDG_RUNTIME_DIR=/run/user/999 timeout 3 pw-play --target=alsa_output.platform-5096000.codec.pro-output-0 /usr/share/sounds/alsa/Front_Left.wav 2>&1 || echo "pw-play test done"'

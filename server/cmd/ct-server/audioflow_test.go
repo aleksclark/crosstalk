@@ -463,11 +463,122 @@ func TestIntegrationTranslatorMonitorKeepsProducing(t *testing.T) {
 	assert.Greater(t, bcastRatio, 3.0, "translator tone should dominate on the broadcast")
 }
 
+// TestIntegrationMixAssignmentRoutesAudio proves that assigning a source to a
+// channel via the mix API actually routes its audio there — the fix for
+// "K2B is a source for Main and Translated but is only heard on Main". A booth
+// source produces into the feed; adding it to the broadcast channel's mix makes
+// its audio reach broadcast listeners, without the source reconnecting.
+func TestIntegrationMixAssignmentRoutesAudio(t *testing.T) {
+	env := setupIntegrationServer(t)
+	ctx := context.Background()
+
+	env.createAdminUser(t, "admin", "admin-pass-123")
+	adminToken := env.login(t, "admin", "admin-pass-123")
+
+	session := createSession(t, env, adminToken, "Mix Routing Session")
+	feedCh := createChannel(t, env, adminToken, session.ID, "Floor Feed", "feed")
+	broadcastCh := createChannel(t, env, adminToken, session.ID, "English Broadcast", "broadcast")
+
+	wsBase := strings.Replace(env.server.URL, "http://", "ws://", 1) + "/api/sessions/" + session.ID + "/ws"
+
+	// Booth-like source: produces into the feed only (explicit empty listen so
+	// it is a pure producer, like the real ABC path).
+	boothWS := fmt.Sprintf("%s?produce=%s&listen=", wsBase, url.QueryEscape(feedCh.Name))
+	booth := newMediaClient(t, "booth", boothWS)
+
+	// Wait for the booth's source to be registered, then assign it to the
+	// broadcast channel's mix (unmuted) — as the admin/translator UI does.
+	var boothSrcID string
+	require.Eventually(t, func() bool {
+		srcs, err := env.sources.List(ctx, session.ID)
+		if err != nil || len(srcs) == 0 {
+			return false
+		}
+		boothSrcID = srcs[0].ID
+		return true
+	}, 3*time.Second, 50*time.Millisecond, "booth source should register")
+
+	resp := env.doRequest(t, http.MethodPut,
+		"/api/sessions/"+session.ID+"/channels/"+broadcastCh.ID+"/mix", adminToken,
+		fmt.Sprintf(`{"entries":[{"source_id":%q,"muted":false,"level":1}]}`, boothSrcID))
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.Body.Close()
+
+	// A broadcast listener should now hear the booth on the broadcast channel,
+	// even though the booth only ever "produced" into the feed.
+	broadcastWS := fmt.Sprintf("%s?listen=%s", wsBase, url.QueryEscape(broadcastCh.Name))
+	broadcast := newMediaClient(t, "broadcast", broadcastWS)
+
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	boothTone := toneMenu[rng.Intn(len(toneMenu))]
+	t.Logf("Booth tone=%.0fHz", boothTone)
+
+	const frames = 100
+	streamCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go booth.stream(streamCtx, boothTone, frames)
+	time.Sleep(2500 * time.Millisecond)
+
+	bcastSamples := broadcast.captured()
+	require.Greater(t, len(bcastSamples), mixer.FrameSize*10,
+		"broadcast received too little audio — mix assignment did not route it")
+	bcastTone, bcastRatio := detectTone(bcastSamples, toneMenu)
+	t.Logf("broadcast detected=%.0fHz (ratio %.1f)", bcastTone, bcastRatio)
+	assert.Equal(t, boothTone, bcastTone,
+		"broadcast should hear the booth after it is assigned to the broadcast mix")
+	assert.Greater(t, bcastRatio, 3.0, "booth tone should dominate on the broadcast")
+}
+
+// TestIntegrationProduceAndMonitorSameChannel reproduces the K2B scenario:
+// a source that produces into a channel AND monitors (listens to) that same
+// channel via one sendrecv m-line. The server must still receive the source's
+// track and forward it, so a separate listener on that channel hears it.
+func TestIntegrationProduceAndMonitorSameChannel(t *testing.T) {
+	env := setupIntegrationServer(t)
+	ctx := context.Background()
+
+	env.createAdminUser(t, "admin", "admin-pass-123")
+	adminToken := env.login(t, "admin", "admin-pass-123")
+
+	session := createSession(t, env, adminToken, "Self Monitor Session")
+	feedCh := createChannel(t, env, adminToken, session.ID, "Floor Feed", "feed")
+
+	wsBase := strings.Replace(env.server.URL, "http://", "ws://", 1) + "/api/sessions/" + session.ID + "/ws"
+
+	// Source both produces into and listens to the same feed channel.
+	srcWS := fmt.Sprintf("%s?produce=%s&listen=%s",
+		wsBase, url.QueryEscape(feedCh.Name), url.QueryEscape(feedCh.Name))
+	producer := newMediaClient(t, "booth", srcWS)
+
+	// A separate listener on the same feed should hear the producer.
+	listenWS := fmt.Sprintf("%s?produce=&listen=%s", wsBase, url.QueryEscape(feedCh.Name))
+	listener := newMediaClient(t, "listener", listenWS)
+
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	tone := toneMenu[rng.Intn(len(toneMenu))]
+	t.Logf("Booth tone=%.0fHz", tone)
+
+	const frames = 100
+	streamCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go producer.stream(streamCtx, tone, frames)
+	time.Sleep(2500 * time.Millisecond)
+
+	samples := listener.captured()
+	require.Greater(t, len(samples), mixer.FrameSize*10,
+		"listener received too little audio — producer track not forwarded")
+	got, ratio := detectTone(samples, toneMenu)
+	t.Logf("listener detected=%.0fHz (ratio %.1f)", got, ratio)
+	assert.Equal(t, tone, got,
+		"listener should hear a source that also monitors its own channel")
+	assert.Greater(t, ratio, 3.0, "producer tone should dominate")
+}
+
 // ── REST helpers ──────────────────────────────────────────────────────────
+
 type sessionResp struct {
 	ID string `json:"id"`
 }
-
 type channelResp struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`

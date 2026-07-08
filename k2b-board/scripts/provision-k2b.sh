@@ -61,6 +61,28 @@ echo "Installing systemd service..."
 $SCP "${SCRIPT_DIR}/deploy/app.service" "root@${BOARD_IP}:/etc/systemd/system/app.service"
 $SSH "systemctl daemon-reload && systemctl enable app"
 
+# 7b. Install WiFi captive-portal provisioning service.
+# Lets an operator configure WiFi from a phone when the box can't reach the
+# configured network. NETCFG_BINARY may point at a prebuilt ct-netcfg
+# (e.g. bin/ct-netcfg-arm64 from `task build:netcfg:arm64`).
+echo "Installing WiFi provisioning service..."
+NETCFG_BINARY="${NETCFG_BINARY:-}"
+if [ -n "$NETCFG_BINARY" ]; then
+    $SCP "$NETCFG_BINARY" "root@${BOARD_IP}:/usr/local/bin/ct-netcfg"
+    $SSH "chmod +x /usr/local/bin/ct-netcfg"
+fi
+$SCP "${SCRIPT_DIR}/deploy/ct-netcfg.service" "root@${BOARD_IP}:/etc/systemd/system/ct-netcfg.service"
+$SSH "
+systemctl daemon-reload
+systemctl enable ct-netcfg
+if [ -x /usr/local/bin/ct-netcfg ]; then
+    systemctl restart ct-netcfg
+    echo 'WiFi provisioning service started.'
+else
+    echo 'No ct-netcfg binary — build with: task build:netcfg:arm64, then set NETCFG_BINARY.'
+fi
+"
+
 # 8. Start service (only if binary exists)
 $SSH "
 if [ -x /usr/local/bin/app ]; then

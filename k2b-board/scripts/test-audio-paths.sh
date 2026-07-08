@@ -11,19 +11,19 @@ for i in range(r*d):
 "'
 
 echo "=== Test 1: pro-audio profile (current) ==="
-$SSH "sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 PULSE_RUNTIME_PATH=/run/user/999/pulse pactl list cards short"
-$SSH "sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 PULSE_RUNTIME_PATH=/run/user/999/pulse pactl list sinks short"
-$SSH "sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 bash -c '$TONE | timeout 3 pw-cat -p --format=s16 --rate=48000 --channels=1 - 2>/dev/null'" || true
+$SSH "sudo -u app XDG_RUNTIME_DIR=/run/user/999 PULSE_RUNTIME_PATH=/run/user/999/pulse pactl list cards short"
+$SSH "sudo -u app XDG_RUNTIME_DIR=/run/user/999 PULSE_RUNTIME_PATH=/run/user/999/pulse pactl list sinks short"
+$SSH "sudo -u app XDG_RUNTIME_DIR=/run/user/999 bash -c '$TONE | timeout 3 pw-cat -p --format=s16 --rate=48000 --channels=1 - 2>/dev/null'" || true
 echo "(listen...)"
 sleep 2
 
 echo ""
 echo "=== Test 2: switch audiocodec to off, use ahub1 for output ==="
-$SSH "sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 PULSE_RUNTIME_PATH=/run/user/999/pulse pactl set-card-profile alsa_card.platform-5096000.codec off"
-$SSH "sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 PULSE_RUNTIME_PATH=/run/user/999/pulse pactl set-card-profile alsa_card.platform-soc_ahub1_mach output:stereo-fallback 2>/dev/null || true"
-$SSH "sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 PULSE_RUNTIME_PATH=/run/user/999/pulse pactl set-default-sink alsa_output.platform-soc_ahub1_mach.stereo-fallback 2>/dev/null || true"
-$SSH "sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 PULSE_RUNTIME_PATH=/run/user/999/pulse pactl list sinks short"
-$SSH "sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 bash -c '$TONE | timeout 3 pw-cat -p --format=s16 --rate=48000 --channels=1 --target=alsa_output.platform-soc_ahub1_mach.stereo-fallback - 2>/dev/null'" || true
+$SSH "sudo -u app XDG_RUNTIME_DIR=/run/user/999 PULSE_RUNTIME_PATH=/run/user/999/pulse pactl set-card-profile alsa_card.platform-5096000.codec off"
+$SSH "sudo -u app XDG_RUNTIME_DIR=/run/user/999 PULSE_RUNTIME_PATH=/run/user/999/pulse pactl set-card-profile alsa_card.platform-soc_ahub1_mach output:stereo-fallback 2>/dev/null || true"
+$SSH "sudo -u app XDG_RUNTIME_DIR=/run/user/999 PULSE_RUNTIME_PATH=/run/user/999/pulse pactl set-default-sink alsa_output.platform-soc_ahub1_mach.stereo-fallback 2>/dev/null || true"
+$SSH "sudo -u app XDG_RUNTIME_DIR=/run/user/999 PULSE_RUNTIME_PATH=/run/user/999/pulse pactl list sinks short"
+$SSH "sudo -u app XDG_RUNTIME_DIR=/run/user/999 bash -c '$TONE | timeout 3 pw-cat -p --format=s16 --rate=48000 --channels=1 --target=alsa_output.platform-soc_ahub1_mach.stereo-fallback - 2>/dev/null'" || true
 echo "(listen - ahub1 output)"
 sleep 2
 
@@ -47,4 +47,4 @@ echo "(listen - ALSA stereo)"
 
 echo ""
 echo "=== Restoring pro-audio ==="
-$SSH "sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 PULSE_RUNTIME_PATH=/run/user/999/pulse pactl set-card-profile alsa_card.platform-5096000.codec pro-audio 2>/dev/null || true"
+$SSH "sudo -u app XDG_RUNTIME_DIR=/run/user/999 PULSE_RUNTIME_PATH=/run/user/999/pulse pactl set-card-profile alsa_card.platform-5096000.codec pro-audio 2>/dev/null || true"

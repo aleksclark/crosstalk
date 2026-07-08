@@ -1,0 +1,45 @@
+/*
+ * CrossTalk shared theme tokens.
+ *
+ * A single dark palette shared by all three SPAs (admin, translator,
+ * broadcast). This file contains ONLY plain CSS: design-token custom
+ * properties plus safe base styles, so it works identically under Tailwind v3
+ * (admin, translator) and Tailwind v4 (broadcast).
+ *
+ * Apps map these tokens to utility color names:
+ *   - Tailwind v3: via the exported preset (@crosstalk/theme/preset).
+ *   - Tailwind v4: via an `@theme inline` block referencing these variables.
+ */
+
+:root {
+  --background: 222.2 84% 4.9%;
+  --foreground: 210 40% 98%;
+
+  --card: 222.2 84% 7%;
+  --card-foreground: 210 40% 98%;
+
+  --primary: 217.2 91.2% 59.8%;
+  --primary-foreground: 222.2 47.4% 11.2%;
+
+  --muted: 217.2 32.6% 17.5%;
+  --muted-foreground: 215 20.2% 65.1%;
+
+  --accent: 217.2 32.6% 17.5%;
+  --accent-foreground: 210 40% 98%;
+
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 210 40% 98%;
+
+  --border: 217.2 32.6% 17.5%;
+  --input: 217.2 32.6% 17.5%;
+  --ring: 217.2 91.2% 59.8%;
+
+  --radius: 0.5rem;
+}
+
+html,
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: system-ui, -apple-system, sans-serif;
+}

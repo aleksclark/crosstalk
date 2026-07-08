@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { createApiClient, components } from "@crosstalk/api-client";
+import { ChannelMonitor } from "./ChannelMonitor";
 
 type Client = ReturnType<typeof createApiClient>;
 type Channel = components["schemas"]["ChannelOut"];
@@ -10,33 +11,36 @@ type ABC = components["schemas"]["ABCOut"];
 export interface SessionAudioManagerProps {
   // An authenticated openapi-fetch client (reuses each app's error handling).
   client: Client;
+  // The caller's JWT, used to open per-channel monitor connections.
+  token: string;
   sessionId: string;
   // Allow editing the mix (assign/remove sources, mute, level). Defaults true.
   editable?: boolean;
-  // Show the "monitor" channel selector. Defaults true.
-  showMonitor?: boolean;
+  // Always open a receive-only monitor per channel (volume/mute/VU). Default true.
+  monitor?: boolean;
   // Show per-ABC monitor-channel selectors for booth boards. Defaults true.
   showABCMonitors?: boolean;
-  // Controlled selected monitor channel name (null = none).
-  monitorChannel?: string | null;
-  onMonitorChange?: (channel: string | null) => void;
+  // Base origin for monitor signaling websockets. Defaults to window.location.origin.
+  baseUrl?: string;
   className?: string;
 }
 
-// SessionAudioManager is the shared UI for wiring a session's audio: it maps
-// audio sources onto channels (the "mix"), with per-source mute and level,
-// lets booth boards (ABCs) pick which channel they monitor, and optionally
-// lets the operator pick a channel to monitor locally. Local monitoring is
-// controlled by the parent via monitorChannel/onMonitorChange so each app can
-// route the audio however it likes (see useChannelMonitor).
+// SessionAudioManager is the shared UI for wiring a session's audio. For each
+// channel it:
+//   - always opens a receive-only monitor with its own volume, mute and VU
+//     meter (the VU meter reflects the incoming signal regardless of mute or
+//     volume), and
+//   - lets the operator edit the mix: which sources feed the channel, each with
+//     mute and level.
+// It also lets booth boards (ABCs) pick which channel they monitor.
 export function SessionAudioManager({
   client,
+  token,
   sessionId,
   editable = true,
-  showMonitor = true,
+  monitor = true,
   showABCMonitors = true,
-  monitorChannel = null,
-  onMonitorChange,
+  baseUrl,
   className,
 }: SessionAudioManagerProps) {
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -90,7 +94,9 @@ export function SessionAudioManager({
       // monitor forces the board to reconnect and re-bridge server-side.
       setAbcs((prev) =>
         prev.map((a) =>
-          a.id === abcId ? { ...a, monitor_channel_id: channelId ?? undefined } : a,
+          a.id === abcId
+            ? { ...a, monitor_channel_id: channelId ?? undefined }
+            : a,
         ),
       );
       await client.PUT("/api/abcs/{id}", {
@@ -131,7 +137,13 @@ export function SessionAudioManager({
       if (current.some((e) => e.source_id === sourceId)) return;
       applyMix(channelId, [
         ...current,
-        { id: "", channel_id: channelId, source_id: sourceId, muted: false, level: 1 },
+        {
+          id: "",
+          channel_id: channelId,
+          source_id: sourceId,
+          muted: false,
+          level: 1,
+        },
       ]);
     },
     [mixByChannel, applyMix],
@@ -171,8 +183,7 @@ export function SessionAudioManager({
   );
 
   const sourceName = useCallback(
-    (id: string) =>
-      sources.find((s) => s.id === id)?.name ?? id.slice(0, 8),
+    (id: string) => sources.find((s) => s.id === id)?.name ?? id.slice(0, 8),
     [sources],
   );
 
@@ -181,40 +192,20 @@ export function SessionAudioManager({
   if (loading) {
     return (
       <div className={containerCls}>
-        <p className="text-sm text-zinc-400">Loading session audio…</p>
+        <p className="text-sm text-muted-foreground">Loading session audio…</p>
       </div>
     );
   }
 
   return (
     <div className={containerCls}>
-      {showMonitor && (
-        <div className="rounded-lg border border-zinc-700 bg-zinc-800/50 p-4">
-          <label className="mb-2 block text-sm font-semibold text-zinc-100">
-            Monitor channel
-          </label>
-          <select
-            value={monitorChannel ?? ""}
-            onChange={(e) => onMonitorChange?.(e.target.value || null)}
-            className="w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">None (not monitoring)</option>
-            {channels.map((ch) => (
-              <option key={ch.id} value={ch.name}>
-                {ch.name} — {ch.type}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-
       {channels.length === 0 ? (
-        <p className="text-sm text-zinc-400">
+        <p className="text-sm text-muted-foreground">
           No channels configured for this session.
         </p>
       ) : (
         channels.map((ch) => (
-          <ChannelMixCard
+          <ChannelCard
             key={ch.id}
             channel={ch}
             entries={mixByChannel[ch.id] ?? []}
@@ -225,13 +216,23 @@ export function SessionAudioManager({
             onRemove={(sid) => removeSource(ch.id, sid)}
             onMute={(sid, m) => setMuted(ch.id, sid, m)}
             onLevel={(sid, l) => setLevel(ch.id, sid, l)}
+            monitor={
+              monitor ? (
+                <ChannelMonitor
+                  sessionId={sessionId}
+                  token={token}
+                  channelName={ch.name}
+                  baseUrl={baseUrl}
+                />
+              ) : null
+            }
           />
         ))
       )}
 
       {showABCMonitors && abcs.length > 0 && (
-        <div className="rounded-lg border border-zinc-700 bg-zinc-800/50 p-4">
-          <h3 className="mb-3 text-sm font-semibold text-zinc-100">
+        <div className="rounded-lg border border-border bg-card p-4">
+          <h3 className="mb-3 text-sm font-semibold text-foreground">
             Booth monitors
           </h3>
           <div className="space-y-3">
@@ -239,20 +240,20 @@ export function SessionAudioManager({
               <div key={abc.id} className="flex items-center gap-3">
                 <span
                   className={`h-2 w-2 shrink-0 rounded-full ${
-                    abc.connected ? "bg-green-500" : "bg-zinc-500"
+                    abc.connected ? "bg-green-500" : "bg-muted-foreground"
                   }`}
                   title={abc.connected ? "Connected" : "Offline"}
                 />
-                <span className="w-28 truncate text-xs text-zinc-100">
+                <span className="w-28 truncate text-xs text-foreground">
                   {abc.name}
                 </span>
                 <select
                   value={abc.monitor_channel_id ?? ""}
                   disabled={!editable}
                   onChange={(e) => setABCMonitor(abc.id, e.target.value || null)}
-                  className="flex-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="flex-1 rounded border border-input bg-background px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  <option value="">All broadcast (default)</option>
+                  <option value="">None (not monitoring)</option>
                   {channels.map((ch) => (
                     <option key={ch.id} value={ch.id}>
                       {ch.name} — {ch.type}
@@ -262,7 +263,7 @@ export function SessionAudioManager({
               </div>
             ))}
           </div>
-          <p className="mt-2 text-xs text-zinc-500">
+          <p className="mt-2 text-xs text-muted-foreground">
             Changing a monitor reconnects the booth board to apply the new
             channel.
           </p>
@@ -272,7 +273,7 @@ export function SessionAudioManager({
   );
 }
 
-interface ChannelMixCardProps {
+interface ChannelCardProps {
   channel: Channel;
   entries: MixEntry[];
   sources: Source[];
@@ -282,9 +283,10 @@ interface ChannelMixCardProps {
   onRemove: (sourceId: string) => void;
   onMute: (sourceId: string, muted: boolean) => void;
   onLevel: (sourceId: string, level: number) => void;
+  monitor: ReactNode;
 }
 
-function ChannelMixCard({
+function ChannelCard({
   channel,
   entries,
   sources,
@@ -294,7 +296,8 @@ function ChannelMixCard({
   onRemove,
   onMute,
   onLevel,
-}: ChannelMixCardProps) {
+  monitor,
+}: ChannelCardProps) {
   const assignedIds = useMemo(
     () => new Set(entries.map((e) => e.source_id)),
     [entries],
@@ -302,11 +305,11 @@ function ChannelMixCard({
   const available = sources.filter((s) => !assignedIds.has(s.id));
 
   return (
-    <div className="rounded-lg border border-zinc-700 bg-zinc-800/50 p-4">
+    <div className="rounded-lg border border-border bg-card p-4">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-zinc-100">
+        <h3 className="text-sm font-semibold text-foreground">
           {channel.name}
-          <span className="ml-2 text-xs uppercase text-zinc-400">
+          <span className="ml-2 text-xs uppercase text-muted-foreground">
             {channel.type}
           </span>
         </h3>
@@ -319,7 +322,7 @@ function ChannelMixCard({
                 e.target.value = "";
               }
             }}
-            className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="rounded border border-input bg-background px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           >
             <option value="">+ Assign source…</option>
             {available.map((s) => (
@@ -331,8 +334,22 @@ function ChannelMixCard({
         )}
       </div>
 
+      {/* Monitor: always-on listening for this channel (volume / mute / VU). */}
+      {monitor && (
+        <div className="mb-3 rounded-md border border-border bg-background/40 p-2">
+          <div className="mb-1 text-xs font-medium text-muted-foreground">
+            Monitor
+          </div>
+          {monitor}
+        </div>
+      )}
+
+      {/* Mix: sources feeding this channel (server-side routing). */}
+      <div className="mb-1 text-xs font-medium text-muted-foreground">
+        Sources
+      </div>
       {entries.length === 0 ? (
-        <p className="text-xs text-zinc-400">No sources assigned.</p>
+        <p className="text-xs text-muted-foreground">No sources assigned.</p>
       ) : (
         <div className="space-y-3">
           {entries.map((e) => (
@@ -342,15 +359,15 @@ function ChannelMixCard({
                 disabled={!editable}
                 className={`flex h-8 w-8 items-center justify-center rounded text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                   e.muted
-                    ? "border border-red-500/50 bg-red-500/20 text-red-400"
-                    : "border border-green-500/50 bg-green-500/20 text-green-400"
+                    ? "border border-destructive/50 bg-destructive/20 text-destructive-foreground"
+                    : "border border-primary/50 bg-primary/20 text-primary-foreground"
                 }`}
                 title={e.muted ? "Unmute" : "Mute"}
               >
                 {e.muted ? "M" : "🔊"}
               </button>
 
-              <span className="w-28 truncate text-xs text-zinc-100">
+              <span className="w-28 truncate text-xs text-foreground">
                 {sourceName(e.source_id)}
               </span>
 
@@ -364,16 +381,16 @@ function ChannelMixCard({
                 onChange={(ev) =>
                   onLevel(e.source_id, Number(ev.target.value) / 100)
                 }
-                className="h-1 flex-1 cursor-pointer accent-blue-500 disabled:cursor-not-allowed"
+                className="h-1 flex-1 cursor-pointer accent-primary disabled:cursor-not-allowed"
               />
-              <span className="w-10 text-right text-xs tabular-nums text-zinc-400">
+              <span className="w-10 text-right text-xs tabular-nums text-muted-foreground">
                 {Math.round(e.level * 100)}%
               </span>
 
               {editable && (
                 <button
                   onClick={() => onRemove(e.source_id)}
-                  className="text-xs text-red-400 hover:underline"
+                  className="text-xs text-destructive hover:underline"
                 >
                   Remove
                 </button>

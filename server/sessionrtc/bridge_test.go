@@ -183,3 +183,52 @@ func TestEnsureSource_ConcurrentSameIdentity(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, sources, 1, "concurrent connects converge on one source")
 }
+
+// TestChannelHub_MonotonicAcrossSources is the regression test for "audio stops
+// when a second source joins a channel then leaves". Multiple sources feeding
+// one channel have independent RTP sequence spaces; the hub must emit a single
+// strictly-monotonic sequence so a listener's jitter buffer never sees a
+// regression (which would make it drop the surviving source as "stale").
+func TestChannelHub_MonotonicAcrossSources(t *testing.T) {
+	h := &channelHub{}
+
+	var lastSeq uint16
+	var lastTS uint32
+	first := true
+	check := func(inTS uint32) {
+		seq, ts := h.nextHeader(inTS)
+		if !first {
+			assert.Equal(t, uint16(lastSeq+1), seq, "sequence must increment by exactly one")
+			assert.Greater(t, ts-lastTS, uint32(0), "timestamp must advance")
+		}
+		lastSeq, lastTS = seq, ts
+		first = false
+	}
+
+	// Source A: a normal 20ms Opus stream (ts step 960), seq space near zero.
+	var aTS uint32 = 1000
+	for i := 0; i < 50; i++ {
+		check(aTS)
+		aTS += 960
+	}
+	seqAfterA := lastSeq
+
+	// Source B joins with a completely different, much higher ts/seq space.
+	// Its first packet is a discontinuity; the hub must still advance smoothly.
+	var bTS uint32 = 4_000_000
+	for i := 0; i < 50; i++ {
+		check(bTS)
+		bTS += 960
+	}
+
+	// Source B leaves; source A resumes. A's timestamps are now far BELOW the
+	// hub's current output ts, and its seq space is below B's — exactly the
+	// condition that previously stalled the listener. The hub output must
+	// remain strictly monotonic.
+	for i := 0; i < 50; i++ {
+		check(aTS)
+		aTS += 960
+	}
+
+	assert.Greater(t, lastSeq, seqAfterA, "sequence keeps climbing across the switch")
+}

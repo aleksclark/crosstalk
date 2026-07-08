@@ -74,7 +74,7 @@ echo "[3/4] Setting up permissions..."
 $SSH '
 # spidev access
 groupadd -f spi
-usermod -aG spi streamlate 2>/dev/null || usermod -aG spi app 2>/dev/null || true
+usermod -aG spi app 2>/dev/null || true
 cat > /etc/udev/rules.d/99-spidev.rules <<EOF
 SUBSYSTEM=="spidev", GROUP="spi", MODE="0660"
 EOF
@@ -86,7 +86,7 @@ SUBSYSTEM=="gpio", ACTION=="add", ATTR{direction}=="*", MODE="0660", GROUP="spi"
 EOF
 
 # Video group
-usermod -aG video streamlate 2>/dev/null || usermod -aG video app 2>/dev/null || true
+usermod -aG video app 2>/dev/null || true
 '
 
 # 4. Reboot

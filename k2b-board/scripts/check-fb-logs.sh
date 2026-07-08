@@ -15,7 +15,7 @@ $SSH "dmesg | grep -i fbtft | tail -10"
 
 echo ""
 echo "--- fb0 permissions ---"
-$SSH "ls -la /dev/fb0; id streamlate; groups streamlate"
+$SSH "ls -la /dev/fb0; id app; groups app"
 
 echo ""
 echo "--- Quick write test: fill fb0 with red ---"

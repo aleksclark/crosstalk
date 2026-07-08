@@ -80,7 +80,7 @@ echo "[3/5] Setting up permissions..."
 $SSH '
 # Ensure video group exists and user is in it
 groupadd -f video
-for u in streamlate app; do
+for u in app; do
     usermod -aG video "$u" 2>/dev/null || true
 done
 

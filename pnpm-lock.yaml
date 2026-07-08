@@ -20,6 +20,9 @@ importers:
       '@crosstalk/session-audio':
         specifier: workspace:*
         version: link:../../packages/session-audio
+      '@crosstalk/theme':
+        specifier: workspace:*
+        version: link:../../packages/theme
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
@@ -66,6 +69,9 @@ importers:
 
   apps/broadcast:
     dependencies:
+      '@crosstalk/theme':
+        specifier: workspace:*
+        version: link:../../packages/theme
       react:
         specifier: ^19.2.5
         version: 19.2.7
@@ -103,6 +109,9 @@ importers:
       '@crosstalk/session-audio':
         specifier: workspace:*
         version: link:../../packages/session-audio
+      '@crosstalk/theme':
+        specifier: workspace:*
+        version: link:../../packages/theme
       qrcode.react:
         specifier: ^4.2.0
         version: 4.2.0(react@19.2.7)
@@ -159,6 +168,21 @@ importers:
       '@crosstalk/api-client':
         specifier: workspace:*
         version: link:../api-client
+      '@crosstalk/theme':
+        specifier: workspace:*
+        version: link:../theme
+    devDependencies:
+      '@types/react':
+        specifier: ^18.3.12
+        version: 18.3.31
+      react:
+        specifier: ^18.3.1
+        version: 18.3.1
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  packages/theme:
     devDependencies:
       '@types/react':
         specifier: ^18.3.12

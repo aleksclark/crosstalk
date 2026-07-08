@@ -6,6 +6,8 @@ export default defineConfig({
   base: "/translator/",
   plugins: [react()],
   resolve: {
+    // Single React instance across the app and workspace packages.
+    dedupe: ["react", "react-dom"],
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },

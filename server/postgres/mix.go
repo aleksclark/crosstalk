@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/oklog/ulid/v2"
+	"github.com/uptrace/bun"
 
 	crosstalk "github.com/aleksclark/crosstalk/server"
 )
@@ -37,6 +38,21 @@ func (s *MixStore) SetMix(ctx context.Context, channelID string, entries []cross
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+
+	// SetMix replaces the channel's full mix. Delete entries for this channel
+	// that are no longer present so removing a source actually persists; when
+	// the new set is empty, all entries for the channel are removed.
+	keep := make([]string, 0, len(entries))
+	for _, e := range entries {
+		keep = append(keep, e.SourceID)
+	}
+	del := tx.NewDelete().Model((*mixModel)(nil)).Where("channel_id = ?", channelID)
+	if len(keep) > 0 {
+		del = del.Where("source_id NOT IN (?)", bun.In(keep))
+	}
+	if _, err := del.Exec(ctx); err != nil {
+		return err
+	}
 
 	for _, e := range entries {
 		if e.ID == "" {

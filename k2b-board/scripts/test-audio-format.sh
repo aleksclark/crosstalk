@@ -3,11 +3,11 @@ set -euo pipefail
 SSH="ssh -o ConnectTimeout=5 root@${1:?Usage: $0 <board-ip>}"
 
 echo "--- Audiocodec sink format ---"
-$SSH "sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 PULSE_RUNTIME_PATH=/run/user/999/pulse pactl list sinks 2>/dev/null | grep -A10 'platform-5096000' | grep -E 'Name:|Format:|Sample|Channel'"
+$SSH "sudo -u app XDG_RUNTIME_DIR=/run/user/999 PULSE_RUNTIME_PATH=/run/user/999/pulse pactl list sinks 2>/dev/null | grep -A10 'platform-5096000' | grep -E 'Name:|Format:|Sample|Channel'"
 
 echo ""
 echo "--- pw-dump audiocodec node ---"
-$SSH "sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 pw-dump 2>/dev/null | python3 -c \"
+$SSH "sudo -u app XDG_RUNTIME_DIR=/run/user/999 pw-dump 2>/dev/null | python3 -c \"
 import json,sys
 for obj in json.load(sys.stdin):
     props = obj.get('info',{}).get('props',{})
@@ -18,7 +18,7 @@ for obj in json.load(sys.stdin):
 
 echo ""
 echo "--- Test: play s32le tone to audiocodec ---"
-$SSH 'sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 bash -c '\''
+$SSH 'sudo -u app XDG_RUNTIME_DIR=/run/user/999 bash -c '\''
 python3 -c "
 import struct, math, sys
 rate=48000; freq=440; dur=2
@@ -31,7 +31,7 @@ echo "s32 exit: $?"
 
 echo ""
 echo "--- Test: play s16le tone (for comparison) ---"
-$SSH 'sudo -u streamlate XDG_RUNTIME_DIR=/run/user/999 bash -c '\''
+$SSH 'sudo -u app XDG_RUNTIME_DIR=/run/user/999 bash -c '\''
 python3 -c "
 import struct, math, sys
 rate=48000; freq=880; dur=2

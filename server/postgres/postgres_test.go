@@ -184,6 +184,51 @@ func TestMixStore(t *testing.T) {
 	assert.Equal(t, 1.5, got[0].Level)
 }
 
+// TestMixStore_SetMixRemovesAbsentEntries verifies SetMix deletes rows not in
+// the new set — the fix for "removing a source reappears after refresh".
+func TestMixStore_SetMixRemovesAbsentEntries(t *testing.T) {
+	db := pgtest.New(t)
+	sessionStore := postgres.NewSessionStore(db)
+	channelStore := postgres.NewChannelStore(db)
+	sourceStore := postgres.NewSourceStore(db)
+	store := postgres.NewMixStore(db)
+	ctx := context.Background()
+
+	sess := &crosstalk.Session{ID: ulid.Make().String(), Name: "Test"}
+	require.NoError(t, sessionStore.Create(ctx, sess))
+	ch := &crosstalk.Channel{ID: ulid.Make().String(), SessionID: sess.ID, Name: "Feed", Type: crosstalk.ChannelFeed}
+	require.NoError(t, channelStore.Create(ctx, ch))
+
+	src1 := &crosstalk.Source{ID: ulid.Make().String(), SessionID: sess.ID, Name: "Mic 1", Origin: crosstalk.OriginABC}
+	src2 := &crosstalk.Source{ID: ulid.Make().String(), SessionID: sess.ID, Name: "Mic 2", Origin: crosstalk.OriginABC}
+	require.NoError(t, sourceStore.Create(ctx, src1))
+	require.NoError(t, sourceStore.Create(ctx, src2))
+
+	// Two sources assigned.
+	require.NoError(t, store.SetMix(ctx, ch.ID, []crosstalk.MixEntry{
+		{ChannelID: ch.ID, SourceID: src1.ID, Level: 1},
+		{ChannelID: ch.ID, SourceID: src2.ID, Level: 1},
+	}))
+	got, err := store.GetMix(ctx, ch.ID)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+
+	// Remove src2 by omitting it — it must not persist.
+	require.NoError(t, store.SetMix(ctx, ch.ID, []crosstalk.MixEntry{
+		{ChannelID: ch.ID, SourceID: src1.ID, Level: 1},
+	}))
+	got, err = store.GetMix(ctx, ch.ID)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, src1.ID, got[0].SourceID)
+
+	// Empty set clears the channel entirely.
+	require.NoError(t, store.SetMix(ctx, ch.ID, nil))
+	got, err = store.GetMix(ctx, ch.ID)
+	require.NoError(t, err)
+	assert.Empty(t, got)
+}
+
 func TestABCStore_CRUD(t *testing.T) {
 	db := pgtest.New(t)
 	store := postgres.NewABCStore(db)
