@@ -93,6 +93,9 @@ phone. No SSH or serial console required.
 - Binary: `/usr/local/bin/ct-netcfg` (aarch64 static, no CGO)
 - Systemd: `/etc/systemd/system/ct-netcfg.service` (runs as `root`)
 - Code: `cli/cmd/ct-netcfg`, `cli/netcfg` (nmcli wrapper), `cli/portal` (web UI)
+- Requires `dnsmasq-base` (hotspot DHCP) and `iptables` (hotspot NAT) — without
+  them NetworkManager's shared/AP mode fails with "IP configuration could not
+  be reserved". Installed by `provision-k2b.sh`.
 
 ### Flow
 1. On boot `ct-netcfg` waits up to `CT_NETCFG_ONLINE_TIMEOUT` (default 45s) for

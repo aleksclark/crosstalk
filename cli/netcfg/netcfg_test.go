@@ -114,6 +114,20 @@ func TestStartHotspotWritesCaptiveDNSAndBuildsArgs(t *testing.T) {
 	}
 	assert.True(t, found, "expected captive dns redirect to be written")
 
+	// The single wifi radio is freed before switching to AP mode: a
+	// "device disconnect wlan0" must precede the hotspot bring-up.
+	discIdx, hotspotIdx := -1, -1
+	for i, c := range calls {
+		if hasArg(c, "disconnect") && hasArg(c, "wlan0") {
+			discIdx = i
+		}
+		if hasArg(c, "hotspot") {
+			hotspotIdx = i
+		}
+	}
+	assert.GreaterOrEqual(t, discIdx, 0, "expected wifi disconnect before hotspot")
+	assert.Less(t, discIdx, hotspotIdx, "disconnect must come before hotspot")
+
 	// Last call is the hotspot bring-up with all params.
 	last := calls[len(calls)-1]
 	assert.Equal(t, "nmcli", last[0])

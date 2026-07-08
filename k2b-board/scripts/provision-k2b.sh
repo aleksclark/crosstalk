@@ -36,6 +36,18 @@ dpkg -s pipewire &>/dev/null || {
 }
 "
 
+# 3b. Install WiFi captive-portal dependencies.
+# NetworkManager shared/AP mode (used by ct-netcfg's hotspot) needs a DHCP
+# server (dnsmasq-base) and a NAT backend (iptables), or hotspot activation
+# fails with "IP configuration could not be reserved".
+echo "Ensuring hotspot dependencies (dnsmasq-base, iptables) are installed..."
+$SSH "
+dpkg -s dnsmasq-base &>/dev/null && command -v iptables &>/dev/null || {
+    apt-get update -qq
+    apt-get install -y -qq dnsmasq-base iptables
+}
+"
+
 # 4. Enable PipeWire user services
 echo "Enabling PipeWire for app user..."
 $SSH "

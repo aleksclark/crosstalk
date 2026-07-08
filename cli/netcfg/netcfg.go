@@ -200,6 +200,23 @@ func (m *Manager) StartHotspot(ctx context.Context, ssid, passphrase string) err
 		}
 	}
 
+	// Free the (typically single) wifi radio before switching it to AP mode.
+	// If a station profile is stuck retrying a bad passphrase, NetworkManager
+	// keeps the device busy and the hotspot activation fails. Disconnecting the
+	// device drops that attempt so AP mode can claim the radio.
+	dev := m.Iface
+	if dev == "" {
+		dev = m.wifiDevice(ctx)
+	}
+	if dev != "" {
+		if out, err := m.run(ctx, "nmcli", "device", "disconnect", dev); err != nil {
+			slog.Debug("netcfg: could not disconnect wifi before hotspot",
+				"iface", dev, "error", err, "output", strings.TrimSpace(string(out)))
+		} else {
+			slog.Info("netcfg: disconnected wifi station before hotspot", "iface", dev)
+		}
+	}
+
 	// Clear any previous hotspot profile so settings changes apply.
 	_, _ = m.run(ctx, "nmcli", "connection", "delete", hotspotConnName)
 
@@ -234,6 +251,17 @@ var _ crosstalk.EthernetManager = (*Manager)(nil)
 // wiredDevice returns the first ethernet device NetworkManager knows about, or
 // "" if there is none.
 func (m *Manager) wiredDevice(ctx context.Context) string {
+	return m.deviceOfType(ctx, "ethernet")
+}
+
+// wifiDevice returns the first wifi device NetworkManager knows about, or "" if
+// there is none.
+func (m *Manager) wifiDevice(ctx context.Context) string {
+	return m.deviceOfType(ctx, "wifi")
+}
+
+// deviceOfType returns the first device of the given nmcli type, or "".
+func (m *Manager) deviceOfType(ctx context.Context, typ string) string {
 	out, err := m.run(ctx, "nmcli", "-t", "-f", "DEVICE,TYPE", "device", "status")
 	if err != nil {
 		slog.Debug("netcfg: device status failed", "error", err, "output", string(out))
@@ -244,7 +272,7 @@ func (m *Manager) wiredDevice(ctx context.Context) string {
 		if len(fields) < 2 {
 			continue
 		}
-		if fields[1] == "ethernet" {
+		if fields[1] == typ {
 			return fields[0]
 		}
 	}
