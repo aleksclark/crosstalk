@@ -98,7 +98,12 @@ func CaptureSource(ctx context.Context, sourceName string, track *webrtc.TrackLo
 		}
 		break
 	}
-	defer pwCmd.Process.Kill() //nolint:errcheck
+	// Kill and reap the capture subprocess on return. Wait() is required to
+	// avoid leaking zombies each time the pipeline restarts.
+	defer func() {
+		pwCmd.Process.Kill() //nolint:errcheck
+		pwCmd.Wait()         //nolint:errcheck
+	}()
 
 	slog.Info("audio capture started", "source", sourceName)
 
@@ -146,8 +151,14 @@ func CaptureSource(ctx context.Context, sourceName string, track *webrtc.TrackLo
 		}
 	}()
 
-	// Goroutine: pipe pw-record PCM → ffmpeg stdin, tee through input meter
+	// Goroutine: pipe pw-record PCM → ffmpeg stdin, tee through input meter.
+	// captureDone is closed when the capture subprocess (pw-record/arecord)
+	// stops feeding PCM — e.g. the USB sound card was unplugged. The main loop
+	// watches this so it can return an error and let the caller restart the
+	// whole pipeline instead of hanging on a silent UDP socket forever.
+	captureDone := make(chan struct{})
 	go func() {
+		defer close(captureDone)
 		defer ffStdin.Close()
 		buf := make([]byte, pcmFrameBytes)
 		for {
@@ -177,13 +188,20 @@ func CaptureSource(ctx context.Context, sourceName string, track *webrtc.TrackLo
 				return nil
 			}
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {
-				timeoutCount++
-				if timeoutCount == 1 {
-					slog.Warn("audio capture: no RTP from ffmpeg yet (2s timeout)", "source", sourceName)
-				} else if timeoutCount%5 == 0 {
-					slog.Warn("audio capture: still no RTP from ffmpeg",
-						"source", sourceName, "timeouts", timeoutCount, "packets_so_far", pktCount)
+				// If the capture subprocess has exited (device unplugged),
+				// return an error so the caller restarts the pipeline.
+				select {
+				case <-captureDone:
+					return fmt.Errorf("capture subprocess ended (source %q gone?)", sourceName)
+				default:
 				}
+				timeoutCount++
+				// No RTP for ~10s with the capture still alive means the
+				// pipeline is wedged; bail so it can be restarted.
+				if timeoutCount >= 5 {
+					return fmt.Errorf("no RTP from ffmpeg for %ds (source %q)", timeoutCount*2, sourceName)
+				}
+				slog.Warn("audio capture: no RTP from ffmpeg yet (2s timeout)", "source", sourceName)
 				continue
 			}
 			return fmt.Errorf("reading RTP from ffmpeg: %w", err)

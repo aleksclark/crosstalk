@@ -230,11 +230,27 @@ func (c *ABCClient) connectOnce(ctx context.Context) error {
 			}
 		}),
 		// Publish the booth microphone up-front. The server (SFU) forwards this
-		// track into the ABC's assigned session feed channel.
+		// track into the ABC's assigned session feed channel. Capture can fail
+		// if the USB sound card is unplugged; restart it with backoff so audio
+		// recovers automatically when the device comes back.
 		pion.WithPublishAudio("abc-mic", func(track *webrtc.TrackLocalStaticRTP) {
 			go func() {
-				if err := pion.CaptureSource(ctx, c.cfg.SourceName, track); err != nil && ctx.Err() == nil {
-					slog.Error("abc: audio capture failed", "source", c.cfg.SourceName, "error", err)
+				for ctx.Err() == nil {
+					err := pion.CaptureSource(ctx, c.cfg.SourceName, track)
+					if ctx.Err() != nil {
+						return
+					}
+					if err != nil {
+						slog.Error("abc: audio capture failed, restarting",
+							"source", c.cfg.SourceName, "error", err)
+					} else {
+						slog.Warn("abc: audio capture ended, restarting", "source", c.cfg.SourceName)
+					}
+					select {
+					case <-ctx.Done():
+						return
+					case <-time.After(time.Second):
+					}
 				}
 			}()
 		}),
