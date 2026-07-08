@@ -153,6 +153,21 @@ export function useBroadcastListener(
     const ws = new WebSocket(getWsUrl(sessionId, token));
     wsRef.current = ws;
 
+    // Remote ICE candidates can arrive (trickled) before the offer has been
+    // applied, since the server starts gathering as soon as it sends the offer.
+    // addIceCandidate() throws if the remote description isn't set yet, so queue
+    // early candidates and flush them once setRemoteDescription completes.
+    let remoteDescSet = false;
+    const pendingCandidates: RTCIceCandidateInit[] = [];
+    const addCandidate = async (init: RTCIceCandidateInit) => {
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(init));
+      } catch (err) {
+        // A single malformed/late candidate must not abort signaling.
+        console.warn("[broadcast] skipped ICE candidate:", err);
+      }
+    };
+
     ws.onopen = () => {
       // Server will send offer
     };
@@ -175,8 +190,17 @@ export function useBroadcastListener(
           setDebugInfo((d) => ({ ...d, localSdp: answer.sdp ?? null }));
 
           ws.send(JSON.stringify({ type: "answer", sdp: answer.sdp }));
+
+          // Flush any candidates that arrived before the offer.
+          remoteDescSet = true;
+          const queued = pendingCandidates.splice(0);
+          for (const c of queued) await addCandidate(c);
         } else if (msg.type === "candidate" && msg.candidate) {
-          await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+          if (remoteDescSet) {
+            await addCandidate(msg.candidate);
+          } else {
+            pendingCandidates.push(msg.candidate);
+          }
         } else if (msg.type === "listener_count" && msg.listener_count != null) {
           setListenerCount(msg.listener_count);
         }
