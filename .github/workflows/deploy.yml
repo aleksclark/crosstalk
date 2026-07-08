@@ -17,22 +17,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.10.0
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: pnpm
-          cache-dependency-path: web/pnpm-lock.yaml
-
-      - name: Build web
-        working-directory: web
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm build
-
+      # The SPAs and Go server are built entirely inside deploy/Dockerfile
+      # (multi-stage: OpenAPI spec -> pnpm build apps -> embed -> go build),
+      # so the workflow only needs flyctl to trigger the remote build.
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
       - name: Deploy to Fly.io
