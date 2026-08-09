@@ -6,6 +6,7 @@ require (
 	github.com/danielgtaylor/huma/v2 v2.38.0
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
+	github.com/hraban/opus v0.0.0-20260708213942-bde8e4304501
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/pion/ice/v4 v4.2.7
 	github.com/pion/rtp v1.10.2
