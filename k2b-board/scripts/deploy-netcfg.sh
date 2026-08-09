@@ -113,7 +113,8 @@ restore_from() {
 if [[ "$MODE" == "rollback" ]]; then
   STAMP="${ARG2:-}"
   if [[ -z "$STAMP" ]]; then
-    STAMP="$(remote "ls -1 '${ROLLBACK_ROOT}' 2>/dev/null | sort | tail -1")"
+    # Only timestamp directories — ignore loose files (ACTIVE_STAMP, watchdog.log, etc.)
+    STAMP="$(remote "ls -1d '${ROLLBACK_ROOT}'/[0-9]*T*Z 2>/dev/null | xargs -n1 basename 2>/dev/null | sort | tail -1")"
   fi
   if [[ -z "$STAMP" ]]; then
     echo "No rollback stamps found on ${BOARD_IP}:${ROLLBACK_ROOT}" >&2
@@ -183,13 +184,44 @@ if ! remote "set -euo pipefail
 fi
 
 echo "[5/5] Starting service..."
+# ct-netcfg is a oneshot-style worker under Restart=always: when already online it
+# exits 0 quickly ("nothing to provision"), so is-active may be activating/inactive
+# even on a healthy deploy. Treat success as: unit enabled, binary runs, and either
+# active/activating OR a clean recent "already online" journal line without crash.
 if ! remote "set -euo pipefail
   systemctl reset-failed ct-netcfg.service 2>/dev/null || true
   systemctl restart ct-netcfg.service
-  sleep 2
-  systemctl is-active ct-netcfg.service
+  sleep 3
+  # Prove binary is the one we deployed
+  FINAL=\$(sha256sum '${REMOTE_BIN}' | awk '{print \$1}')
+  WANT='${LOCAL_SHA}'
+  [ "\$FINAL" = "\$WANT" ]
+  STATE=\$(systemctl is-active ct-netcfg.service || true)
+  echo "service_state=\$STATE"
+  if [ "\$STATE" = active ] || [ "\$STATE" = activating ]; then
+    echo HEALTH_OK
+    exit 0
+  fi
+  # inactive/dead after clean online exit is OK
+  if journalctl -u ct-netcfg.service -n 20 --no-pager 2>/dev/null | grep -q 'already online, nothing to provision'; then
+    echo HEALTH_OK_ONLINE_IDLE
+    exit 0
+  fi
+  # failed state is not OK
+  if [ "\$STATE" = failed ]; then
+    systemctl status ct-netcfg.service --no-pager -l || true
+    exit 1
+  fi
+  # last resort: run binary once; exit 0 means healthy
+  timeout 50 '${REMOTE_BIN}' -online-timeout 5s >/tmp/ct-netcfg-health.log 2>&1 || true
+  if grep -q 'already online, nothing to provision' /tmp/ct-netcfg-health.log; then
+    echo HEALTH_OK_BIN
+    exit 0
+  fi
+  cat /tmp/ct-netcfg-health.log || true
+  exit 1
 "; then
-  echo "Service failed to start — attempting restore from ${STAMP}" >&2
+  echo "Service failed health check — attempting restore from ${STAMP}" >&2
   restore_from "$STAMP" || true
   exit 7
 fi

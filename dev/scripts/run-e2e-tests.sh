@@ -51,7 +51,9 @@ K2B_SINK="alsa_output.platform-snd_aloop.0.analog-stereo"
 
 # Binaries
 SERVER_BIN="$PROJECT_ROOT/bin/ct-server"
-CLIENT_ARM64="$PROJECT_ROOT/bin/ct-client-arm64"
+CLIENT_ARM64="$PROJECT_ROOT/bin/ct-abc-arm64"
+# historical fallback
+if [[ ! -f "$CLIENT_ARM64" ]]; then CLIENT_ARM64="$PROJECT_ROOT/bin/ct-client-arm64"; fi
 
 # Temp dir
 TMPDIR="$(mktemp -d /tmp/ct-e2e-XXXXXX)"
@@ -76,8 +78,8 @@ cleanup() {
         kill "$SERVER_PID" 2>/dev/null || true
         wait "$SERVER_PID" 2>/dev/null || true
     fi
-    # Kill remote processes on K2B
-    ssh -o ConnectTimeout=3 "root@${K2B_HOST}" "pkill -x ct-client 2>/dev/null; pkill -x ffmpeg 2>/dev/null" 2>/dev/null || true
+    # Kill remote e2e client on K2B (killall by name — never pkill -f over SSH)
+    ssh -o ConnectTimeout=3 "root@${K2B_HOST}" "killall ct-abc ct-client ffmpeg 2>/dev/null || true; systemctl start app.service 2>/dev/null || true; exit 0" 2>/dev/null || true
     # Remove temp dir
     if [[ "${E2E_KEEP_TMP:-0}" != "1" ]]; then
         rm -rf "$TMPDIR"
@@ -86,7 +88,6 @@ cleanup() {
     fi
     return $exit_code
 }
-trap cleanup EXIT
 
 # ── Counters ─────────────────────────────────────────────────────────────────
 TESTS_RUN=0
@@ -139,10 +140,12 @@ info "Building ct-server (x86_64)..."
     || die "Server build failed"
 ok "ct-server built"
 
-info "Building ct-client (arm64)..."
-(cd "$PROJECT_ROOT/cli" && GOOS=linux GOARCH=arm64 go build -o "$CLIENT_ARM64" ./cmd/ct-client) \
-    || die "CLI arm64 build failed"
-ok "ct-client-arm64 built"
+info "Building ct-abc (arm64)..."
+(cd "$PROJECT_ROOT/cli" && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o "$PROJECT_ROOT/bin/ct-abc-arm64" ./cmd/ct-abc) \
+    || die "ct-abc arm64 build failed"
+CLIENT_ARM64="$PROJECT_ROOT/bin/ct-abc-arm64"
+ok "ct-abc-arm64 built"
+head -c4 "$CLIENT_ARM64" | od -An -tx1 | grep -q '7f 45 4c 46' || die "ct-abc-arm64 not ELF"
 
 # ══════════════════════════════════════════════════════════════════════════════
 # START SERVER
@@ -156,7 +159,7 @@ E2E_DB="ct_k2b_e2e_$$"
 psql "$CT_PG_URL" -v ON_ERROR_STOP=1 -qtA -c "CREATE DATABASE \"$E2E_DB\";" >/dev/null
 DB_URL="$(echo "$CT_PG_URL" | sed -E "s#/[^/?]+(\?|\$)#/$E2E_DB\1#")"
 cleanup_db() { psql "$CT_PG_URL" -c "DROP DATABASE IF EXISTS \"$E2E_DB\" WITH (FORCE);" >/dev/null 2>&1 || true; }
-trap 'cleanup_db' EXIT
+trap 'cleanup_db; cleanup' EXIT
 
 mkdir -p "$TMPDIR/recordings"
 SERVER_LOG="$TMPDIR/server.log"
@@ -208,13 +211,18 @@ ok "ABC client token created"
 # DEPLOY TO K2B
 # ══════════════════════════════════════════════════════════════════════════════
 info "Deploying to K2B..."
-ssh "root@${K2B_HOST}" "pkill -x ct-client 2>/dev/null || true"
-sleep 0.3
+# Stop production app.service so e2e owns the board client; never use pkill -f (kills SSH).
+ssh "root@${K2B_HOST}" "systemctl stop app.service 2>/dev/null || true; killall ct-abc ct-client ffmpeg 2>/dev/null || true; exit 0"
+sleep 0.5
 
-scp "$CLIENT_ARM64" "root@${K2B_HOST}:/usr/local/bin/ct-client" >/dev/null
-ssh "root@${K2B_HOST}" "chmod +x /usr/local/bin/ct-client"
+scp "$CLIENT_ARM64" "root@${K2B_HOST}:/usr/local/bin/ct-abc" >/dev/null
+ssh "root@${K2B_HOST}" "chmod +x /usr/local/bin/ct-abc; ln -sfn ct-abc /usr/local/bin/ct-client"
 scp "$REF_TONE" "root@${K2B_HOST}:/tmp/test-tone.wav" >/dev/null
-ok "Deployed ct-client and test tone to K2B"
+ok "Deployed ct-abc (ct-client symlink) and test tone to K2B"
+REMOTE_SHA=$(ssh "root@${K2B_HOST}" "sha256sum /usr/local/bin/ct-abc" | awk '{print $1}')
+LOCAL_SHA=$(sha256sum "$CLIENT_ARM64" | awk '{print $1}')
+[[ "$REMOTE_SHA" == "$LOCAL_SHA" ]] || die "remote ct-abc sha mismatch local=$LOCAL_SHA remote=$REMOTE_SHA"
+info "ct-abc sha256=$LOCAL_SHA"
 
 # Write client config — server URL and token only. No session_id or role.
 # Session assignment is done by the admin UI (Playwright) via the Assign Peers card.
@@ -232,7 +240,7 @@ ok "K2B client config written"
 
 # Start ct-client on K2B — connects to server and idles, waiting for assignment.
 K2B_CLIENT_LOG="/tmp/ct-client-e2e.log"
-ssh "root@${K2B_HOST}" "su - ${K2B_USER} -c 'XDG_RUNTIME_DIR=/run/user/${K2B_UID} nohup /usr/local/bin/ct-client --config ${K2B_CFG} > ${K2B_CLIENT_LOG} 2>&1 &'"
+ssh "root@${K2B_HOST}" "rm -f ${K2B_CLIENT_LOG}; sudo -u ${K2B_USER} env XDG_RUNTIME_DIR=/run/user/${K2B_UID} PIPEWIRE_RUNTIME_DIR=/run/user/${K2B_UID} PULSE_RUNTIME_PATH=/run/user/${K2B_UID}/pulse nohup /usr/local/bin/ct-abc --config ${K2B_CFG} > ${K2B_CLIENT_LOG} 2>&1 < /dev/null & echo \\$! > /tmp/ct-abc-e2e.pid"
 info "Waiting for K2B client to connect..."
 
 K2B_CONNECTED=false
@@ -268,15 +276,17 @@ else
 fi
 
 # 5b. ct-client binary runs on K2B (check it's executable and ELF)
-K2B_BIN_OK=$(ssh "root@${K2B_HOST}" "test -x /usr/local/bin/ct-client && head -c4 /usr/local/bin/ct-client | od -An -tx1 | tr -d ' '" 2>/dev/null || echo "")
+K2B_BIN_OK=$(ssh "root@${K2B_HOST}" "test -x /usr/local/bin/ct-abc && head -c4 /usr/local/bin/ct-abc | od -An -tx1 | tr -d ' '" 2>/dev/null || echo "")
 if [[ "$K2B_BIN_OK" == *"7f454c46"* ]]; then
-    pass_test "9.5b ct-client binary is valid ELF on K2B"
+    pass_test "9.5b ct-abc binary is valid ELF on K2B"
 else
-    fail_test "9.5b ct-client binary not valid on K2B (got: $K2B_BIN_OK)"
+    fail_test "9.5b ct-abc binary not valid on K2B (got: $K2B_BIN_OK)"
 fi
 
 # 5c. K2B PipeWire loopback nodes
-K2B_PW=$(ssh "root@${K2B_HOST}" "su - ${K2B_USER} -c 'XDG_RUNTIME_DIR=/run/user/${K2B_UID} pw-cli list-objects Node 2>/dev/null'" | grep -c 'snd_aloop' || echo 0)
+# Ensure loopback module loaded and PW sees it
+ssh "root@${K2B_HOST}" "modprobe snd-aloop 2>/dev/null || true; exit 0"
+K2B_PW=$(ssh "root@${K2B_HOST}" "sudo -u ${K2B_USER} env XDG_RUNTIME_DIR=/run/user/${K2B_UID} pw-cli ls Node 2>/dev/null" | grep -c 'snd_aloop' || echo 0)
 if [[ "$K2B_PW" -ge 2 ]]; then
     pass_test "9.5c PipeWire ALSA loopback nodes present on K2B (${K2B_PW})"
 else
@@ -330,7 +340,7 @@ CT_SERVER_URL="${SERVER_URL}" \
 CT_K2B_HOST="${K2B_HOST}" \
 CT_K2B_USER="${K2B_USER}" \
 CT_K2B_UID="${K2B_UID}" \
-CT_ADMIN_PASSWORD="Password!" \
+CT_ADMIN_PASSWORD="${CT_ADMIN_PASSWORD:-admin-e2e-pass}" \
 CT_CAPTURE_PATH="${BROWSER_CAPTURE}" \
 CT_AUDIO_DURATION_MS="7000" \
 npx playwright test \

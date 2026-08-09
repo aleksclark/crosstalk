@@ -151,7 +151,7 @@ restore_from() {
 if [[ "$MODE" == "rollback" ]]; then
   STAMP="${ARG2:-}"
   if [[ -z "$STAMP" ]]; then
-    STAMP="$(remote "ls -1 '${ROLLBACK_ROOT}' 2>/dev/null | sort | tail -1")"
+    STAMP="$(remote "ls -1d '${ROLLBACK_ROOT}'/[0-9]*T*Z 2>/dev/null | xargs -n1 basename 2>/dev/null | sort | tail -1")"
   fi
   if [[ -z "$STAMP" ]]; then
     echo "No rollback stamps found on ${BOARD_IP}:${ROLLBACK_ROOT}" >&2
