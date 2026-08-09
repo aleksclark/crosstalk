@@ -180,7 +180,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	// browser retry) are idempotent: they return the same connecting status
 	// without re-queueing or overwriting the first choice.
 	s.accepted.Do(func() {
-		s.got = Credentials{SSID: req.SSID, Passphrase: req.Passphrase}
+		s.got = Credentials(req)
 		select {
 		case s.provisioned <- s.got:
 		default:

@@ -1,0 +1,156 @@
+{
+  "schema_version": "1.0.0",
+  "name": "crosstalk-production-integration",
+  "generated_at": "2026-08-09T05:56:50Z",
+  "git": {
+    "branch": "production-integration",
+    "sha": "701f881d280b664ba9be0058ecf21a0283ec2892",
+    "pr": 14,
+    "remote": "origin"
+  },
+  "contracts": {
+    "openapi": {
+      "path": "api/openapi.json",
+      "sha256": "f5132c99debe09279fedadb17547d4094ef7327723c4df18ac857bb10e844426",
+      "openapi_version": "3.0.3",
+      "info_version": "3.0.0"
+    },
+    "media_tickets": {
+      "mint_path": "POST /api/webrtc/token",
+      "consume_ws_path": "GET /api/sessions/{id}/ws?token=<one-time-ticket>",
+      "broadcast_ws_path": "GET /ws/broadcast/{id}?token=<broadcast_token>",
+      "abc_signaling_path": "GET /ws/signaling?token=<abc_api_token>",
+      "schema_keys": [
+        "WebRTCTokenRequestBody",
+        "WebRTCTokenResponseBody"
+      ],
+      "schemas_sha256": "715902df167fe0d4a16924fd0c450eafbea70123a33b3bee56ce58a95c1438d6",
+      "notes": "Access JWT is not a media admit credential when MediaTickets configured; produce/listen selectors may only narrow role defaults."
+    },
+    "error_contract": {
+      "http": {
+        "content_type": "application/problem+json",
+        "schema": "ErrorModel",
+        "schema_sha256": "15aeeaf05ecff1c67ecc9aab95f5f6b824e634d1286f9b33608016fd0eb2bcb5",
+        "fields": [
+          "type",
+          "title",
+          "status",
+          "detail",
+          "instance",
+          "errors"
+        ]
+      },
+      "broadcast_ws_close_codes": {
+        "invalid_token": [
+          4001,
+          4003,
+          4401,
+          4403,
+          1008
+        ],
+        "session_ended": [
+          4000,
+          4002,
+          1001
+        ],
+        "retryable_test_hook": [
+          4005
+        ],
+        "notes": "Browser WebSocket.close accepts 1000 or 3000-4999 only."
+      }
+    }
+  },
+  "feature_flags_and_env": {
+    "CT_TEST_MODE": "allows insecure defaults for e2e/local",
+    "CT_ALLOW_INSECURE_DEFAULTS": "explicit insecure override",
+    "CT_JWT_SECRET": "required outside test/insecure",
+    "CT_MEDIA_TICKET_SECRET": "defaults to JWT secret",
+    "CT_ADMIN_PASSWORD": "required outside test/insecure",
+    "CT_DATABASE_URL": "required outside test/insecure",
+    "CT_TURN_URL": "optional TURN URL (turn:/turns:)",
+    "CT_TURN_USERNAME": "optional",
+    "CT_TURN_CREDENTIAL": "optional",
+    "CT_PUBLIC_MEDIA_URL": "optional public base for media",
+    "CT_PUBLIC_IP": "optional ICE host candidate IP",
+    "CT_UDP_MUX_PORT": "UDP mux port (0 = ephemeral)",
+    "CT_MULTI_REPLICA": "multi-replica lease mode",
+    "CT_INSTANCE_ID": "instance identity for leases"
+  },
+  "turn_capabilities": {
+    "stun_default": [
+      "stun:stun.l.google.com:19302"
+    ],
+    "turn_env": [
+      "CT_TURN_URL",
+      "CT_TURN_USERNAME",
+      "CT_TURN_CREDENTIAL"
+    ],
+    "production_expectation": "Ticket ICE discovery should include turn:/turns: for non-dev; STUN-only acceptable only in local e2e without CT_TURN_URL",
+    "configured_in_this_build": "env-driven; image has no baked TURN secrets"
+  },
+  "migration": {
+    "engine": "postgres advisory-locked schema_migrations",
+    "lock_id": "0x43544d49475201",
+    "applies_on": "server start (Open)",
+    "rollback": "restore previous image + DB snapshot; migrations are forward-only version inserts \u2014 do not auto-down"
+  },
+  "test_evidence": {
+    "e2e": {
+      "command": "bash test/run-e2e.sh",
+      "result": "10 passed (22.0s)",
+      "counts": {
+        "passed": 10,
+        "failed": 0,
+        "total": 10
+      },
+      "golden_audio": {
+        "topology": "ABC floor\u2192feed\u2192translator; translator\u2192broadcast\u2192listener",
+        "evidence": "translator streams heard 439, 0, 439Hz; broadcast heard 879Hz",
+        "floor_hz_expected": 440,
+        "translator_hz_expected": 880
+      },
+      "listener_reconnect": {
+        "mechanism": "window.__ctCloseBroadcastWs(4005,'test-server-drop') real WebSocket.close",
+        "proved": "second WS on /ws/broadcast/{session}?token=\u2026 within bounded reconnect"
+      }
+    },
+    "local_ci_equivalent": {
+      "go_lint": "0 issues (golangci-lint, CGO_ENABLED=1)",
+      "go_unit": "server ./... + cli ./... pass",
+      "ts_typecheck": "apps + packages tsc --noEmit pass",
+      "oxlint": "0 errors (warnings only)",
+      "broadcast_unit": "9 passed (reconnect-policy)"
+    }
+  },
+  "image": {
+    "registry": "997533895598.dkr.ecr.us-east-1.amazonaws.com",
+    "repository": "crosstalk",
+    "region": "us-east-1",
+    "tags": [
+      "production-integration-20260809055518",
+      "production-integration"
+    ],
+    "digest": "sha256:712daab33275e3c9e0f2abdd6364fa4f7cffdb34c70db406316b7785fda86973",
+    "ref": "997533895598.dkr.ecr.us-east-1.amazonaws.com/crosstalk@sha256:712daab33275e3c9e0f2abdd6364fa4f7cffdb34c70db406316b7785fda86973",
+    "dockerfile": "deploy/Dockerfile",
+    "cgo": true,
+    "runtime_libs": [
+      "libopus0",
+      "libopusfile0"
+    ]
+  },
+  "rollback": {
+    "git": "git checkout origin/production-integration@{1} or previous known-good SHA on branch",
+    "image": "redeploy previous ECR digest; current digest is recorded above",
+    "database": "restore pre-migration snapshot if a new schema_migrations version was applied in target env",
+    "k2b": "offline at finalization \u2014 no board recovery performed"
+  },
+  "k2b": {
+    "host": "192.168.0.109",
+    "reachability": "offline",
+    "ping": "100% packet loss",
+    "ssh_22": "unreachable",
+    "recovery_run": false
+  }
+}

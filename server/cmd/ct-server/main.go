@@ -56,7 +56,7 @@ func main() {
 		log.Error("failed to open database", "error", err)
 		os.Exit(1)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	sessionStore := postgres.NewSessionStore(db)
 	channelStore := postgres.NewChannelStore(db)

@@ -158,10 +158,19 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
 
   const connect = useCallback(async () => {
     addEvent("connect", `Starting connection to session ${sessionId}`);
+    setConnectionState("connecting");
 
     // Mint one-time media ticket (access JWT is not a WS admit credential).
     addEvent("auth", "Requesting media ticket");
-    const mediaTicket = await mintMediaTicket(token, sessionId, { produce, listen });
+    let mediaTicket: string;
+    try {
+      mediaTicket = await mintMediaTicket(token, sessionId, { produce, listen });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      addEvent("error", msg);
+      setConnectionState("failed");
+      throw err;
+    }
     addEvent("auth", "Media ticket obtained");
 
     // Get user media

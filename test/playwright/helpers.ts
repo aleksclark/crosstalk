@@ -106,6 +106,193 @@ export async function getBroadcastToken(
   return info.broadcast_token as string;
 }
 
+/**
+ * Register an ABC (booth) assigned to a session and return the one-time API
+ * token. Translators cannot produce into feed channels — floor audio must
+ * come from an ABC on /ws/signaling (production board path).
+ */
+export async function createAssignedABC(
+  request: APIRequestContext,
+  adminToken: string,
+  sessionId: string,
+  name: string,
+): Promise<{ id: string; token: string; name: string }> {
+  const created = await apiFetch(request, adminToken, "post", "/api/abcs", {
+    name,
+  });
+  const id = created.id as string;
+  const abcToken = created.token as string;
+  expect(id, "ABC id").toBeTruthy();
+  expect(abcToken, "ABC token shown once").toBeTruthy();
+  await apiFetch(request, adminToken, "put", `/api/abcs/${id}`, {
+    name,
+    session_id: sessionId,
+  });
+  return { id, token: abcToken, name };
+}
+
+/**
+ * Drive a browser as an ABC floor producer: mic → /ws/signaling with the ABC
+ * API token (client-offer). Keeps PC/WS on window so the connection lives for
+ * the test duration. Requires a context launched with fake-mic + permissions.
+ */
+export async function connectABCFloorProducer(
+  page: Page,
+  abcToken: string,
+): Promise<void> {
+  // Land on same-origin so relative WS host matches the SPA under test.
+  await page.goto("/admin/login");
+  await page.evaluate(async (token) => {
+    const w = window as unknown as {
+      __ctAbcPc?: RTCPeerConnection;
+      __ctAbcWs?: WebSocket;
+      __ctAbcStream?: MediaStream;
+      __ctAbcReady?: Promise<void>;
+      __ctAbcError?: string;
+    };
+
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: false,
+    });
+    w.__ctAbcStream = stream;
+
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    });
+    w.__ctAbcPc = pc;
+    // Control channel — server adopts it (same as translator SPA / ABC client).
+    pc.createDataChannel("control");
+    stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const ws = new WebSocket(
+      `${proto}//${window.location.host}/ws/signaling?token=${encodeURIComponent(token)}`,
+    );
+    w.__ctAbcWs = ws;
+
+    const pending: RTCIceCandidateInit[] = [];
+    let wsOpen = false;
+
+    const send = (obj: unknown) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(obj));
+      }
+    };
+
+    pc.onicecandidate = (ev) => {
+      if (!ev.candidate) return;
+      const init = ev.candidate.toJSON();
+      if (wsOpen) {
+        send({ type: "candidate", candidate: init });
+      } else {
+        pending.push(init);
+      }
+    };
+
+    w.__ctAbcReady = new Promise<void>((resolve, reject) => {
+      const deadline = window.setTimeout(() => {
+        w.__ctAbcError = `abc ICE timeout ice=${pc.iceConnectionState} conn=${pc.connectionState}`;
+        reject(new Error(w.__ctAbcError));
+      }, 45_000);
+
+      const maybeDone = () => {
+        if (
+          pc.iceConnectionState === "connected" ||
+          pc.iceConnectionState === "completed" ||
+          pc.connectionState === "connected"
+        ) {
+          window.clearTimeout(deadline);
+          resolve();
+        }
+      };
+      pc.oniceconnectionstatechange = maybeDone;
+      pc.onconnectionstatechange = maybeDone;
+
+      ws.onerror = () => {
+        w.__ctAbcError = "abc websocket error";
+      };
+      ws.onclose = (ev) => {
+        if (pc.connectionState !== "connected") {
+          w.__ctAbcError = `abc ws closed code=${ev.code} ${ev.reason}`;
+        }
+      };
+
+      ws.onopen = () => {
+        wsOpen = true;
+        for (const c of pending.splice(0)) {
+          send({ type: "candidate", candidate: c });
+        }
+      };
+
+      ws.onmessage = async (ev) => {
+        try {
+          const msg = JSON.parse(String(ev.data)) as {
+            type: string;
+            sdp?: string;
+            candidate?: RTCIceCandidateInit;
+          };
+          if (msg.type === "answer" && msg.sdp) {
+            await pc.setRemoteDescription({ type: "answer", sdp: msg.sdp });
+            maybeDone();
+          } else if (msg.type === "offer" && msg.sdp) {
+            await pc.setRemoteDescription({ type: "offer", sdp: msg.sdp });
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            send({ type: "answer", sdp: answer.sdp });
+          } else if (
+            (msg.type === "candidate" || msg.type === "ice") &&
+            msg.candidate
+          ) {
+            await pc.addIceCandidate(msg.candidate);
+          }
+        } catch (err) {
+          w.__ctAbcError = err instanceof Error ? err.message : String(err);
+        }
+      };
+
+      // Create + send offer once WS is open (or immediately if already open).
+      void (async () => {
+        try {
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          const pushOffer = () => send({ type: "offer", sdp: offer.sdp });
+          if (ws.readyState === WebSocket.OPEN) {
+            pushOffer();
+          } else {
+            ws.addEventListener("open", pushOffer, { once: true });
+          }
+        } catch (err) {
+          window.clearTimeout(deadline);
+          w.__ctAbcError = err instanceof Error ? err.message : String(err);
+          reject(err instanceof Error ? err : new Error(String(err)));
+        }
+      })();
+    });
+
+    await w.__ctAbcReady;
+  }, abcToken);
+
+  // Surface browser-side failure with a clear Playwright error.
+  const err = await page.evaluate(
+    () => (window as unknown as { __ctAbcError?: string }).__ctAbcError ?? "",
+  );
+  if (err) {
+    throw new Error(`ABC floor producer failed: ${err}`);
+  }
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(() => {
+          const pc = (window as unknown as { __ctAbcPc?: RTCPeerConnection })
+            .__ctAbcPc;
+          return pc?.connectionState ?? pc?.iceConnectionState ?? "missing";
+        }),
+      { timeout: 45_000 },
+    )
+    .toMatch(/connected|completed/);
+}
+
 // ── Tone generation (Chromium fake mic input) ────────────────────────────
 
 /** Write a mono 16-bit PCM WAV of a pure sine at `hz` for `seconds` @ 48kHz. */

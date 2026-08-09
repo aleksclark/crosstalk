@@ -85,7 +85,13 @@ export function SessionConnectPage() {
   }, [webrtc.connectionState]);
 
   const handleConnect = async () => {
-    await webrtc.connect();
+    try {
+      await webrtc.connect();
+    } catch (err) {
+      // Surface mint/WS/ICE failures in the event log instead of a silent
+      // unhandled rejection that leaves the Connect button stuck forever.
+      console.error("connect failed", err);
+    }
   };
 
   const handleDisconnect = () => {

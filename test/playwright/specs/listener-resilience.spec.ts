@@ -97,19 +97,13 @@ test.describe("Broadcast listener resilience", () => {
 
     // Connecting then either playing (if media bridges) or still connecting —
     // assert we left idle and did not immediately terminal-error.
-    await expect(
-      listen
-        .getByTestId("status-live")
-        .or(listen.getByTestId("status-warn"))
-        .or(listen.getByTestId("debug-state")),
-    ).toBeVisible({ timeout: 20_000 });
-
+    // Prefer a single locator: status-live/warn and debug-state can both be
+    // present (strict-mode violation with .or()).
     const debugState = listen.getByTestId("debug-state");
-    if (await debugState.count()) {
-      const state = (await debugState.textContent())?.trim();
-      expect(["connecting", "reconnecting", "playing"]).toContain(state);
-      expect(state).not.toBe("error");
-    }
+    await expect(debugState).toBeVisible({ timeout: 20_000 });
+    const state = (await debugState.textContent())?.trim();
+    expect(["connecting", "reconnecting", "playing"]).toContain(state);
+    expect(state).not.toBe("error");
 
     // Listener count hidden unless server pushes a real value.
     // (Presence is fine; inventing "0 listeners" without a server value is not.)
@@ -165,12 +159,10 @@ test.describe("Broadcast listener resilience", () => {
     await openListener(listen, sessionId, broadcastToken);
 
     // Should show ended/invalid terminal UI — never a reconnect loop.
-    await expect(
-      listen
-        .getByTestId("broadcast-error-message")
-        .or(listen.getByTestId("broadcast-ended-message"))
-        .or(listen.getByTestId("broadcast-error")),
-    ).toBeVisible({ timeout: 15_000 });
+    // Prefer a single nested message locator (parent + child both match .or()).
+    await expect(listen.getByTestId("broadcast-error-message")).toBeVisible({
+      timeout: 15_000,
+    });
 
     await listen.waitForTimeout(3_000);
     const text = (await listen.locator("body").innerText()).toLowerCase();
@@ -188,9 +180,9 @@ test.describe("Broadcast listener resilience", () => {
       "ct-server not reachable — deferred until integration harness is up",
     );
 
-    // Full media drop + resume needs a producer and controllable peer teardown.
-    // When the harness cannot inject a mid-session WS close, we document the
-    // contract via the SPA debug surface after a forced client-side socket close.
+    // Prove a real transport drop → bounded reconnect with a second WebSocket.
+    // Uses the SPA's test-only __ctCloseBroadcastWs hook (real socket.close),
+    // not offline toggles or fake status flips.
     const adminToken = await adminLoginUI(page);
     const session = await apiFetch(request, adminToken, "post", "/api/sessions", {
       name: `Listener reconnect ${Date.now()}`,
@@ -214,7 +206,7 @@ test.describe("Broadcast listener resilience", () => {
     });
     await listen.getByTestId("listen-button").click();
 
-    // Wait for first WS.
+    // Wait for first WS + hook registration after connect starts.
     await expect
       .poll(() => wsUrls.length, { timeout: 15_000 })
       .toBeGreaterThanOrEqual(1);
@@ -223,48 +215,65 @@ test.describe("Broadcast listener resilience", () => {
     expect(first).toContain(`/ws/broadcast/${sessionId}`);
     expect(first).toContain(`token=${encodeURIComponent(broadcastToken)}`);
 
-    // Force-close the page's WebSocket to simulate server drop.
-    await listen.evaluate(() => {
-      // Access is via prototype patch is hard; close all sockets the page knows.
-      // The SPA holds the socket privately — dispatch via performance entries
-      // is unreliable. Instead, yank network offline then online to provoke
-      // reconnect when the browser marks the socket dead.
+    await expect
+      .poll(
+        async () =>
+          listen.evaluate(
+            () =>
+              typeof (window as unknown as { __ctCloseBroadcastWs?: unknown })
+                .__ctCloseBroadcastWs === "function",
+          ),
+        { timeout: 10_000 },
+      )
+      .toBe(true);
+
+    // Real close with a browser-legal retryable code (4005 ∈ 3000–4999).
+    // Do NOT use 4000/4001/4002/1008 (session_ended / invalid_token) or the SPA
+    // will terminal-stop. Do NOT use 1011 — browsers reject non-1000/<3000 codes.
+    const closed = await listen.evaluate(() => {
+      const fn = (
+        window as unknown as {
+          __ctCloseBroadcastWs?: (code?: number, reason?: string) => boolean;
+        }
+      ).__ctCloseBroadcastWs;
+      if (!fn) return { ok: false, reason: "hook-missing" as const };
+      const sock = (
+        window as unknown as { __ctCloseBroadcastWs?: unknown }
+      ).__ctCloseBroadcastWs;
+      void sock;
+      try {
+        const ok = fn(4005, "test-server-drop");
+        return { ok, reason: ok ? ("closed" as const) : ("already-closed" as const) };
+      } catch (e) {
+        return {
+          ok: false,
+          reason: e instanceof Error ? e.message : String(e),
+        };
+      }
+    });
+    expect(closed.ok, `test hook close failed: ${closed.reason}`).toBe(true);
+
+    // UI should enter reconnecting (bounded backoff), then open a second WS.
+    // Prefer a single testid — status badge + message + debug all say "reconnecting".
+    await expect(listen.getByTestId("debug-state")).toHaveText(/reconnecting/i, {
+      timeout: 15_000,
     });
 
-    // Offline → online is the portable way to force a transport drop in Chromium.
-    await listen.context().setOffline(true);
-    await listen.waitForTimeout(500);
-    await listen.context().setOffline(false);
+    await expect
+      .poll(() => wsUrls.length, { timeout: 25_000 })
+      .toBeGreaterThanOrEqual(2);
 
-    // Expect either a reconnecting status or a second WS open with the same
-    // token path (fresh connection, not a different ticket).
-    await Promise.race([
-      listen
-        .getByText(/reconnecting/i)
-        .waitFor({ timeout: 20_000 })
-        .catch(() => undefined),
-      expect
-        .poll(() => wsUrls.length, { timeout: 20_000 })
-        .toBeGreaterThanOrEqual(2),
-    ]);
+    const second = wsUrls[1]!;
+    expect(second).toContain(`/ws/broadcast/${sessionId}`);
+    expect(second).toContain(encodeURIComponent(broadcastToken));
+    // Fresh socket — URL may be identical path; that is correct (token reuse
+    // is the public listener contract; do not mint a one-shot ticket client-side).
+    expect(second).not.toMatch(/ticket=/i);
 
-    if (wsUrls.length >= 2) {
-      const second = wsUrls[1]!;
-      expect(second).toContain(`/ws/broadcast/${sessionId}`);
-      expect(second).toContain(encodeURIComponent(broadcastToken));
-      // Fresh socket — URL may be identical path; that is correct (token reuse
-      // is the public listener contract; do not mint a one-shot ticket client-side).
-      expect(second).not.toMatch(/ticket=/i);
-    } else {
-      // At least the UI told the truth about reconnecting or ended/error.
-      const body = (await listen.locator("body").innerText()).toLowerCase();
-      expect(
-        body.includes("reconnect") ||
-          body.includes("disconnected") ||
-          body.includes("ended") ||
-          body.includes("connection"),
-      ).toBeTruthy();
-    }
+    // Bounded: must not spin unbounded reconnect attempts immediately.
+    await listen.waitForTimeout(2_000);
+    const body = (await listen.locator("body").innerText()).toLowerCase();
+    expect(body).not.toMatch(/reconnecting \(attempt [5-9]/);
 
     await listen.close();
   });
@@ -299,18 +308,22 @@ test.describe("Broadcast listener resilience", () => {
     await listen.getByTestId("listen-button").click();
 
     // After gesture, pause control appears while not terminal-invalid.
-    await expect(
-      listen
-        .getByTestId("pause-button")
-        .or(listen.getByTestId("broadcast-error-message"))
-        .or(listen.getByTestId("retry-button")),
-    ).toBeVisible({ timeout: 20_000 });
+    // Prefer pause-button; fall back to error message without .or() strict issues.
+    const pause = listen.getByTestId("pause-button");
+    const errMsg = listen.getByTestId("broadcast-error-message");
+    await expect
+      .poll(
+        async () =>
+          (await pause.count()) + (await errMsg.count()) > 0 ? "ready" : "",
+        { timeout: 20_000 },
+      )
+      .toBe("ready");
 
-    if (await listen.getByTestId("pause-button").count()) {
-      await listen.getByTestId("pause-button").click();
-      await expect(listen.getByTestId("pause-button")).toContainText(/resume/i);
-      await listen.getByTestId("pause-button").click();
-      await expect(listen.getByTestId("pause-button")).toContainText(/pause/i);
+    if (await pause.count()) {
+      await pause.click();
+      await expect(pause).toContainText(/resume/i);
+      await pause.click();
+      await expect(pause).toContainText(/pause/i);
     }
 
     await listen.close();

@@ -426,6 +426,38 @@ export function useBroadcastListener(
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
+    // Test-only: expose a real close path for Playwright. Callers must use a
+    // retryable close code (not 4000/4001/4002/1008) so classifyWsClose returns
+    // retry and scheduleReconnect opens a fresh socket. Not a fake status toggle.
+    try {
+      const g = window as unknown as {
+        __ctCloseBroadcastWs?: (code?: number, reason?: string) => boolean;
+      };
+      // Browser WebSocket.close only accepts 1000 or 3000–4999. Prefer a
+      // private-use 4xxx that classifyWsClose treats as retry (not 4000/4001/4002/1008).
+      g.__ctCloseBroadcastWs = (code = 4005, reason = "test-server-drop") => {
+        const sock = wsRef.current;
+        if (!sock) return false;
+        if (
+          sock.readyState === WebSocket.CLOSING ||
+          sock.readyState === WebSocket.CLOSED
+        ) {
+          return false;
+        }
+        try {
+          // Clamp to browser-legal codes if a caller passes a server-only code.
+          const safe =
+            code === 1000 || (code >= 3000 && code <= 4999) ? code : 4005;
+          sock.close(safe, reason.slice(0, 123));
+          return true;
+        } catch {
+          return false;
+        }
+      };
+    } catch {
+      /* ignore non-browser */
+    }
+
     // Remote ICE candidates can arrive (trickled) before the offer has been
     // applied. Queue them until setRemoteDescription completes.
     let remoteDescSet = false;
