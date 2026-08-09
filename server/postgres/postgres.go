@@ -18,6 +18,10 @@ import (
 	"github.com/uptrace/bun/extra/bundebug"
 )
 
+// migrationAdvisoryLockID is a stable 64-bit key used with pg_advisory_lock so
+// concurrent Open() callers serialize schema changes.
+const migrationAdvisoryLockID int64 = 0x43544d49475201 // "CTMIGR\x01"
+
 // DB wraps a *bun.DB connection with CrossTalk-specific helpers.
 type DB struct {
 	*bun.DB
@@ -36,7 +40,7 @@ func Open(dsn string, log *slog.Logger) (*DB, error) {
 		bdb.AddQueryHook(bundebug.NewQueryHook(bundebug.WithVerbose(true)))
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := bdb.PingContext(ctx); err != nil {
 		return nil, fmt.Errorf("postgres ping: %w", err)
@@ -44,15 +48,31 @@ func Open(dsn string, log *slog.Logger) (*DB, error) {
 
 	d := &DB{DB: bdb, log: log}
 	if err := d.migrate(ctx); err != nil {
+		_ = bdb.Close()
 		return nil, fmt.Errorf("postgres migrate: %w", err)
 	}
 
 	return d, nil
 }
 
-// migrate runs all schema migrations in order, tracking applied versions.
+// migrate runs all schema migrations under a session advisory lock.
+// Each migration's statements and version insert run in ONE transaction so a
+// statement failure rolls back both schema changes and the version row.
 func (d *DB) migrate(ctx context.Context) error {
-	if _, err := d.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
+	conn, err := d.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("migration conn: %w", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_lock(?)`, migrationAdvisoryLockID); err != nil {
+		return fmt.Errorf("advisory lock: %w", err)
+	}
+	defer func() {
+		_, _ = conn.ExecContext(context.Background(), `SELECT pg_advisory_unlock(?)`, migrationAdvisoryLockID)
+	}()
+
+	if _, err := conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
 		version INTEGER PRIMARY KEY,
 		applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
 	)`); err != nil {
@@ -61,7 +81,7 @@ func (d *DB) migrate(ctx context.Context) error {
 
 	for _, m := range migrations {
 		var exists int
-		if err := d.QueryRowContext(ctx,
+		if err := conn.QueryRowContext(ctx,
 			"SELECT COUNT(*) FROM schema_migrations WHERE version = ?", m.version).Scan(&exists); err != nil {
 			return err
 		}
@@ -72,18 +92,77 @@ func (d *DB) migrate(ctx context.Context) error {
 		if d.log != nil {
 			d.log.Info("applying migration", "version", m.version, "name", m.name)
 		}
+
+		tx, err := conn.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("migration %d begin: %w", m.version, err)
+		}
+
 		for _, stmt := range m.statements {
-			if _, err := d.ExecContext(ctx, stmt); err != nil {
+			if _, err := tx.ExecContext(ctx, stmt); err != nil {
+				_ = tx.Rollback()
 				return fmt.Errorf("migration %d (%s): %w", m.version, m.name, err)
 			}
 		}
-		if _, err := d.ExecContext(ctx,
+		if _, err := tx.ExecContext(ctx,
 			"INSERT INTO schema_migrations (version) VALUES (?)", m.version); err != nil {
-			return err
+			_ = tx.Rollback()
+			return fmt.Errorf("migration %d version insert: %w", m.version, err)
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("migration %d commit: %w", m.version, err)
 		}
 	}
 
 	return nil
+}
+
+// MigrateForTest exposes migrate for package tests (same package via export
+// test helpers live in postgres_test which is external — use Open instead).
+// This is used by white-box tests in package postgres.
+func (d *DB) MigrateForTest(ctx context.Context) error {
+	return d.migrate(ctx)
+}
+
+// WithMigrationsForTest temporarily replaces the migration set for tests.
+// The returned restore function must be called.
+func WithMigrationsForTest(ms []Migration) (restore func()) {
+	prev := migrations
+	converted := make([]migration, len(ms))
+	for i, m := range ms {
+		converted[i] = migration{version: m.Version, name: m.Name, statements: m.Statements}
+	}
+	migrations = converted
+	return func() { migrations = prev }
+}
+
+// Migration is the exported migration descriptor used by tests.
+type Migration struct {
+	Version    int
+	Name       string
+	Statements []string
+}
+
+// Migrations returns a copy of the built-in migration list for inspection.
+func Migrations() []Migration {
+	out := make([]Migration, len(migrations))
+	for i, m := range migrations {
+		out[i] = Migration{Version: m.version, Name: m.name, Statements: append([]string(nil), m.statements...)}
+	}
+	return out
+}
+
+// OpenWithoutMigrate opens a DB without running migrations (test helper).
+func OpenWithoutMigrate(dsn string, log *slog.Logger) (*DB, error) {
+	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(dsn)))
+	bdb := bun.NewDB(sqldb, pgdialect.New())
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := bdb.PingContext(ctx); err != nil {
+		_ = bdb.Close()
+		return nil, fmt.Errorf("postgres ping: %w", err)
+	}
+	return &DB{DB: bdb, log: log}, nil
 }
 
 type migration struct {
@@ -94,7 +173,8 @@ type migration struct {
 
 // migrations holds the ordered schema definition. Each statement is executed
 // individually because the pgdriver protocol does not allow multiple
-// statements in a single Exec.
+// statements in a single Exec. Statements for one version run inside a single
+// transaction together with the version insert.
 var migrations = []migration{
 	{
 		version: 1,
@@ -180,6 +260,43 @@ var migrations = []migration{
 		name:    "abc_monitor_channel",
 		statements: []string{
 			`ALTER TABLE abcs ADD COLUMN IF NOT EXISTS monitor_channel_id TEXT REFERENCES channels(id) ON DELETE SET NULL`,
+		},
+	},
+	{
+		version: 3,
+		name:    "session_lifecycle_and_media_tickets",
+		statements: []string{
+			`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS state TEXT NOT NULL DEFAULT 'waiting'`,
+			`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS owner_id TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS owner_generation BIGINT NOT NULL DEFAULT 0`,
+			`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS lease_until TIMESTAMPTZ`,
+			`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ`,
+			`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS ended_at TIMESTAMPTZ`,
+			// CHECK constraint for legal states (additive; existing rows get waiting).
+			`DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'sessions_state_check'
+  ) THEN
+    ALTER TABLE sessions ADD CONSTRAINT sessions_state_check
+      CHECK (state IN ('waiting','active','draining','ended','archived','failed'));
+  END IF;
+END $$`,
+			`CREATE TABLE IF NOT EXISTS media_tickets (
+    id                   TEXT PRIMARY KEY,
+    nonce_hash           TEXT NOT NULL UNIQUE,
+    session_id           TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    owner_id             TEXT NOT NULL,
+    owner_generation     BIGINT NOT NULL,
+    subject              TEXT NOT NULL,
+    role                 TEXT NOT NULL,
+    produce_channel_ids  TEXT[] NOT NULL DEFAULT '{}',
+    listen_channel_ids   TEXT[] NOT NULL DEFAULT '{}',
+    expires_at           TIMESTAMPTZ NOT NULL,
+    consumed_at          TIMESTAMPTZ,
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+)`,
+			`CREATE INDEX IF NOT EXISTS media_tickets_session_id_idx ON media_tickets (session_id)`,
+			`CREATE INDEX IF NOT EXISTS media_tickets_expires_at_idx ON media_tickets (expires_at)`,
 		},
 	},
 }

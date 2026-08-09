@@ -11,6 +11,11 @@ type SessionService interface {
 	Delete(ctx context.Context, id string) error
 	GetByBroadcastToken(ctx context.Context, token string) (*Session, error)
 	RegenerateBroadcastToken(ctx context.Context, id string) (string, error)
+	// TransitionState applies a lifecycle transition.
+	// When fenceGeneration is non-nil the update is fenced: it only succeeds
+	// when the session's current owner_generation matches. Terminal publishes
+	// from a stale owner must fail closed.
+	TransitionState(ctx context.Context, id string, to SessionState, fenceGeneration *uint64) error
 }
 
 // ChannelService manages channels within sessions.
@@ -75,4 +80,16 @@ type RecordingService interface {
 	FindByID(ctx context.Context, id string) (*Recording, error)
 	Update(ctx context.Context, r *Recording) error
 	List(ctx context.Context) ([]Recording, error)
+}
+
+// MediaTicketService persists and consumes one-time media admission tickets.
+type MediaTicketService interface {
+	// Issue persists a hashed nonce and returns the plaintext nonce once via
+	// the caller's input; the store only keeps the hash.
+	Issue(ctx context.Context, ticket *MediaTicket, nonce string) error
+	// Consume atomically marks an unconsumed, unexpired ticket as used when
+	// the stored owner_generation matches. Returns the ticket row on success.
+	Consume(ctx context.Context, nonce string, ownerGeneration uint64) (*MediaTicket, error)
+	// GetByNonceHash looks up a ticket by hash without consuming it.
+	GetByNonceHash(ctx context.Context, nonceHash string) (*MediaTicket, error)
 }
