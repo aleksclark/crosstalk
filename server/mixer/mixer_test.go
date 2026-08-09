@@ -2,6 +2,7 @@ package mixer
 
 import (
 	"math"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -240,9 +241,9 @@ func TestMixer_SetLevelAndMuted(t *testing.T) {
 }
 
 func TestMixer_RunAndStop(t *testing.T) {
-	frameCount := 0
+	var frameCount atomic.Int64
 	m := New(func(frame []int16) {
-		frameCount++
+		frameCount.Add(1)
 	}, WithRingSize(FrameSize*2))
 
 	go m.Run()
@@ -252,7 +253,7 @@ func TestMixer_RunAndStop(t *testing.T) {
 
 	m.Stop()
 
-	assert.Greater(t, frameCount, 0, "should have produced at least one frame")
+	assert.Greater(t, frameCount.Load(), int64(0), "should have produced at least one frame")
 }
 
 func TestNullCodec(t *testing.T) {
