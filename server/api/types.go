@@ -480,12 +480,23 @@ type GetBroadcastInfoResponse struct {
 
 type WebRTCTokenRequest struct {
 	Authorization string `header:"Authorization" doc:"Bearer token"`
+	Body          struct {
+		SessionID string   `json:"session_id" minLength:"1" doc:"Session to connect to"`
+		Role      string   `json:"role,omitempty" enum:"translator,admin,abc,listener" doc:"Requested role (server may override from identity)"`
+		Produce   []string `json:"produce,omitempty" doc:"Optional channel name/id/type selectors to narrow produce capability"`
+		Listen    []string `json:"listen,omitempty" doc:"Optional channel name/id/type selectors to narrow listen capability"`
+	}
 }
 
 type WebRTCTokenResponse struct {
 	Body struct {
-		Token     string    `json:"token" doc:"Short-lived WebRTC signaling token"`
-		ExpiresAt time.Time `json:"expires_at" doc:"Token expiration time"`
+		Token              string    `json:"token" doc:"One-time media admission ticket (JWT or opaque nonce)"`
+		ExpiresAt          time.Time `json:"expires_at" doc:"Ticket expiration time"`
+		SessionID          string    `json:"session_id" doc:"Bound session ID"`
+		Role               string    `json:"role" doc:"Bound role"`
+		ProduceChannelIDs  []string  `json:"produce_channel_ids" doc:"Channel IDs the ticket may produce into"`
+		ListenChannelIDs   []string  `json:"listen_channel_ids" doc:"Channel IDs the ticket may listen to"`
+		OwnerGeneration    uint64    `json:"owner_generation" doc:"Fenced owner generation bound into the ticket"`
 	}
 }
 

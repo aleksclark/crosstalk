@@ -5,8 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"strings"
-	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/oklog/ulid/v2"
@@ -861,55 +859,6 @@ func (s *Server) handleGetBroadcastInfo(ctx context.Context, input *GetBroadcast
 	resp.Body.SessionName = sess.Name
 	resp.Body.Active = true // TODO: track active state
 	return resp, nil
-}
-
-
-// --- WebRTC Handlers ---
-
-func (s *Server) handleWebRTCToken(ctx context.Context, input *WebRTCTokenRequest) (*WebRTCTokenResponse, error) {
-	// Accept either a user JWT (admin/translator browsers) or an ABC API token
-	// (headless CLI clients on the KickPi boards). ABCs authenticate with the
-	// long-lived API token minted at registration, not a login JWT.
-	if _, err := s.requireAuth(ctx, input.Authorization); err != nil {
-		if abcErr := s.authenticateABC(ctx, input.Authorization); abcErr != nil {
-			return nil, err // surface the original 401
-		}
-	}
-
-	// Generate a short-lived token for WebRTC signaling
-	tokenBytes := make([]byte, 16)
-	if _, err := rand.Read(tokenBytes); err != nil {
-		return nil, huma.Error500InternalServerError("failed to generate token")
-	}
-
-	resp := &WebRTCTokenResponse{}
-	resp.Body.Token = hex.EncodeToString(tokenBytes)
-	resp.Body.ExpiresAt = time.Now().Add(30 * time.Second)
-	return resp, nil
-}
-
-// authenticateABC validates a Bearer ABC API token against the abcs table and,
-// on success, marks the ABC connected. Returns an error if the header is
-// missing/malformed or the token is unknown.
-func (s *Server) authenticateABC(ctx context.Context, authHeader string) error {
-	parts := strings.SplitN(authHeader, " ", 2)
-	if len(parts) != 2 || !strings.EqualFold(parts[0], "bearer") {
-		return huma.Error401Unauthorized("invalid authorization header format")
-	}
-	if s.services.ABCs == nil {
-		return huma.Error401Unauthorized("abc auth unavailable")
-	}
-	abc, err := s.services.ABCs.GetByTokenHash(ctx, auth.HashToken(parts[1]))
-	if err != nil {
-		return huma.Error401Unauthorized("invalid abc token")
-	}
-	now := time.Now().UTC()
-	abc.Connected = true
-	abc.LastSeen = &now
-	if err := s.services.ABCs.Update(ctx, abc); err != nil {
-		s.log.Warn("failed to mark abc connected", "abc", abc.ID, "error", err)
-	}
-	return nil
 }
 
 // --- Helpers ---
