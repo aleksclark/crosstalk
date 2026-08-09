@@ -1,22 +1,16 @@
 // Package sessionrtc is the WebRTC SFU that carries session audio between peers.
 //
-// It is a passthrough forwarder: audio arrives from a publishing peer as RTP
-// and is forwarded, payload untouched, to every peer subscribed to the channel
-// the source feeds. Because payloads are never decoded, the same code path
-// carries browser Opus and the raw-PCM packets used by the Go integration
-// tests — the server needs no audio codec (important for CGO-free builds).
+// Production path is REAL decoded mixing:
 //
-// Routing mirrors the session's data model:
+//  1. read remote RTP
+//  2. bounded reorder window (seq/ts), 3–6 packets / ≤120ms
+//  3. decode each source independently to 20ms/960 PCM
+//  4. place on channel clock
+//  5. PLC/silence for late/missing after bound
+//  6. mix (level/mute/limit) → Opus encode → one monotonic RTP stream
 //
-//   - A publishing peer "produces" into one or more channels (by name). Each
-//     produce registers a Source and a channel_mix entry so the admin can see
-//     and mute it; forwarding is gated on that mute state.
-//   - A subscribing peer "listens" to one or more channels; it receives a
-//     server-added track per channel carrying that channel's forwarded audio.
-//
-// Per-source volume (mix level) cannot be applied without decoding, so only
-// mute/unmute is honored on this path. True level mixing lives in the
-// orchestrator/mixer packages, exercised directly by their unit tests.
+// Encoded RTP passthrough is forbidden as the production path.
+// NullEncoder/NullDecoder must not appear here.
 package sessionrtc
 
 import (
@@ -32,8 +26,41 @@ import (
 	pionwebrtc "github.com/pion/webrtc/v4"
 
 	crosstalk "github.com/aleksclark/crosstalk/server"
+	"github.com/aleksclark/crosstalk/server/audiocodec"
+	"github.com/aleksclark/crosstalk/server/mixer"
 	"github.com/aleksclark/crosstalk/server/webrtc"
 )
+
+// ── Observer seam (no OTel dependency) ───────────────────────────────────
+
+// Observer receives non-blocking media-path telemetry. Implementations must
+// not block; the media engine calls these from hot paths.
+type Observer interface {
+	PeerAuthorized(sessionID, subject, role string)
+	SourceFrame(sessionID, sourceID string, samples int)
+	FrameDropped(sessionID, sourceID, reason string)
+	MixedFrame(sessionID, channelID string, activeSources int, peak float64)
+	PeerClosed(sessionID, subject, reason string)
+}
+
+// NopObserver is the default no-op Observer.
+type NopObserver struct{}
+
+func (NopObserver) PeerAuthorized(string, string, string)          {}
+func (NopObserver) SourceFrame(string, string, int)                {}
+func (NopObserver) FrameDropped(string, string, string)            {}
+func (NopObserver) MixedFrame(string, string, int, float64)        {}
+func (NopObserver) PeerClosed(string, string, string)              {}
+
+// ── Codec factory seam ───────────────────────────────────────────────────
+
+// CodecFactory creates per-source decoders and per-channel encoders.
+type CodecFactory interface {
+	NewEncoder() (audiocodec.Encoder, error)
+	NewDecoder(channels int) (audiocodec.Decoder, error)
+}
+
+// ── Stores / opts / manager ──────────────────────────────────────────────
 
 // Stores holds the persistence dependencies the SFU needs.
 type Stores struct {
@@ -62,27 +89,58 @@ type BridgeOpts struct {
 	// ServerOffer requests a server-initiated SDP offer (used by receive-only
 	// broadcast listeners that add no track of their own).
 	ServerOffer bool
+	// Subject is an optional auth subject for observer events.
+	Subject string
 }
 
 // Manager owns one forwarder per live session.
 type Manager struct {
-	stores Stores
-	logger *slog.Logger
+	stores  Stores
+	logger  *slog.Logger
+	obs     Observer
+	factory CodecFactory
 
 	mu       sync.Mutex
 	sessions map[string]*sessionFwd
 }
 
-// NewManager creates a session SFU manager.
-func NewManager(stores Stores, logger *slog.Logger) *Manager {
+// ManagerOption configures the Manager.
+type ManagerOption func(*Manager)
+
+// WithObserver sets the media observer (default: NopObserver).
+func WithObserver(o Observer) ManagerOption {
+	return func(m *Manager) {
+		if o != nil {
+			m.obs = o
+		}
+	}
+}
+
+// WithCodecFactory overrides the Opus codec factory (tests may inject fakes).
+func WithCodecFactory(f CodecFactory) ManagerOption {
+	return func(m *Manager) {
+		if f != nil {
+			m.factory = f
+		}
+	}
+}
+
+// NewManager creates a session SFU manager with production Opus codecs.
+func NewManager(stores Stores, logger *slog.Logger, opts ...ManagerOption) *Manager {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Manager{
+	m := &Manager{
 		stores:   stores,
 		logger:   logger,
+		obs:      NopObserver{},
+		factory:  audiocodec.Factory{},
 		sessions: make(map[string]*sessionFwd),
 	}
+	for _, o := range opts {
+		o(m)
+	}
+	return m
 }
 
 // forwarder returns the (lazily created) forwarder for a session.
@@ -96,7 +154,10 @@ func (m *Manager) forwarder(sessionID string) *sessionFwd {
 		sessionID: sessionID,
 		stores:    m.stores,
 		logger:    m.logger,
+		obs:       m.obs,
+		factory:   m.factory,
 		channels:  make(map[string]*channelHub),
+		sources:   make(map[string]*sourcePump),
 	}
 	m.sessions[sessionID] = f
 	return f
@@ -115,75 +176,414 @@ type sessionFwd struct {
 	sessionID string
 	stores    Stores
 	logger    *slog.Logger
+	obs       Observer
+	factory   CodecFactory
 
 	mu       sync.Mutex
 	channels map[string]*channelHub // channelID -> hub
+	sources  map[string]*sourcePump // sourceID -> pump
 	resolved bool
 	byName   map[string]string // channel name -> id
 	byType   map[string][]string
 }
 
-// channelHub carries one channel's forwarded audio to all subscribers via a
-// single shared local track.
-//
-// Multiple sources may forward into the same channel (e.g. a booth and a
-// translator both assigned to a broadcast channel). Their RTP streams have
-// independent sequence-number and timestamp spaces, so the hub rewrites every
-// outgoing packet into ONE continuous, monotonic stream. Without this, when a
-// source with higher sequence numbers stops, the remaining source's lower
-// sequence numbers look "stale" to the listener's jitter buffer and playback
-// stalls until the receiver is recreated (a page reload).
+// channelHub owns one channel's mixer, Opus encoder, and shared local track.
+// Each 20ms tick: snapshot mix entries → mix PCM → encode Opus → write RTP.
 type channelHub struct {
-	channel crosstalk.Channel
-	track   *pionwebrtc.TrackLocalStaticRTP
+	channel   crosstalk.Channel
+	sessionID string
+	track     *pionwebrtc.TrackLocalStaticRTP
+	mix       *mixer.Mixer
+	enc       audiocodec.Encoder
+	obs       Observer
+	logger    *slog.Logger
 
+	mu      sync.Mutex
+	seq     uint16
+	ts      uint32
+	started bool
+
+	// cached mix levels refreshed periodically (no PG on every packet).
+	mixMu     sync.RWMutex
+	mixCache  map[string]cachedMix // sourceID -> entry
+	lastFetch time.Time
+	mixStore  crosstalk.MixService
+}
+
+type cachedMix struct {
+	level float64
+	muted bool
+}
+
+// sourcePump reads RTP from one remote track, reorders within a bound,
+// decodes independently, and writes PCM into every channel mixer input.
+type sourcePump struct {
+	sourceID  string
+	sessionID string
+	dec       audiocodec.Decoder
+	obs       Observer
+	logger    *slog.Logger
+	fwd       *sessionFwd
+
+	// jitter: bounded reorder window
+	jb *jitterBuffer
+
+	stopCh   chan struct{}
+	stopOnce sync.Once
+}
+
+// ── jitter buffer ────────────────────────────────────────────────────────
+
+const (
+	// jitterMaxPackets is the reorder window size (3–6 packets).
+	jitterMaxPackets = 6
+	// jitterMaxSpanTS is ≤120ms at 48kHz (120ms * 48 = 5760).
+	jitterMaxSpanTS = 5760
+	// frameSamples is one Opus frame.
+	frameSamples = audiocodec.FrameSize // 960
+	// default frame timestamp delta.
+	frameTSDelta = uint32(frameSamples)
+)
+
+type jbPacket struct {
+	seq     uint16
+	ts      uint32
+	payload []byte
+}
+
+// jitterBuffer is a bounded reorder queue keyed by RTP sequence number.
+// Overflow drops the oldest packet and reports via onDrop.
+type jitterBuffer struct {
 	mu       sync.Mutex
-	seq      uint16
-	ts       uint32
-	haveLast bool
-	lastInTS uint32
+	packets  map[uint16]*jbPacket
+	order    []uint16 // insertion-ordered seqs for oldest-drop
+	maxPkts  int
+	maxSpan  uint32
+	haveBase bool
+	nextSeq  uint16
+	onDrop   func(reason string)
 }
 
-// writeRTP forwards one packet onto the channel's shared track, rewriting the
-// sequence number to the hub's monotonic counter and advancing the timestamp by
-// a sane per-packet delta so the outbound stream stays continuous across source
-// switches. The incoming packet is not mutated (it may be written to several
-// hubs), so a shallow copy with a rewritten header is sent.
-func (h *channelHub) writeRTP(pkt *rtp.Packet) error {
-	seq, ts := h.nextHeader(pkt.Timestamp)
-	out := *pkt
-	out.Header = pkt.Header
-	out.Header.SequenceNumber = seq
-	out.Header.Timestamp = ts
-	return h.track.WriteRTP(&out)
+func newJitterBuffer(onDrop func(reason string)) *jitterBuffer {
+	return &jitterBuffer{
+		packets: make(map[uint16]*jbPacket, jitterMaxPackets),
+		maxPkts: jitterMaxPackets,
+		maxSpan: jitterMaxSpanTS,
+		onDrop:  onDrop,
+	}
 }
 
-// nextHeader advances the hub's monotonic sequence/timestamp counters for one
-// outbound packet, given the inbound packet's timestamp. Sequence numbers are
-// strictly monotonic regardless of which source fed the packet; the timestamp
-// advances by the source's own inter-packet delta when it looks sane, else by a
-// default 20ms Opus frame (covering first packet and source-switch
-// discontinuities). Split out from writeRTP so the rewrite is unit-testable.
+// Push inserts a packet. Duplicates are ignored. On overflow, oldest is dropped.
+// nextSeq is not locked until the first PopReady so early reordering works.
+func (j *jitterBuffer) Push(seq uint16, ts uint32, payload []byte) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+
+	if _, exists := j.packets[seq]; exists {
+		return
+	}
+	// If we have already started consuming, ignore packets that are too old
+	// (already delivered or declared lost).
+	if j.haveBase {
+		// seq is "before" nextSeq when gap from seq→nextSeq is small positive
+		// under uint16 wrap: nextSeq-seq in (0, maxPkts*2].
+		gap := j.nextSeq - seq
+		if gap != 0 && gap <= uint16(j.maxPkts*2) {
+			// late / already-passed
+			if j.onDrop != nil {
+				j.onDrop("late")
+			}
+			return
+		}
+	}
+
+	cp := make([]byte, len(payload))
+	copy(cp, payload)
+	j.packets[seq] = &jbPacket{seq: seq, ts: ts, payload: cp}
+	j.order = append(j.order, seq)
+
+	// Bound by count.
+	for len(j.packets) > j.maxPkts {
+		j.dropOldestLocked("overflow")
+	}
+	// Bound by timestamp span.
+	j.trimSpanLocked()
+}
+
+func (j *jitterBuffer) dropOldestLocked(reason string) {
+	if len(j.order) == 0 {
+		return
+	}
+	old := j.order[0]
+	j.order = j.order[1:]
+	if _, ok := j.packets[old]; ok {
+		delete(j.packets, old)
+		if j.onDrop != nil {
+			j.onDrop(reason)
+		}
+	}
+}
+
+func (j *jitterBuffer) trimSpanLocked() {
+	if len(j.packets) < 2 {
+		return
+	}
+	var minTS, maxTS uint32
+	first := true
+	for _, p := range j.packets {
+		if first {
+			minTS, maxTS = p.ts, p.ts
+			first = false
+			continue
+		}
+		// unsigned-aware min/max for nearby timestamps
+		if tsLess(p.ts, minTS) {
+			minTS = p.ts
+		}
+		if tsLess(maxTS, p.ts) {
+			maxTS = p.ts
+		}
+	}
+	for maxTS-minTS > j.maxSpan && len(j.packets) > 1 {
+		j.dropOldestLocked("span")
+		// recompute min
+		first = true
+		for _, p := range j.packets {
+			if first {
+				minTS, maxTS = p.ts, p.ts
+				first = false
+				continue
+			}
+			if tsLess(p.ts, minTS) {
+				minTS = p.ts
+			}
+			if tsLess(maxTS, p.ts) {
+				maxTS = p.ts
+			}
+		}
+	}
+}
+
+func tsLess(a, b uint32) bool {
+	return int32(a-b) < 0
+}
+// PopReady returns the next in-sequence packet if present.
+// On the first call it anchors nextSeq to the lowest sequence currently held
+// so packets that arrived reordered before the first pop are delivered in order.
+// If the head is missing past the window, it advances (caller should PLC).
+func (j *jitterBuffer) PopReady() (payload []byte, ts uint32, ok bool, lost bool) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if len(j.packets) == 0 {
+		return nil, 0, false, false
+	}
+	if !j.haveBase {
+		// Anchor to the lowest seq currently buffered (reorder-friendly start).
+		var minSeq uint16
+		first := true
+		for s := range j.packets {
+			if first || seqLess(s, minSeq) {
+				minSeq = s
+				first = false
+			}
+		}
+		j.nextSeq = minSeq
+		j.haveBase = true
+	}
+	if p, exists := j.packets[j.nextSeq]; exists {
+		delete(j.packets, j.nextSeq)
+		j.removeOrderLocked(j.nextSeq)
+		payload = p.payload
+		ts = p.ts
+		j.nextSeq++
+		return payload, ts, true, false
+	}
+	// Head missing: if buffer is full of newer packets, declare loss and advance.
+	if len(j.packets) >= j.maxPkts {
+		j.nextSeq++
+		return nil, 0, false, true
+	}
+	// Check if oldest held packet is far ahead in seq space (> maxPkts gap).
+	var minGap uint16 = 0xffff
+	for s := range j.packets {
+		gap := s - j.nextSeq
+		if gap < minGap {
+			minGap = gap
+		}
+	}
+	if minGap > 0 && int(minGap) >= j.maxPkts {
+		j.nextSeq++
+		return nil, 0, false, true
+	}
+	return nil, 0, false, false
+}
+
+// seqLess reports whether a is before b in uint16 sequence space (half-range).
+func seqLess(a, b uint16) bool {
+	return int16(a-b) < 0
+}
+
+// ForcePopPLC advances the expected sequence for a missing packet (PLC slot).
+func (j *jitterBuffer) ForceLost() {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.haveBase {
+		j.nextSeq++
+	}
+}
+
+func (j *jitterBuffer) removeOrderLocked(seq uint16) {
+	for i, s := range j.order {
+		if s == seq {
+			j.order = append(j.order[:i], j.order[i+1:]...)
+			return
+		}
+	}
+}
+
+func (j *jitterBuffer) Len() int {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return len(j.packets)
+}
+
+// ── channel hub ──────────────────────────────────────────────────────────
+
+func newChannelHub(ch crosstalk.Channel, sessionID string, factory CodecFactory, mixStore crosstalk.MixService, obs Observer, logger *slog.Logger) (*channelHub, error) {
+	track, err := pionwebrtc.NewTrackLocalStaticRTP(
+		pionwebrtc.RTPCodecCapability{MimeType: pionwebrtc.MimeTypeOpus},
+		"ch-"+ch.ID,
+		"session-"+ch.SessionID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("sessionrtc: create channel track: %w", err)
+	}
+	enc, err := factory.NewEncoder()
+	if err != nil {
+		return nil, fmt.Errorf("sessionrtc: create encoder: %w", err)
+	}
+	h := &channelHub{
+		channel:   ch,
+		sessionID: sessionID,
+		track:     track,
+		enc:       enc,
+		obs:       obs,
+		logger:    logger,
+		mixCache:  make(map[string]cachedMix),
+		mixStore:  mixStore,
+	}
+	h.mix = mixer.New(func(frame []int16) {
+		h.emitMixed(frame)
+	}, mixer.WithStats(func(st mixer.MixStats) {
+		h.obs.MixedFrame(sessionID, ch.ID, st.ActiveSources, st.Peak)
+	}), mixer.WithRingSize(frameSamples*10))
+	return h, nil
+}
+
+// start launches the 20ms mix loop once.
+func (h *channelHub) start() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.started {
+		return
+	}
+	h.started = true
+	go h.mix.Run()
+}
+
+// ensureInput registers a mixer input for sourceID.
+func (h *channelHub) ensureInput(sourceID string, level float64, muted bool) {
+	h.mix.AddInput(sourceID, level, muted)
+	h.start()
+}
+
+// setMix applies level/mute without reconnect.
+func (h *channelHub) setMix(sourceID string, level float64, muted bool) {
+	_ = h.mix.SetLevel(sourceID, level)
+	_ = h.mix.SetMuted(sourceID, muted)
+	h.mixMu.Lock()
+	h.mixCache[sourceID] = cachedMix{level: level, muted: muted}
+	h.mixMu.Unlock()
+}
+
+// refreshMixCache pulls mix entries from the store at a low rate (not per packet).
+func (h *channelHub) refreshMixCache() {
+	h.mixMu.RLock()
+	stale := time.Since(h.lastFetch) > 200*time.Millisecond
+	h.mixMu.RUnlock()
+	if !stale || h.mixStore == nil {
+		return
+	}
+	entries, err := h.mixStore.GetMix(context.Background(), h.channel.ID)
+	if err != nil {
+		return
+	}
+	h.mixMu.Lock()
+	h.mixCache = make(map[string]cachedMix, len(entries))
+	for _, e := range entries {
+		h.mixCache[e.SourceID] = cachedMix{level: e.Level, muted: e.Muted}
+		_ = h.mix.SetLevel(e.SourceID, e.Level)
+		_ = h.mix.SetMuted(e.SourceID, e.Muted)
+	}
+	h.lastFetch = time.Now()
+	h.mixMu.Unlock()
+}
+
+// writePCM pushes one decoded frame into the mixer for sourceID.
+func (h *channelHub) writePCM(sourceID string, pcm []int16) {
+	h.refreshMixCache()
+	// Ensure input exists (default unmuted/level 1 if not yet in cache).
+	if h.mix.GetInput(sourceID) == nil {
+		level, muted := 1.0, false
+		h.mixMu.RLock()
+		if c, ok := h.mixCache[sourceID]; ok {
+			level, muted = c.level, c.muted
+		}
+		h.mixMu.RUnlock()
+		h.ensureInput(sourceID, level, muted)
+	}
+	_ = h.mix.WriteToInput(sourceID, pcm)
+}
+
+// emitMixed encodes one PCM frame to Opus and writes monotonic RTP.
+func (h *channelHub) emitMixed(frame []int16) {
+	buf := make([]byte, 4000)
+	n, err := h.enc.Encode(frame, buf)
+	if err != nil || n == 0 {
+		return
+	}
+	h.mu.Lock()
+	h.seq++
+	h.ts += frameTSDelta
+	seq, ts := h.seq, h.ts
+	h.mu.Unlock()
+
+	pkt := &rtp.Packet{
+		Header: rtp.Header{
+			Version:        2,
+			PayloadType:    111, // common dynamic PT for Opus; Pion rewrites as needed
+			SequenceNumber: seq,
+			Timestamp:      ts,
+			Marker:         false,
+		},
+		Payload: buf[:n],
+	}
+	_ = h.track.WriteRTP(pkt)
+}
+
+// nextHeader is retained for unit tests of monotonic seq/ts advancement.
 func (h *channelHub) nextHeader(inTS uint32) (seq uint16, ts uint32) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.seq++
-	const defaultDelta = 960 // 20ms at 48kHz
-	var delta uint32 = defaultDelta
-	if h.haveLast {
-		d := inTS - h.lastInTS   // wrap-safe (uint32)
-		if d > 0 && d <= 12000 { // up to 250ms — within one continuous source
-			delta = d
-		}
-	}
-	h.haveLast = true
-	h.lastInTS = inTS
-	h.ts += delta
+	const defaultDelta = 960
+	_ = inTS
+	h.ts += defaultDelta
 	return h.seq, h.ts
 }
 
-// resolveChannels loads the session's channels once and builds name/type
-// indexes plus a hub (with a shared local track) per channel.
+// ── resolve / bridge ─────────────────────────────────────────────────────
+
 func (f *sessionFwd) resolveChannels(ctx context.Context) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -197,7 +597,7 @@ func (f *sessionFwd) resolveChannels(ctx context.Context) error {
 	f.byName = make(map[string]string, len(chans))
 	f.byType = make(map[string][]string)
 	for _, ch := range chans {
-		hub, err := newChannelHub(ch)
+		hub, err := newChannelHub(ch, f.sessionID, f.factory, f.stores.Mix, f.obs, f.logger)
 		if err != nil {
 			return err
 		}
@@ -209,20 +609,8 @@ func (f *sessionFwd) resolveChannels(ctx context.Context) error {
 	return nil
 }
 
-func newChannelHub(ch crosstalk.Channel) (*channelHub, error) {
-	track, err := pionwebrtc.NewTrackLocalStaticRTP(
-		pionwebrtc.RTPCodecCapability{MimeType: pionwebrtc.MimeTypeOpus},
-		"ch-"+ch.ID,
-		"session-"+ch.SessionID,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("sessionrtc: create channel track: %w", err)
-	}
-	return &channelHub{channel: ch, track: track}, nil
-}
-
 // channelIDsFor maps requested channel names to IDs. Unknown names are skipped.
-// The special name "*broadcast" / "*feed" expands to all channels of that type.
+// The special name "type:broadcast" / "type:feed" expands to all channels of that type.
 func (f *sessionFwd) channelIDsFor(names []string) []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -265,19 +653,23 @@ func (f *sessionFwd) bridge(ctx context.Context, peer *webrtc.PeerConn, opts Bri
 	listenIDs := f.channelIDsFor(opts.Listen)
 	produceIDs := f.channelIDsFor(opts.Produce)
 
+	subject := opts.Subject
+	if subject == "" {
+		subject = opts.Identity
+	}
+	if subject == "" {
+		subject = peer.ID
+	}
+	f.obs.PeerAuthorized(f.sessionID, subject, opts.Role)
+
 	// Subscribe: add each listened channel's shared track to this peer.
-	//
-	// Server-offer listeners (receive-only broadcast) get the track now, before
-	// the server creates its offer. Client-offer peers get it in OnBeforeAnswer
-	// so it binds to the transceiver the client already offered — a single
-	// sendrecv m-line both sends the peer's audio and receives the subscribed
-	// channel, with no extra renegotiation.
 	subscribe := func() {
 		for _, chID := range listenIDs {
 			h := f.hub(chID)
 			if h == nil {
 				continue
 			}
+			h.start()
 			sender, err := peer.AddTrack(h.track)
 			if err != nil {
 				f.logger.Error("sessionrtc: subscribe failed", "channel", chID, "err", err)
@@ -301,11 +693,7 @@ func (f *sessionFwd) bridge(ctx context.Context, peer *webrtc.PeerConn, opts Bri
 		}
 	}
 
-	// Publish: register a source + a mix entry per produced channel (so it is
-	// visible/controllable in the admin mix UI), then forward this peer's
-	// inbound RTP. Which channels actually receive the audio is driven by the
-	// mix table (any channel with an unmuted entry for this source), so admin/
-	// translator mix edits route audio without a reconnect.
+	// Publish: register source + mix entry, then decode→mix path.
 	if len(produceIDs) > 0 {
 		src, err := f.ensureSource(ctx, peer.ID, opts)
 		if err != nil {
@@ -315,14 +703,46 @@ func (f *sessionFwd) bridge(ctx context.Context, peer *webrtc.PeerConn, opts Bri
 			if err := f.ensureMixEntry(ctx, chID, src.ID); err != nil {
 				return err
 			}
+			if h := f.hub(chID); h != nil {
+				// Seed mixer input from current mix entry.
+				level, muted := 1.0, false
+				if entries, err := f.stores.Mix.GetMix(ctx, chID); err == nil {
+					for _, e := range entries {
+						if e.SourceID == src.ID {
+							level, muted = e.Level, e.Muted
+							break
+						}
+					}
+				}
+				h.ensureInput(src.ID, level, muted)
+			}
 		}
 		peer.OnRemoteTrack(func(track *pionwebrtc.TrackRemote, _ *pionwebrtc.RTPReceiver) {
 			if track.Kind() != pionwebrtc.RTPCodecTypeAudio {
 				return
 			}
-			go f.forward(src.ID, track)
+			// Reject unsupported codecs before activating the decode pump.
+			codec := track.Codec()
+			info := audiocodec.CodecInfo{
+				MimeType:  codec.MimeType,
+				ClockRate: codec.ClockRate,
+				Channels:  codec.Channels,
+			}
+			if err := audiocodec.ValidateCodec(info); err != nil {
+				f.logger.Error("sessionrtc: rejecting unsupported codec",
+					"source", src.ID, "codec", codec.MimeType, "err", err)
+				f.obs.FrameDropped(f.sessionID, src.ID, "unsupported_codec")
+				return
+			}
+			channels := int(codec.Channels)
+			if channels == 0 {
+				channels = 1
+			}
+			go f.runSource(src.ID, track, channels)
 		})
 		peer.OnClose(func() {
+			f.obs.PeerClosed(f.sessionID, subject, "peer_closed")
+			f.stopSource(src.ID)
 			_ = f.stores.Sources.Update(context.Background(), &crosstalk.Source{
 				ID: src.ID, SessionID: f.sessionID, Name: src.Name,
 				Origin: src.Origin, PeerID: src.PeerID, Connected: false,
@@ -336,11 +756,166 @@ func (f *sessionFwd) bridge(ctx context.Context, peer *webrtc.PeerConn, opts Bri
 	return nil
 }
 
-// ensureSource creates (or reuses) the Source this peer publishes as. When
-// opts.Identity is set, an existing Source with the same identity is reused
-// (marked connected again) so a translator that reconnects does not accumulate
-// a fresh source on every connect/disconnect cycle. The identity is persisted
-// in the Source's PeerID column as the durable dedup key.
+// runSource is the per-source decode pump: RTP → jitter → decode → channel mixers.
+func (f *sessionFwd) runSource(sourceID string, track *pionwebrtc.TrackRemote, channels int) {
+	dec, err := f.factory.NewDecoder(channels)
+	if err != nil {
+		f.logger.Error("sessionrtc: decoder create failed", "source", sourceID, "err", err)
+		return
+	}
+	pump := &sourcePump{
+		sourceID:  sourceID,
+		sessionID: f.sessionID,
+		dec:       dec,
+		obs:       f.obs,
+		logger:    f.logger,
+		fwd:       f,
+		stopCh:    make(chan struct{}),
+	}
+	pump.jb = newJitterBuffer(func(reason string) {
+		f.obs.FrameDropped(f.sessionID, sourceID, reason)
+	})
+
+	f.mu.Lock()
+	if old, ok := f.sources[sourceID]; ok {
+		old.stop()
+	}
+	f.sources[sourceID] = pump
+	f.mu.Unlock()
+
+	f.logger.Info("sessionrtc: decoding source track",
+		"source", sourceID, "codec", track.Codec().MimeType, "channels", channels)
+
+	// Reader goroutine: never blocks the mix loop; bounded push only.
+	errCh := make(chan error, 1)
+	go func() {
+		for {
+			pkt, _, rerr := track.ReadRTP()
+			if rerr != nil {
+				errCh <- rerr
+				return
+			}
+			select {
+			case <-pump.stopCh:
+				return
+			default:
+			}
+			if len(pkt.Payload) == 0 {
+				continue
+			}
+			pump.jb.Push(pkt.SequenceNumber, pkt.Timestamp, pkt.Payload)
+		}
+	}()
+
+	// Decode clock: drain jitter at ~20ms, PLC on gaps, fan-out PCM to hubs.
+	ticker := time.NewTicker(5 * time.Millisecond) // poll faster than frame rate
+	defer ticker.Stop()
+	pcm := make([]int16, frameSamples)
+	// active channel targets refreshed slowly from mix table.
+	var active []string
+	var lastRefresh time.Time
+	refresh := func() {
+		var next []string
+		for _, chID := range f.allChannelIDs() {
+			h := f.hub(chID)
+			if h == nil {
+				continue
+			}
+			// Source contributes to any channel that has a mix entry (muted still
+			// drains into mixer so unmute is instant; mixer honors mute).
+			if h.mix.GetInput(sourceID) != nil {
+				next = append(next, chID)
+				continue
+			}
+			// Also pick up newly assigned channels via mix store (throttled).
+			if f.stores.Mix != nil {
+				entries, err := f.stores.Mix.GetMix(context.Background(), chID)
+				if err != nil {
+					continue
+				}
+				for _, e := range entries {
+					if e.SourceID == sourceID {
+						h.ensureInput(sourceID, e.Level, e.Muted)
+						next = append(next, chID)
+						break
+					}
+				}
+			}
+		}
+		active = next
+		lastRefresh = time.Now()
+	}
+	refresh()
+
+	for {
+		select {
+		case <-pump.stopCh:
+			_ = dec.Close()
+			return
+		case err := <-errCh:
+			f.logger.Debug("sessionrtc: source track ended", "source", sourceID, "err", err)
+			_ = dec.Close()
+			return
+		case <-ticker.C:
+			if time.Since(lastRefresh) > 500*time.Millisecond {
+				refresh()
+			}
+			// Drain all currently ready packets without blocking.
+			for {
+				payload, _, ok, lost := pump.jb.PopReady()
+				if lost {
+					// PLC for the missing frame.
+					ns, _ := dec.DecodePLC(pcm)
+					if ns > 0 {
+						f.fanoutPCM(sourceID, active, pcm[:ns])
+					}
+					continue
+				}
+				if !ok {
+					break
+				}
+				ns, derr := dec.Decode(payload, pcm)
+				if derr != nil || ns == 0 {
+					f.obs.FrameDropped(f.sessionID, sourceID, "decode_error")
+					continue
+				}
+				f.obs.SourceFrame(f.sessionID, sourceID, ns)
+				f.fanoutPCM(sourceID, active, pcm[:ns])
+			}
+		}
+	}
+}
+
+func (f *sessionFwd) fanoutPCM(sourceID string, channelIDs []string, pcm []int16) {
+	for _, chID := range channelIDs {
+		if h := f.hub(chID); h != nil {
+			h.writePCM(sourceID, pcm)
+		}
+	}
+}
+
+func (f *sessionFwd) stopSource(sourceID string) {
+	f.mu.Lock()
+	p, ok := f.sources[sourceID]
+	if ok {
+		delete(f.sources, sourceID)
+	}
+	f.mu.Unlock()
+	if ok {
+		p.stop()
+	}
+}
+
+func (p *sourcePump) stop() {
+	p.stopOnce.Do(func() {
+		close(p.stopCh)
+		if p.dec != nil {
+			_ = p.dec.Close()
+		}
+	})
+}
+
+// ensureSource creates (or reuses) the Source this peer publishes as.
 func (f *sessionFwd) ensureSource(ctx context.Context, peerID string, opts BridgeOpts) (*crosstalk.Source, error) {
 	origin := crosstalk.SourceOrigin(opts.Role)
 	switch origin {
@@ -351,8 +926,6 @@ func (f *sessionFwd) ensureSource(ctx context.Context, peerID string, opts Bridg
 
 	identity := opts.Identity
 	if identity == "" {
-		// No stable identity supplied: fall back to the ephemeral peer ID,
-		// preserving the previous per-connection source behavior.
 		identity = peerID
 	}
 	label := opts.Label
@@ -360,7 +933,6 @@ func (f *sessionFwd) ensureSource(ctx context.Context, peerID string, opts Bridg
 		label = fmt.Sprintf("%s %s", opts.Role, identity)
 	}
 
-	// Reuse an existing source with the same durable identity, if any.
 	if existing := f.findSourceByIdentity(ctx, identity); existing != nil {
 		existing.Name = label
 		existing.Origin = origin
@@ -380,8 +952,6 @@ func (f *sessionFwd) ensureSource(ctx context.Context, peerID string, opts Bridg
 		Connected: true,
 	}
 	if err := f.stores.Sources.Create(ctx, src); err != nil {
-		// A concurrent connect from the same identity may have won the race and
-		// created the row first (violating UNIQUE(session, name)); reuse it.
 		if existing := f.findSourceByIdentity(ctx, identity); existing != nil {
 			existing.Connected = true
 			if uerr := f.stores.Sources.Update(ctx, existing); uerr != nil {
@@ -394,9 +964,6 @@ func (f *sessionFwd) ensureSource(ctx context.Context, peerID string, opts Bridg
 	return src, nil
 }
 
-// findSourceByIdentity returns the session's source whose durable identity
-// (PeerID) matches, or nil. Errors are treated as "not found" so a lookup
-// failure degrades to creating a fresh source rather than dropping the peer.
 func (f *sessionFwd) findSourceByIdentity(ctx context.Context, identity string) *crosstalk.Source {
 	if identity == "" {
 		return nil
@@ -413,8 +980,6 @@ func (f *sessionFwd) findSourceByIdentity(ctx context.Context, identity string) 
 	return nil
 }
 
-// ensureMixEntry makes sure (channel, source) has a mix entry (default: unmuted,
-// level 1.0) so the source is visible and controllable in the admin mix UI.
 func (f *sessionFwd) ensureMixEntry(ctx context.Context, channelID, sourceID string) error {
 	entries, err := f.stores.Mix.GetMix(ctx, channelID)
 	if err != nil {
@@ -434,55 +999,6 @@ func (f *sessionFwd) ensureMixEntry(ctx context.Context, channelID, sourceID str
 	return nil
 }
 
-// forward copies RTP from a remote source track into every channel that has an
-// unmuted mix entry for the source. The target set is recomputed periodically
-// so admin/translator mix edits — assigning the source to a channel, removing
-// it, or muting it — take effect without decoding or a reconnect. The mix table
-// is the single source of truth for routing.
-func (f *sessionFwd) forward(sourceID string, track *pionwebrtc.TrackRemote) {
-	f.logger.Info("sessionrtc: forwarding source track",
-		"source", sourceID, "codec", track.Codec().MimeType)
-
-	// active is the set of channel IDs currently receiving this source.
-	var active []string
-	var lastRefresh time.Time
-	refresh := func() {
-		var next []string
-		for _, chID := range f.allChannelIDs() {
-			entries, err := f.stores.Mix.GetMix(context.Background(), chID)
-			if err != nil {
-				continue
-			}
-			for _, e := range entries {
-				if e.SourceID == sourceID && !e.Muted {
-					next = append(next, chID)
-					break
-				}
-			}
-		}
-		active = next
-		lastRefresh = time.Now()
-	}
-	refresh()
-
-	for {
-		pkt, _, err := track.ReadRTP()
-		if err != nil {
-			f.logger.Debug("sessionrtc: source track ended", "source", sourceID, "err", err)
-			return
-		}
-		if time.Since(lastRefresh) > 500*time.Millisecond {
-			refresh()
-		}
-		for _, chID := range active {
-			if h := f.hub(chID); h != nil {
-				_ = h.writeRTP(pkt)
-			}
-		}
-	}
-}
-
-// allChannelIDs returns a snapshot of the session's resolved channel IDs.
 func (f *sessionFwd) allChannelIDs() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -491,4 +1007,22 @@ func (f *sessionFwd) allChannelIDs() []string {
 		out = append(out, id)
 	}
 	return out
+}
+
+// ApplyMix updates live mixer levels/mutes for a channel without reconnect.
+// Safe to call from API handlers after persisting mix state.
+func (m *Manager) ApplyMix(sessionID, channelID string, entries []crosstalk.MixEntry) {
+	m.mu.Lock()
+	f := m.sessions[sessionID]
+	m.mu.Unlock()
+	if f == nil {
+		return
+	}
+	h := f.hub(channelID)
+	if h == nil {
+		return
+	}
+	for _, e := range entries {
+		h.setMix(e.SourceID, e.Level, e.Muted)
+	}
 }
