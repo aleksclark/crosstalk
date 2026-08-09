@@ -70,7 +70,7 @@ MSP2401 ILI9341 SPI LCD (320×240, RGB565) connected to SPI1 on the 20-pin heade
 ### Boot Sequence
 1. Kernel loads ili9341 tinydrm module → creates `/dev/fb1`
 2. `ct-splash.service` (sysinit.target) → writes "CROSSTALK" splash to fb1
-3. `app.service` (multi-user.target) → ct-client takes over fb1 for status display
+3. `app.service` (multi-user.target) → `ct-abc` takes over fb1 for status display
 
 ### Provisioning
 ```bash
@@ -78,10 +78,14 @@ k2b-board/scripts/provision-display-fb.sh <board-ip>
 ```
 
 ## Application Service
-- Binary: `/usr/local/bin/ct-client` (aarch64 static)
+- Binary: `/usr/local/bin/ct-abc` (aarch64 static; Audio Booth Connector)
+  - Historical name `ct-client` still appears in some scripts/docs; the unit and
+    on-device path are **`ct-abc`**.
 - Config: `/etc/app/crosstalk.json`
 - Systemd: `/etc/systemd/system/app.service`
-- Runs as user `app`, groups `audio`, `video`
+- Setup helper: `/usr/local/lib/crosstalk/ct-app-setup.sh` (checked required vs optional steps)
+- Runs as user `app`, groups `audio`, `video`, `spi`
+- PipeWire runtime: uid 999 (`streamlate` or `app` depending on image)
 - Restart: `sudo systemctl restart app`
 
 ## WiFi Provisioning (Captive Portal)
@@ -97,25 +101,42 @@ phone. No SSH or serial console required.
   them NetworkManager's shared/AP mode fails with "IP configuration could not
   be reserved". Installed by `provision-k2b.sh`.
 
-### Flow
+### Flow (single-radio)
 1. On boot `ct-netcfg` waits up to `CT_NETCFG_ONLINE_TIMEOUT` (default 45s) for
    NetworkManager to report full connectivity.
 2. If still offline it:
-   - brings up the wired ethernet interface in DHCP mode (`nmcli device
-     connect <eth>`) as a fallback management/connectivity path, and
-   - runs `nmcli device wifi hotspot` to bring up an AP (default SSID
-     `CrossTalk-Setup`, password `crosstalk`) and writes a wildcard DNS record
-     to `/etc/NetworkManager/dnsmasq-shared.d/ct-captive.conf` so every lookup
-     resolves to the AP — this triggers the captive-portal prompt on the phone.
-3. The portal (port 80) serves a page to scan networks and enter a password.
-   Submitting posts to `/connect`, which runs `nmcli device wifi connect`. The
-   portal is reachable both over the hotspot (`http://10.42.0.1/`) and over the
-   wired ethernet lease (logged at startup).
-4. On success the hotspot is torn down and the process exits; `app.service`
-   then reconnects to the server over the new WiFi.
+   - brings up the wired ethernet interface in DHCP mode as a fallback
+     management path (critical alternate path before WiFi disruption),
+   - **scans for networks before starting the hotspot** (the radio cannot scan
+     while hosting the AP) and injects the cached list into the portal, then
+   - starts the AP (default SSID `CrossTalk-Setup`, password `crosstalk`) with
+     captive DNS under `/etc/NetworkManager/dnsmasq-shared.d/ct-captive.conf`.
+3. The portal (port 80) shows the cached list + always allows manual/hidden
+   SSID entry. Submitting POSTs `/connect` (idempotent). Main then **tears the
+   hotspot down first**, joins as station (with hidden-SSID profile fallback),
+   and waits for full connectivity. Passphrases are never logged.
+4. Wrong password / join failure: process exits non-zero; systemd restarts and
+   the portal reappears for retry (sticky bad profiles are deleted).
+5. On success the process exits cleanly; `app.service` runs over the new WiFi.
 
 The unit `Restart=always`, so it keeps offering the portal until the box is
 provisioned and re-checks connectivity if WiFi drops later.
+
+### Deploy / rollback
+```bash
+task build:netcfg:arm64
+k2b-board/scripts/deploy-netcfg.sh 192.168.0.109 bin/ct-netcfg-arm64
+# Atomic: backup under /root/crosstalk-rollback/$STAMP, temp+checksum+rename.
+k2b-board/scripts/deploy-netcfg.sh --rollback 192.168.0.109          # newest
+k2b-board/scripts/deploy-netcfg.sh --rollback 192.168.0.109 $STAMP
+```
+
+### Live probes
+```bash
+k2b-board/scripts/probe-wifi-recovery.sh 192.168.0.109
+K2B_WIFI_SSID=... K2B_WIFI_PASS=... k2b-board/scripts/probe-wifi-recovery.sh 192.168.0.109 --matrix
+k2b-board/scripts/probe-audio-recovery.sh 192.168.0.109
+```
 
 ### Provisioning from a phone
 1. Join the `CrossTalk-Setup` WiFi (password `crosstalk`).

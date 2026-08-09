@@ -2,6 +2,7 @@ package netcfg
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -89,6 +90,70 @@ func TestConnectRequiresSSID(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestConnectFallsBackToHiddenProfile(t *testing.T) {
+	var calls [][]string
+	m := New("wlan0")
+	m.run = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		calls = append(calls, append([]string{name}, args...))
+		// Fail the simple device wifi connect path.
+		if hasArg(args, "wifi") && hasArg(args, "connect") {
+			return []byte("Error: No network with SSID 'HiddenNet' found.\n"), errors.New("exit status 10")
+		}
+		return nil, nil
+	}
+
+	require.NoError(t, m.Connect(context.Background(), "HiddenNet", "secret123"))
+
+	// Expect: delete, device connect (fail), delete, connection add (hidden), connection up.
+	var sawHidden, sawUp bool
+	for _, c := range calls {
+		if hasArg(c, "wifi.hidden") && hasArg(c, "yes") {
+			sawHidden = true
+		}
+		if hasArg(c, "connection") && hasArg(c, "up") && hasArg(c, "HiddenNet") {
+			sawUp = true
+		}
+	}
+	assert.True(t, sawHidden, "expected hidden profile create")
+	assert.True(t, sawUp, "expected connection up")
+}
+
+func TestConnectProfileFailureDeletesStickySecret(t *testing.T) {
+	var deletes int
+	m := New("")
+	m.run = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		if hasArg(args, "delete") {
+			deletes++
+			return nil, nil
+		}
+		if hasArg(args, "wifi") && hasArg(args, "connect") {
+			return []byte("not found password hunter2"), errors.New("fail")
+		}
+		if hasArg(args, "add") {
+			return nil, nil
+		}
+		if hasArg(args, "up") {
+			return []byte("Secrets were required, but not provided. password hunter2"), errors.New("fail")
+		}
+		return nil, nil
+	}
+
+	err := m.Connect(context.Background(), "BadNet", "hunter2")
+	require.Error(t, err)
+	// Must not leak the passphrase in the error string.
+	assert.NotContains(t, err.Error(), "hunter2")
+	assert.Contains(t, err.Error(), "[REDACTED]")
+	// delete stale + delete after failed up (at least 2)
+	assert.GreaterOrEqual(t, deletes, 2)
+}
+
+func TestRedactSecrets(t *testing.T) {
+	in := "connecting failed password hunter2 and psk=abc"
+	out := redactSecrets(in)
+	assert.NotContains(t, out, "hunter2")
+	assert.Contains(t, out, "[REDACTED]")
+}
+
 func TestStartHotspotWritesCaptiveDNSAndBuildsArgs(t *testing.T) {
 	var calls [][]string
 	var written = map[string]string{}
@@ -147,6 +212,14 @@ func TestStopHotspot(t *testing.T) {
 	}
 	require.NoError(t, m.StopHotspot(context.Background()))
 	assert.Equal(t, []string{"nmcli", "connection", "down", hotspotConnName}, got)
+}
+
+func TestStopHotspotIdempotentWhenAlreadyDown(t *testing.T) {
+	m := New("")
+	m.run = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		return []byte("Error: Connection 'ct-hotspot' is not active.\n"), errors.New("exit 1")
+	}
+	require.NoError(t, m.StopHotspot(context.Background()))
 }
 
 func TestEnableDHCPBringsUpWiredDevice(t *testing.T) {

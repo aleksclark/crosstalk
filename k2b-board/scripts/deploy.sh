@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Deploy ct-client to K2B and configure it to connect to a server.
+# Deploy ct-abc (Audio Booth Connector) to K2B and configure it to connect to a server.
+# Historical name "ct-client" is accepted as input binary; on-device path is ct-abc.
 #
 # Usage:
 #   ./deploy.sh <board-ip> <binary-path> <server-url> <api-token>
@@ -12,13 +13,13 @@
 #   K2B_AUDIO_MODE   — "physical" or "loopback" (default: physical)
 #
 # Example:
-#   ./deploy.sh 192.168.0.109 ../../bin/ct-client-arm64 http://192.168.0.22:8080 ct_abc123...
+#   ./deploy.sh 192.168.0.109 ../../bin/ct-abc-arm64 http://192.168.0.22:8080 ct_abc123...
 #
 # What this does:
 #   1. Stops the running service
-#   2. Deploys the binary as /usr/local/bin/ct-client
-#   3. Writes /etc/app/crosstalk.json with server URL + token + audio devices
-#   4. Installs/updates the systemd unit (sets CROSSTALK_CONFIG + XDG_RUNTIME_DIR)
+#   2. Deploys the binary as /usr/local/bin/ct-abc (atomic temp+checksum+rename)
+#   3. Installs ct-app-setup.sh helper + app.service unit
+#   4. Writes /etc/app/crosstalk.json with server URL + token + audio devices
 #   5. Restarts the service
 set -euo pipefail
 
@@ -29,6 +30,8 @@ API_TOKEN="${4:?Usage: $0 <board-ip> <binary-path> <server-url> <api-token>}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SERVICE_FILE="${SCRIPT_DIR}/deploy/app.service"
+SETUP_HELPER="${SCRIPT_DIR}/deploy/ct-app-setup.sh"
+REMOTE_BIN="/usr/local/bin/ct-abc"
 
 SSH="ssh -o ConnectTimeout=5 root@${BOARD_IP}"
 SCP="scp -o ConnectTimeout=5"
@@ -50,24 +53,41 @@ else
     K2B_SINK="${K2B_SINK:-plughw:CARD=Device,DEV=0}"
 fi
 
-echo "=== Deploying ct-client to K2B at ${BOARD_IP} ==="
+echo "=== Deploying ct-abc to K2B at ${BOARD_IP} ==="
 echo "    Audio mode:  ${AUDIO_MODE}"
 echo "    Source:      ${K2B_SOURCE}"
 echo "    Sink:        ${K2B_SINK}"
 echo "    Display:     ${USE_DISPLAY}"
 
+LOCAL_SHA="$(sha256sum "$BINARY" | awk '{print $1}')"
+STAGE="/usr/local/bin/.ct-abc.$$.new"
+
 # 1. Stop existing service
-echo "[1/5] Stopping service..."
+echo "[1/6] Stopping service..."
 $SSH "systemctl stop app.service 2>/dev/null || true"
 sleep 1
 
-# 2. Deploy binary
-echo "[2/5] Deploying binary..."
-$SCP "$BINARY" "root@${BOARD_IP}:/usr/local/bin/ct-client"
-$SSH "chmod +x /usr/local/bin/ct-client"
+# 2. Deploy binary atomically
+echo "[2/6] Deploying binary to ${REMOTE_BIN} (sha256=${LOCAL_SHA})..."
+$SCP "$BINARY" "root@${BOARD_IP}:${STAGE}"
+$SSH "set -euo pipefail
+  GOT=\$(sha256sum '${STAGE}' | awk '{print \$1}')
+  [ \"\$GOT\" = '${LOCAL_SHA}' ]
+  chmod 0755 '${STAGE}'
+  mv -f '${STAGE}' '${REMOTE_BIN}'
+  chmod +x '${REMOTE_BIN}'
+  # Compat symlink for older docs/scripts that still look for ct-client
+  ln -sfn ct-abc /usr/local/bin/ct-client
+"
 
-# 3. Write client config
-echo "[3/5] Writing config..."
+# 3. Install checked setup helper
+echo "[3/6] Installing ct-app-setup.sh..."
+$SSH "mkdir -p /usr/local/lib/crosstalk"
+$SCP "$SETUP_HELPER" "root@${BOARD_IP}:/usr/local/lib/crosstalk/ct-app-setup.sh"
+$SSH "chmod +x /usr/local/lib/crosstalk/ct-app-setup.sh"
+
+# 4. Write client config
+echo "[4/6] Writing config..."
 $SSH "mkdir -p /etc/app"
 $SSH "cat > /etc/app/crosstalk.json" <<EOCFG
 {
@@ -79,8 +99,8 @@ $SSH "cat > /etc/app/crosstalk.json" <<EOCFG
 }
 EOCFG
 
-# 4. Install systemd unit (update USE_DISPLAY based on env)
-echo "[4/5] Installing service unit..."
+# 5. Install systemd unit (update USE_DISPLAY based on env)
+echo "[5/6] Installing service unit..."
 if [ "$USE_DISPLAY" = "true" ]; then
     $SCP "$SERVICE_FILE" "root@${BOARD_IP}:/etc/systemd/system/app.service"
 else
@@ -90,8 +110,8 @@ else
 fi
 $SSH "systemctl daemon-reload"
 
-# 5. Start service
-echo "[5/5] Starting service..."
+# 6. Start service
+echo "[6/6] Starting service..."
 $SSH "systemctl reset-failed app.service 2>/dev/null; systemctl restart app.service"
 sleep 3
 

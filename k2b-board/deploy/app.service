@@ -1,94 +1,29 @@
 [Unit]
 StartLimitIntervalSec=300
 StartLimitBurst=5
-Description=CrossTalk K2B Client
-After=network-online.target pipewire.service
+Description=CrossTalk K2B Client (ct-abc / Audio Booth Connector)
+After=network-online.target pipewire.service ct-netcfg.service
 Wants=network-online.target
 
 [Service]
 Type=simple
+# Binary is ct-abc (Audio Booth Connector). Historical docs/scripts may still
+# say ct-client; the on-device path and this unit use ct-abc.
 User=app
 Group=audio
 SupplementaryGroups=video spi
 
-ExecStartPre=+/bin/bash -c '\
-  echo "=== Display setup ===" ; \
-  \
-  # Unbind fbtft/ili9341 from SPI device if they grabbed it \
-  for drv in fb_ili9341 panel-ilitek-ili9341 ili9341; do \
-    if [ -e /sys/bus/spi/drivers/$drv/spi0.1 ]; then \
-      echo spi0.1 > /sys/bus/spi/drivers/$drv/unbind 2>/dev/null || true ; \
-      echo "Unbound $drv from spi0.1" ; \
-    fi ; \
-  done ; \
-  \
-  # Force unload fbtft modules \
-  rmmod ili9341 2>/dev/null || true ; \
-  rmmod panel_ilitek_ili9341 2>/dev/null || true ; \
-  rmmod fb_ili9341 2>/dev/null || true ; \
-  rmmod fbtft 2>/dev/null || true ; \
-  rmmod drm_mipi_dbi 2>/dev/null || true ; \
-  \
-  # Ensure spidev is bound \
-  modprobe spidev 2>/dev/null || true ; \
-  if [ ! -e /sys/bus/spi/drivers/spidev/spi0.1 ]; then \
-    echo spidev > /sys/bus/spi/devices/spi0.1/driver_override 2>/dev/null || true ; \
-    echo spi0.1 > /sys/bus/spi/drivers/spidev/bind 2>/dev/null || true ; \
-  fi ; \
-  \
-  # Verify spidev exists \
-  ls /dev/spidev0.1 >/dev/null 2>&1 || echo "WARNING: /dev/spidev0.1 missing" ; \
-  \
-  # Export and configure GPIOs for DC (71/PC7) and RESET (76/PC12) \
-  for g in 71 76; do \
-    echo $g > /sys/class/gpio/export 2>/dev/null || true ; \
-    echo out > /sys/class/gpio/gpio$g/direction 2>/dev/null || true ; \
-    chown app /sys/class/gpio/gpio$g/value /sys/class/gpio/gpio$g/direction 2>/dev/null || true ; \
-  done ; \
-  \
-  # Set SPI device permissions \
-  chmod 0660 /dev/spidev0.1 2>/dev/null || true ; \
-  chgrp spi /dev/spidev0.1 2>/dev/null || true ; \
-  \
-  # Ensure spi group exists and user is in it \
-  groupadd -f spi 2>/dev/null || true ; \
-  usermod -aG spi app 2>/dev/null || true ; \
-  \
-  echo "=== Audio setup ===" ; \
-  \
-  # Activate PipeWire audio card profiles \
-  sudo -u app XDG_RUNTIME_DIR=/run/user/999 pactl set-card-profile alsa_card.platform-5096000.codec pro-audio 2>/dev/null || true ; \
-  sudo -u app XDG_RUNTIME_DIR=/run/user/999 pactl set-card-profile alsa_card.platform-soc_ahub1_mach pro-audio 2>/dev/null || true ; \
-  \
-  # Enable ALSA audiocodec DAC -> LINEOUT mixer path \
-  amixer -c 1 cset numid=4 on 2>/dev/null || true ; \
-  amixer -c 1 cset numid=5 on 2>/dev/null || true ; \
-  amixer -c 1 cset numid=6 on 2>/dev/null || true ; \
-  amixer -c 1 cset numid=7 on 2>/dev/null || true ; \
-  amixer -c 1 cset numid=2 31 2>/dev/null || true ; \
-  amixer -c 1 cset numid=3 on 2>/dev/null || true ; \
-  \
-  # USB capture card (C-Media): enable AGC and set a fixed capture gain. The \
-  # booth feed comes through an attenuator/DC-block pad, so AGC lands levels \
-  # near full scale without clipping. Reference by name (card id "Device") is \
-  # not supported by amixer -c, so resolve the index at runtime. \
-  USB_CARD="$(cat /proc/asound/cards | awk "/USB-Audio/{print \$1; exit}")" ; \
-  if [ -n "$USB_CARD" ]; then \
-    amixer -c "$USB_CARD" sset "Auto Gain Control" on 2>/dev/null || true ; \
-    amixer -c "$USB_CARD" sset Mic 34 cap 2>/dev/null || true ; \
-    echo "USB capture card $USB_CARD: AGC on, mic gain fixed" ; \
-  else \
-    echo "WARNING: USB audio card not found for capture setup" ; \
-  fi ; \
-  \
-  echo "=== Setup complete ==="'
-
+# Checked helper distinguishes required vs optional failures (see script).
+# Leading '+' runs the helper as root before dropping to User=.
+ExecStartPre=+/usr/local/lib/crosstalk/ct-app-setup.sh
 ExecStart=/usr/local/bin/ct-abc
 Environment=CROSSTALK_CONFIG=/etc/app/crosstalk.json
 Environment=XDG_RUNTIME_DIR=/run/user/999
 Environment=PIPEWIRE_RUNTIME_DIR=/run/user/999
 Environment=PULSE_RUNTIME_PATH=/run/user/999/pulse
 Environment=USE_DISPLAY=true
+# Optional: set to 1 to fail start when SPI display device is missing.
+# Environment=CT_APP_REQUIRE_SPI=0
 Restart=always
 RestartSec=5
 
