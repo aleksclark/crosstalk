@@ -10,7 +10,9 @@ tasks:
   test:unit:go:
     desc: Run Go unit tests for server and cli
     cmds:
-      - cd server && go test ./...
+      - pkg-config --exists opus
+      - cd server && CGO_ENABLED=1 go test ./audiocodec ./mixer ./sessionrtc ./webrtc ./api ./ownership ./mediaticket ./postgres -count=1
+      - cd server && CGO_ENABLED=1 go test ./...
       - cd cli && go test ./...
 
   test:unit:ts:
@@ -23,14 +25,19 @@ tasks:
   test:integration:
     desc: Run integration + audio-flow tests (in-process Go server + real PostgreSQL)
     env:
-      CT_TEST_DATABASE_URL: '{{.CT_TEST_DATABASE_URL | default "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"}}'
+      CT_TEST_DATABASE_URL: '{{.CT_TEST_DATABASE_URL | default "postgres://postgres:postgres@127.0.0.1:55432/postgres?sslmode=disable"}}'
+      CT_TEST_MODE: "1"
     cmds:
-      - cd server && go test ./cmd/ct-server/ -run Integration -v -count=1
+      - pkg-config --exists opus
+      - cd server && CGO_ENABLED=1 go test ./cmd/ct-server/ -run Integration -v -count=1 -timeout 10m
 
   test:e2e:
     desc: Run the SPA-driven end-to-end suite (Playwright + real audio). Builds the
       SPAs, embeds them in ct-server, starts it against a fresh PostgreSQL, and
       drives the admin/translator/broadcast apps in real browsers.
+    env:
+      CT_TEST_DATABASE_ADMIN_URL: '{{.CT_TEST_DATABASE_ADMIN_URL | default "postgres://postgres:postgres@127.0.0.1:55432/postgres?sslmode=disable"}}'
+      CT_TEST_MODE: "1"
     cmds:
       - bash test/run-e2e.sh {{.CLI_ARGS}}
 
@@ -44,9 +51,10 @@ tasks:
   # ── Build Tasks ────────────────────────────────────────────────
 
   build:server:
-    desc: Build server binary
+    desc: Build server binary (CGO required for production Opus/libopus)
     cmds:
-      - cd server && CGO_ENABLED=0 go build -o ../bin/ct-server ./cmd/ct-server
+      - pkg-config --exists opus
+      - cd server && CGO_ENABLED=1 go build -o ../bin/ct-server ./cmd/ct-server
 
   build:cli:
     desc: Build CLI binary
