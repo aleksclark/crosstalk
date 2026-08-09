@@ -2,7 +2,11 @@
 // This package has zero external dependencies.
 package crosstalk
 
-import "time"
+import (
+	"errors"
+	"fmt"
+	"time"
+)
 
 // ChannelType is the type of a channel within a session.
 type ChannelType string
@@ -21,14 +25,44 @@ const (
 	OriginAdmin      SourceOrigin = "admin"
 )
 
+// SessionState is the durable lifecycle state of a session.
+type SessionState string
+
+const (
+	SessionWaiting  SessionState = "waiting"
+	SessionActive   SessionState = "active"
+	SessionDraining SessionState = "draining"
+	SessionEnded    SessionState = "ended"
+	SessionArchived SessionState = "archived"
+	SessionFailed   SessionState = "failed"
+)
+
+// Domain errors for control-plane lifecycle, leases, and media tickets.
+var (
+	ErrInvalidSessionTransition = errors.New("invalid session state transition")
+	ErrLeaseNotHeld             = errors.New("session lease not held")
+	ErrLeaseHeld                = errors.New("session lease held by another owner")
+	ErrStaleGeneration          = errors.New("stale owner generation")
+	ErrTicketNotFound           = errors.New("media ticket not found")
+	ErrTicketExpired            = errors.New("media ticket expired")
+	ErrTicketConsumed           = errors.New("media ticket already consumed")
+	ErrTicketInvalid            = errors.New("media ticket invalid")
+)
+
 // Session represents a long-lived session (e.g., "10am Sunday service").
 type Session struct {
-	ID             string
-	Name           string
-	Description    string
-	BroadcastToken string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID              string
+	Name            string
+	Description     string
+	BroadcastToken  string
+	State           SessionState
+	OwnerID         string
+	OwnerGeneration uint64
+	LeaseUntil      *time.Time
+	StartedAt       *time.Time
+	EndedAt         *time.Time
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 // Channel represents an audio stream within a session.
@@ -103,4 +137,55 @@ type Recording struct {
 	StartedAt time.Time
 	EndedAt   *time.Time
 	SizeBytes int64
+}
+
+// MediaTicket is a one-time, session-scoped media admission credential.
+// Only the hash of the nonce/JTI is persisted; the plaintext nonce is returned
+// to the issuer once and never stored.
+type MediaTicket struct {
+	ID                string
+	NonceHash         string
+	SessionID         string
+	OwnerID           string
+	OwnerGeneration   uint64
+	Subject           string
+	Role              string
+	ProduceChannelIDs []string
+	ListenChannelIDs  []string
+	ExpiresAt         time.Time
+	ConsumedAt        *time.Time
+	CreatedAt         time.Time
+}
+
+// CanTransitionSession reports whether from→to is a legal lifecycle move.
+// Same-state transitions are idempotent and always allowed.
+func CanTransitionSession(from, to SessionState) bool {
+	if from == to {
+		return true
+	}
+	switch from {
+	case SessionWaiting:
+		return to == SessionActive
+	case SessionActive:
+		return to == SessionDraining || to == SessionFailed
+	case SessionDraining:
+		return to == SessionEnded || to == SessionFailed
+	case SessionEnded:
+		return to == SessionArchived
+	default:
+		return false
+	}
+}
+
+// ValidateSessionTransition returns nil when from→to is legal.
+func ValidateSessionTransition(from, to SessionState) error {
+	if CanTransitionSession(from, to) {
+		return nil
+	}
+	return fmt.Errorf("%w: %s -> %s", ErrInvalidSessionTransition, from, to)
+}
+
+// IsTerminalSessionState reports whether state is a terminal lifecycle state.
+func IsTerminalSessionState(state SessionState) bool {
+	return state == SessionEnded || state == SessionArchived || state == SessionFailed
 }
