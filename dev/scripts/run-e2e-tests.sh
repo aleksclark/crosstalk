@@ -112,8 +112,16 @@ done
 [[ -f "$PW_SPEC" ]]   || die "Playwright golden-audio spec not found: $PW_SPEC"
 
 info "Pinging K2B at ${K2B_HOST}..."
-ssh -o ConnectTimeout=5 "root@${K2B_HOST}" "echo K2B_OK" >/dev/null 2>&1 \
-    || die "Cannot SSH to K2B at ${K2B_HOST}"
+if ! ssh -o ConnectTimeout=5 "root@${K2B_HOST}" "echo K2B_OK" >/dev/null 2>&1; then
+    warn "K2B unreachable at ${K2B_HOST} — physical board E2E cannot run"
+    skip_test "K2B physical board offline (no fake pass)"
+    echo ""
+    echo "=============================="
+    echo " E2E SUMMARY (physical K2B)"
+    echo "=============================="
+    echo "Skipped: K2B offline"
+    exit 0
+fi
 ok "K2B reachable"
 
 # Auto-detect host IP
@@ -127,7 +135,7 @@ info "Host IP: $HOST_IP"
 # BUILD
 # ══════════════════════════════════════════════════════════════════════════════
 info "Building ct-server (x86_64)..."
-(cd "$PROJECT_ROOT/server" && go build -o "$SERVER_BIN" ./cmd/ct-server) \
+(cd "$PROJECT_ROOT/server" && CGO_ENABLED=1 go build -o "$SERVER_BIN" ./cmd/ct-server) \
     || die "Server build failed"
 ok "ct-server built"
 
@@ -142,44 +150,43 @@ ok "ct-client-arm64 built"
 SERVER_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("",0)); print(s.getsockname()[1]); s.close()')
 info "Starting ct-server on 0.0.0.0:${SERVER_PORT}..."
 
-SERVER_CFG="$TMPDIR/ct-server.json"
-SERVER_DB="$TMPDIR/ct-server.db"
-mkdir -p "$TMPDIR/recordings"
-cat > "$SERVER_CFG" <<EOCFG
-{
-  "listen": "0.0.0.0:${SERVER_PORT}",
-  "db_path": "${SERVER_DB}",
-  "recording_path": "${TMPDIR}/recordings",
-  "log_level": "debug",
-  "auth": { "session_secret": "e2e-test-$(date +%s)" },
-  "web": { "dev_mode": false }
-}
-EOCFG
+# Postgres-backed ct-server (no SQLite). Default: ct-control-pg on 55432.
+CT_PG_URL="${CT_TEST_DATABASE_URL:-postgres://postgres:postgres@127.0.0.1:55432/postgres?sslmode=disable}"
+E2E_DB="ct_k2b_e2e_$$"
+psql "$CT_PG_URL" -v ON_ERROR_STOP=1 -qtA -c "CREATE DATABASE \"$E2E_DB\";" >/dev/null
+DB_URL="$(echo "$CT_PG_URL" | sed -E "s#/[^/?]+(\?|\$)#/$E2E_DB\1#")"
+cleanup_db() { psql "$CT_PG_URL" -c "DROP DATABASE IF EXISTS \"$E2E_DB\" WITH (FORCE);" >/dev/null 2>&1 || true; }
+trap 'cleanup_db' EXIT
 
+mkdir -p "$TMPDIR/recordings"
 SERVER_LOG="$TMPDIR/server.log"
-"$SERVER_BIN" --config "$SERVER_CFG" > "$SERVER_LOG" 2>&1 &
+CT_ADDR="0.0.0.0:${SERVER_PORT}" \
+  CT_DATABASE_URL="$DB_URL" \
+  CT_JWT_SECRET="e2e-k2b-secret-not-default" \
+  CT_ADMIN_PASSWORD="${CT_ADMIN_PASSWORD:-admin-e2e-pass}" \
+  CT_INSTANCE_ID="k2b-e2e-$$" \
+  CT_TEST_MODE=1 \
+  CT_UDP_MUX_PORT="${CT_UDP_MUX_PORT:-0}" \
+  "$SERVER_BIN" > "$SERVER_LOG" 2>&1 &
 SERVER_PID=$!
 CLEANUP_PIDS+=("$SERVER_PID")
 
-# Wait for server + extract seed token
-SEED_TOKEN=""
-for _ in $(seq 1 30); do
-    if [[ -f "$SERVER_LOG" ]]; then
-        SEED_TOKEN="$(grep -oP '(?<="token": ")[^"]*' "$SERVER_LOG" | head -1 || true)"
-        [[ -n "$SEED_TOKEN" ]] && break
-    fi
-    sleep 0.3
-done
-[[ -n "$SEED_TOKEN" ]] || { cat "$SERVER_LOG" 2>/dev/null; die "Could not extract seed token"; }
-
 SERVER_URL="http://127.0.0.1:${SERVER_PORT}"
-for _ in $(seq 1 20); do
-    curl -sf "${SERVER_URL}/api/templates" -H "Authorization: Bearer ${SEED_TOKEN}" >/dev/null 2>&1 && break
+for _ in $(seq 1 40); do
+    curl -sf "${SERVER_URL}/api/docs" >/dev/null 2>&1 && break
     sleep 0.3
 done
-curl -sf "${SERVER_URL}/api/templates" -H "Authorization: Bearer ${SEED_TOKEN}" >/dev/null 2>&1 \
+curl -sf "${SERVER_URL}/api/docs" >/dev/null 2>&1 \
     || { cat "$SERVER_LOG"; die "Server not responding"; }
 ok "ct-server started (PID ${SERVER_PID}, port ${SERVER_PORT})"
+
+# Login as admin for subsequent API setup
+LOGIN_RESP=$(curl -sf -X POST "${SERVER_URL}/api/auth/login" \
+  -H "Content-Type: application/json" \
+  -d "{\"username\":\"admin\",\"password\":\"${CT_ADMIN_PASSWORD:-admin-e2e-pass}\"}")
+ADMIN_TOKEN=$(echo "$LOGIN_RESP" | jq -r ".access_token")
+[[ -n "$ADMIN_TOKEN" && "$ADMIN_TOKEN" != "null" ]] || die "admin login failed: $LOGIN_RESP"
+SEED_TOKEN="$ADMIN_TOKEN"
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SETUP: API token for K2B client
@@ -187,15 +194,15 @@ ok "ct-server started (PID ${SERVER_PID}, port ${SERVER_PORT})"
 # Only infrastructure setup happens here — creating an API token so ct-client
 # can authenticate with the server. Template, session, role assignment, and
 # connecting are ALL done through the admin UI in the Playwright test.
-info "Creating API token for K2B client..."
+info "Creating ABC for K2B client (ct-abc path)..."
 
-TOKEN_RESP=$(curl -sf -X POST "${SERVER_URL}/api/tokens" \
-    -H "Authorization: Bearer ${SEED_TOKEN}" \
+TOKEN_RESP=$(curl -sf -X POST "${SERVER_URL}/api/abcs" \
+    -H "Authorization: Bearer ${ADMIN_TOKEN}" \
     -H "Content-Type: application/json" \
     -d '{"name": "k2b-e2e"}')
 K2B_TOKEN=$(echo "$TOKEN_RESP" | jq -r '.token')
-[[ "$K2B_TOKEN" != "null" && -n "$K2B_TOKEN" ]] || die "Token create failed: $TOKEN_RESP"
-ok "Client token created"
+[[ "$K2B_TOKEN" != "null" && -n "$K2B_TOKEN" ]] || die "ABC create failed: $TOKEN_RESP"
+ok "ABC client token created"
 
 # ══════════════════════════════════════════════════════════════════════════════
 # DEPLOY TO K2B

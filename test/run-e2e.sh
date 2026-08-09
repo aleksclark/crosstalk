@@ -17,7 +17,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-ADMIN_URL="${CT_TEST_DATABASE_ADMIN_URL:-postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable}"
+ADMIN_URL="${CT_TEST_DATABASE_ADMIN_URL:-postgres://postgres:postgres@127.0.0.1:55432/postgres?sslmode=disable}"
 PORT="${CT_SERVER_PORT:-8080}"
 export CT_ADMIN_PASSWORD="${CT_ADMIN_PASSWORD:-admin}"
 DBNAME="ct_e2e_$$"
@@ -54,7 +54,7 @@ for app in admin broadcast translator; do
 done
 
 echo "==> Building ct-server"
-(cd server && CGO_ENABLED=0 go build -o "$ROOT/bin/ct-server-e2e" ./cmd/ct-server)
+(cd server && CGO_ENABLED=1 go build -o "$ROOT/bin/ct-server-e2e" ./cmd/ct-server)
 
 echo "==> Creating database $DBNAME"
 psql_admin -c "CREATE DATABASE \"$DBNAME\";" >/dev/null
@@ -63,7 +63,10 @@ DB_URL="$(echo "$ADMIN_URL" | sed -E "s#/[^/?]+(\?|\$)#/$DBNAME\1#")"
 echo "==> Starting ct-server on :$PORT"
 CT_ADDR=":$PORT" \
   CT_DATABASE_URL="$DB_URL" \
-  CT_JWT_SECRET="e2e-secret" \
+  CT_JWT_SECRET="e2e-secret-not-default" \
+  CT_ADMIN_PASSWORD="${CT_ADMIN_PASSWORD:-admin-e2e-pass}" \
+  CT_INSTANCE_ID="e2e-$$" \
+  CT_TEST_MODE=1 \
   CT_UDP_MUX_PORT="${CT_UDP_MUX_PORT:-5000}" \
   "$ROOT/bin/ct-server-e2e" >"$SERVER_LOG" 2>&1 &
 SERVER_PID=$!
