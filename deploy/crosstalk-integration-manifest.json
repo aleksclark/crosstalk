@@ -4,9 +4,11 @@
   "generated_at": "2026-08-09T05:56:50Z",
   "git": {
     "branch": "production-integration",
-    "sha": "701f881d280b664ba9be0058ecf21a0283ec2892",
+    "sha": "90bab547909a0d6020c787f4c26fe50255830a86",
     "pr": 14,
-    "remote": "origin"
+    "remote": "origin",
+    "sha_note": "SHA of the integration content commit (this stamp commit is a child that only records it)",
+    "stamp_sha": "8200e8a6065f6b8e398f8be09a3e9648740f9e15"
   },
   "contracts": {
     "openapi": {
