@@ -45,6 +45,11 @@ type SignalingHandler struct {
 	// receive-only peers that publish no track of their own). Returning an
 	// error aborts the session.
 	OnPeer func(peer *PeerConn, r *http.Request) (initiateOffer bool, err error)
+
+	// Limits, when non-zero fields are set, override PeerManager admission
+	// bounds for this handler's message checks. Peer count still uses the
+	// manager. Zero fields fall back to the manager's limits / defaults.
+	Limits AdmissionLimits
 }
 
 // ServeHTTP handles the WebSocket signaling upgrade and message loop.
@@ -53,6 +58,19 @@ func (h *SignalingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.AuthFunc != nil {
 		if err := h.AuthFunc(r); err != nil {
 			http.Error(w, err.Error(), http.StatusUnauthorized)
+			return
+		}
+	}
+
+	// Reject before upgrade when the manager is at peer capacity or closed.
+	if h.PeerManager != nil {
+		if h.PeerManager.Closed() {
+			http.Error(w, ErrPeerManagerClosed.Error(), http.StatusServiceUnavailable)
+			return
+		}
+		limits := h.admissionLimits()
+		if err := CheckPeerCount(h.PeerManager.Count(), limits.MaxPeers); err != nil {
+			http.Error(w, err.Error(), http.StatusServiceUnavailable)
 			return
 		}
 	}
@@ -71,7 +89,11 @@ func (h *SignalingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	peer, err := h.PeerManager.CreatePeerConnection()
 	if err != nil {
 		slog.Error("webrtc: failed to create peer connection", "err", err)
-		conn.Close(websocket.StatusInternalError, "peer connection failed")
+		status := websocket.StatusInternalError
+		if errors.Is(err, ErrTooManyPeers) || errors.Is(err, ErrPeerManagerClosed) {
+			status = websocket.StatusTryAgainLater
+		}
+		conn.Close(status, "peer connection failed")
 		return
 	}
 	defer h.PeerManager.RemovePeer(peer.ID)
@@ -154,8 +176,34 @@ func (h *SignalingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.readLoop(ctx, conn, peer)
 }
 
+// admissionLimits merges handler overrides with manager defaults.
+func (h *SignalingHandler) admissionLimits() AdmissionLimits {
+	var base AdmissionLimits
+	if h.PeerManager != nil {
+		base = h.PeerManager.AdmissionLimits()
+	} else {
+		base = AdmissionLimits{}.WithDefaults()
+	}
+	// Explicit handler fields override.
+	if h.Limits.MaxPeers > 0 {
+		base.MaxPeers = h.Limits.MaxPeers
+	}
+	if h.Limits.MaxSDPBytes > 0 {
+		base.MaxSDPBytes = h.Limits.MaxSDPBytes
+	}
+	if h.Limits.MaxRemoteICECandidates > 0 {
+		base.MaxRemoteICECandidates = h.Limits.MaxRemoteICECandidates
+	}
+	if h.Limits.MaxSignalingMessageBytes > 0 {
+		base.MaxSignalingMessageBytes = h.Limits.MaxSignalingMessageBytes
+	}
+	return base.WithDefaults()
+}
+
 // readLoop reads signaling messages until the connection closes.
 func (h *SignalingHandler) readLoop(ctx context.Context, conn *websocket.Conn, peer *PeerConn) {
+	limits := h.admissionLimits()
+
 	for {
 		readCtx, cancel := context.WithTimeout(ctx, readTimeout)
 		_, data, err := conn.Read(readCtx)
@@ -172,6 +220,13 @@ func (h *SignalingHandler) readLoop(ctx context.Context, conn *websocket.Conn, p
 			}
 			conn.Close(websocket.StatusNormalClosure, "")
 			return
+		}
+
+		// Reject oversized frames before JSON unmarshal / SDP work.
+		if err := CheckSignalingMessageSize(len(data), limits.MaxSignalingMessageBytes); err != nil {
+			slog.Warn("webrtc: signaling message rejected",
+				"peer", peer.ID, "err", err, "bytes", len(data))
+			continue
 		}
 
 		var msg SignalMessage
@@ -196,8 +251,16 @@ func (h *SignalingHandler) readLoop(ctx context.Context, conn *websocket.Conn, p
 
 		switch msg.Type {
 		case "offer":
+			if err := CheckSDPSize(msg.SDP, limits.MaxSDPBytes); err != nil {
+				slog.Warn("webrtc: offer SDP rejected", "peer", peer.ID, "err", err)
+				continue
+			}
 			h.handleOffer(ctx, conn, peer, msg)
 		case "answer":
+			if err := CheckSDPSize(msg.SDP, limits.MaxSDPBytes); err != nil {
+				slog.Warn("webrtc: answer SDP rejected", "peer", peer.ID, "err", err)
+				continue
+			}
 			h.handleAnswer(peer, msg)
 		case "ice", "candidate":
 			h.handleICE(peer, msg)
