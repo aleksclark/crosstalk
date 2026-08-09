@@ -70,16 +70,16 @@
 <body>
   <div class="card">
     <h1>CrossTalk Box Setup</h1>
-    <p class="sub">Choose the WiFi network this box should join.</p>
+    <p class="sub">Choose the WiFi network this box should join. The list is a pre-setup snapshot (single radio cannot rescan while the setup hotspot is up). Hidden networks: type the exact name below.</p>
 
     <label for="ssid">Network</label>
     <div class="row">
-      <select id="ssid"><option value="">Scanning…</option></select>
-      <button type="button" class="icon" id="rescan" title="Rescan">↻</button>
+      <select id="ssid"><option value="">Loading…</option></select>
+      <button type="button" class="icon" id="rescan" title="Reload cached list">↻</button>
     </div>
 
-    <label for="custom">Or enter a hidden network name</label>
-    <input id="custom" type="text" placeholder="SSID (optional)" autocapitalize="none" autocorrect="off" />
+    <label for="custom">Hidden / not listed? Type the SSID</label>
+    <input id="custom" type="text" placeholder="SSID (manual / hidden)" autocapitalize="none" autocorrect="off" spellcheck="false" />
 
     <label for="pass">Password</label>
     <input id="pass" type="password" placeholder="Network password" />
@@ -104,14 +104,14 @@
   }
 
   function scan() {
-    setStatus("Scanning for networks…", "info");
-    ssidSel.innerHTML = "<option value=''>Scanning…</option>";
+    setStatus("Loading networks…", "info");
+    ssidSel.innerHTML = "<option value=''>Loading…</option>";
     fetch("/scan").then(function (r) { return r.json(); }).then(function (d) {
       var nets = (d && d.networks) || [];
       secured = {};
       if (!nets.length) {
-        ssidSel.innerHTML = "<option value=''>No networks found</option>";
-        setStatus("No networks found. Try rescanning.", "err");
+        ssidSel.innerHTML = "<option value=''>No networks listed</option>";
+        setStatus("No networks in the pre-setup snapshot. Type a network name (including hidden SSIDs) below.", "info");
         return;
       }
       ssidSel.innerHTML = "";
@@ -122,10 +122,10 @@
         opt.textContent = n.SSID + (n.Secured ? " 🔒" : "") + "  (" + n.Signal + "%)";
         ssidSel.appendChild(opt);
       });
-      setStatus("", "");
+      setStatus("Showing pre-setup snapshot (" + nets.length + "). Manual SSID entry always works.", "");
       syncPass();
     }).catch(function () {
-      setStatus("Could not scan networks.", "err");
+      setStatus("Could not load network list. Type the SSID manually.", "err");
     });
   }
 

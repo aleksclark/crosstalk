@@ -25,15 +25,20 @@ SCP="scp -o ConnectTimeout=5"
 
 echo "=== Deploying ct-netcfg to K2B at ${BOARD_IP} ==="
 
-echo "[1/3] Deploying binary..."
+echo "[1/4] Stopping service (frees the running binary)..."
+# Copying over a running binary fails with "text file busy", so stop first and
+# remove the old file before copying the new one.
+$SSH "systemctl stop ct-netcfg.service 2>/dev/null || true; rm -f /usr/local/bin/ct-netcfg"
+
+echo "[2/4] Deploying binary..."
 $SCP "$BINARY" "root@${BOARD_IP}:/usr/local/bin/ct-netcfg"
 $SSH "chmod +x /usr/local/bin/ct-netcfg"
 
-echo "[2/3] Installing service unit..."
+echo "[3/4] Installing service unit..."
 $SCP "$SERVICE_FILE" "root@${BOARD_IP}:/etc/systemd/system/ct-netcfg.service"
 $SSH "systemctl daemon-reload && systemctl enable ct-netcfg"
 
-echo "[3/3] Restarting service..."
+echo "[4/4] Starting service..."
 $SSH "systemctl reset-failed ct-netcfg.service 2>/dev/null; systemctl restart ct-netcfg.service"
 sleep 2
 
