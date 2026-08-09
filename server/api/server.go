@@ -43,6 +43,15 @@ type Services struct {
 	// session-scoped signaling endpoint that bridges peer audio into a
 	// session's mixer.
 	SessionMedia *sessionrtc.Manager
+	// MediaTickets issues and consumes one-time session-scoped media
+	// admission tickets. Optional for unit tests that only exercise REST.
+	MediaTickets MediaTicketIssuer
+	// Leases reads fenced session owner leases used when minting/consuming
+	// media tickets. Optional when MediaTickets is unset.
+	Leases SessionLeaseService
+	// InstanceID identifies this server process as the session owner when
+	// auto-acquiring a lease for ticket issuance. Defaults to "api".
+	InstanceID string
 }
 
 // Config holds API configuration.

@@ -110,22 +110,21 @@ func (s *Server) mountWebRTC() {
 	}
 
 	// Generic signaling endpoint. Headless clients (ABC boards) connect here
-	// with their API token. Each connection registers a peer in the
-	// PeerManager (visible on the admin Debug page). When the token belongs to
-	// an ABC assigned to a session, the peer is bridged into that session as an
-	// "abc" producer so its microphone reaches the session's feed channel.
+	// with their API token. Auth runs BEFORE peer allocation (AuthFunc).
 	s.router.Get("/ws/signaling", func(w http.ResponseWriter, r *http.Request) {
-		token := r.URL.Query().Get("token")
-		abc := s.lookupABC(r.Context(), token)
+		adm, ok := s.admitSignalingWS(w, r)
+		if !ok {
+			return
+		}
 
 		handler := &webrtc.SignalingHandler{
 			PeerManager:   pm,
 			ServerVersion: "3.0.0",
+			// Auth already enforced above; keep AuthFunc nil so we never
+			// allocate a peer on failure. Admission is fail-closed.
 			OnPeer: func(peer *webrtc.PeerConn, req *http.Request) (bool, error) {
-				assigned := ""
-				if abc != nil && abc.SessionID != nil {
-					assigned = *abc.SessionID
-				}
+				abc := adm.ABC
+				assigned := adm.SessionID
 
 				// Reflect the ABC's live connection state in the store so the
 				// admin UI shows the board as online. Headless boards connect
@@ -154,16 +153,27 @@ func (s *Server) mountWebRTC() {
 				})
 
 				// Bridge an assigned ABC as a producer into its session's feed.
-				// It listens to its configured monitor channel for booth return
-				// audio, falling back to all broadcast channels when unset.
-				// The ABC ID is a stable identity so reconnects reuse one source.
+				// Routing comes from server-derived admission, not query params.
 				if s.services.SessionMedia != nil && assigned != "" {
+					produce := s.channelNamesFromIDs(req.Context(), assigned, adm.ProduceChannelIDs)
+					if len(produce) == 0 {
+						produce = []string{"type:feed"}
+					}
+					listen := s.channelNamesFromIDs(req.Context(), assigned, adm.ListenChannelIDs)
+					identity := adm.Identity
+					if identity == "" && abc != nil {
+						identity = "abc:" + abc.ID
+					}
+					label := adm.Label
+					if label == "" && abc != nil {
+						label = abc.Name
+					}
 					return false, s.services.SessionMedia.Bridge(req.Context(), peer, assigned, sessionrtc.BridgeOpts{
 						Role:     "abc",
-						Identity: "abc:" + abc.ID,
-						Label:    abc.Name,
-						Produce:  []string{"type:feed"},
-						Listen:   s.abcMonitorSelectors(req.Context(), abc),
+						Identity: identity,
+						Label:    label,
+						Produce:  produce,
+						Listen:   listen,
 					})
 				}
 				return false, nil
@@ -191,11 +201,10 @@ func (s *Server) mountWebRTC() {
 //
 // Two endpoints:
 //
-//	GET /api/sessions/{id}/ws?token=<jwt>&produce=<names>&listen=<names>
-//	    Authenticated participants (translators/admin/ABC). Client sends the
-//	    offer. produce/listen are comma-separated channel names; a "type:feed"
-//	    or "type:broadcast" selector expands to all channels of that type. When
-//	    omitted, routing defaults by the caller's role.
+//	GET /api/sessions/{id}/ws?token=<media_ticket|jwt>&produce=<names>&listen=<names>
+//	    Authenticated participants. Admission (ticket consume / assignment)
+//	    completes BEFORE peer allocation. produce/listen query params may only
+//	    narrow server-derived channel capabilities.
 //
 //	GET /ws/broadcast/{id}?token=<broadcast_token>
 //	    Public receive-only listeners. The token is the session's broadcast
@@ -209,43 +218,16 @@ func (s *Server) mountSessionMedia() {
 
 	s.router.Get("/api/sessions/{id}/ws", func(w http.ResponseWriter, r *http.Request) {
 		sessionID := chi.URLParam(r, "id")
-		q := r.URL.Query()
-
-		role := "translator"
-		identity := ""
-		label := ""
-		if s.auth != nil {
-			if claims, err := s.auth.ValidateAccessToken(q.Get("token")); err == nil {
-				if claims.Role != "" {
-					role = claims.Role
-				}
-				// The JWT subject (user ID) is a stable identity across
-				// reconnects, so the same user reuses one Source instead of
-				// spawning a new one on every connect.
-				identity = claims.Subject
-				if identity != "" && s.services.Users != nil {
-					if u, uerr := s.services.Users.Get(r.Context(), identity); uerr == nil && u.Username != "" {
-						label = u.Username
-					}
-				}
-			}
+		adm, ok := s.admitSessionWS(w, r, sessionID)
+		if !ok {
+			return
 		}
 
-		// Routing defaults apply per direction based on parameter *presence*.
-		// An absent produce/listen param falls back to the role default; a
-		// param that is present (even if empty) is taken literally. This lets
-		// the monitor feature override only the listen side (?listen=<ch>)
-		// while the translator keeps producing into its default broadcast, and
-		// still lets deep links fully control both directions (e.g.
-		// ?produce=<feed>&listen= to produce-only into a feed).
-		defProduce, defListen := defaultRoutingNames(role)
-		produce := defProduce
-		if q.Has("produce") {
-			produce = splitCSV(q.Get("produce"))
-		}
-		listen := defListen
-		if q.Has("listen") {
-			listen = splitCSV(q.Get("listen"))
+		produce := s.channelNamesFromIDs(r.Context(), sessionID, adm.ProduceChannelIDs)
+		listen := s.channelNamesFromIDs(r.Context(), sessionID, adm.ListenChannelIDs)
+		// Listeners never produce.
+		if adm.Role == "listener" {
+			produce = nil
 		}
 
 		handler := &webrtc.SignalingHandler{
@@ -253,9 +235,9 @@ func (s *Server) mountSessionMedia() {
 			ServerVersion: "3.0.0",
 			OnPeer: func(peer *webrtc.PeerConn, req *http.Request) (bool, error) {
 				err := media.Bridge(req.Context(), peer, sessionID, sessionrtc.BridgeOpts{
-					Role:     role,
-					Identity: identity,
-					Label:    label,
+					Role:     adm.Role,
+					Identity: adm.Identity,
+					Label:    adm.Label,
 					Produce:  produce,
 					Listen:   listen,
 				})
@@ -267,13 +249,14 @@ func (s *Server) mountSessionMedia() {
 
 	s.router.Get("/ws/broadcast/{id}", func(w http.ResponseWriter, r *http.Request) {
 		sessionID := chi.URLParam(r, "id")
-		token := r.URL.Query().Get("token")
-
-		// Validate the broadcast token against the session.
-		sess, err := s.services.Sessions.Get(r.Context(), sessionID)
-		if err != nil || token == "" || sess.BroadcastToken != token {
-			http.Error(w, "invalid broadcast token", http.StatusForbidden)
+		adm, ok := s.admitBroadcastWS(w, r, sessionID)
+		if !ok {
 			return
+		}
+
+		listen := s.channelNamesFromIDs(r.Context(), sessionID, adm.ListenChannelIDs)
+		if len(listen) == 0 {
+			listen = []string{"type:broadcast"}
 		}
 
 		handler := &webrtc.SignalingHandler{
@@ -282,7 +265,7 @@ func (s *Server) mountSessionMedia() {
 			OnPeer: func(peer *webrtc.PeerConn, req *http.Request) (bool, error) {
 				err := media.Bridge(req.Context(), peer, sessionID, sessionrtc.BridgeOpts{
 					Role:        "listener",
-					Listen:      []string{"type:broadcast"},
+					Listen:      listen,
 					ServerOffer: true,
 				})
 				return true, err // server-offer flow (receive-only)
@@ -305,20 +288,6 @@ func splitCSV(v string) []string {
 		}
 	}
 	return out
-}
-
-// defaultRoutingNames returns produce/listen channel selectors for a role when
-// a participant does not specify them. Translators listen to feeds and produce
-// into broadcasts; ABC sources produce into feeds.
-func defaultRoutingNames(role string) (produce, listen []string) {
-	switch role {
-	case "abc":
-		return []string{"type:feed"}, nil
-	case "translator", "admin":
-		return []string{"type:broadcast"}, []string{"type:feed"}
-	default:
-		return []string{"type:broadcast"}, []string{"type:feed"}
-	}
 }
 
 // requireAdminMiddleware rejects requests that lack a valid admin JWT.
