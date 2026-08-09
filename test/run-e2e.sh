@@ -113,8 +113,9 @@ if [ "$ready" != 1 ]; then
 fi
 
 # Prove we are talking to CrossTalk, not a foreign listener on the same port.
+# Use grep (not rg) so GitHub-hosted runners without ripgrep still pass.
 health="$(curl -fsS "http://127.0.0.1:$PORT/admin/" | head -c 400 || true)"
-if ! printf '%s' "$health" | rg -qi 'crosstalk|admin|root'; then
+if ! printf '%s' "$health" | grep -Eiq 'crosstalk|admin|root'; then
   echo "unexpected response from :$PORT (not CrossTalk admin SPA?)" >&2
   printf '%s\n' "$health" >&2
   exit 1
