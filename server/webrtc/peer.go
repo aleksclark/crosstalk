@@ -45,6 +45,15 @@ type PeerConn struct {
 	lastOffer  string
 	lastAnswer string
 	dcOpen     bool
+	closed     bool
+	closeOnce  sync.Once
+
+	// remoteICECount tracks admitted remote ICE candidates for this peer.
+	remoteICECount int
+	// maxRemoteICE is the per-peer remote ICE candidate cap (0 → default).
+	maxRemoteICE int
+	// maxSDPBytes is the per-peer SDP size cap (0 → default).
+	maxSDPBytes int
 
 	// onNegotiationNeeded is called when the server creates a new offer for
 	// server-initiated renegotiation.
@@ -69,6 +78,9 @@ type PeerConn struct {
 	// SFU adds subscription tracks so they bind to the client's already-offered
 	// transceivers (avoiding an extra renegotiation round-trip).
 	onBeforeAnswer func()
+
+	// manager is set when the peer is tracked by a PeerManager (for observers).
+	manager *PeerManager
 }
 
 // OnBeforeAnswer registers a callback invoked during HandleOffer, after the
@@ -156,6 +168,14 @@ func (c *PeerConn) PeerConnection() *webrtc.PeerConnection {
 
 // HandleOffer sets the remote offer, creates an answer, captures SDP events.
 func (c *PeerConn) HandleOffer(offer webrtc.SessionDescription) (webrtc.SessionDescription, error) {
+	// Reject oversized SDP before any expensive Pion work.
+	c.mu.Lock()
+	maxSDP := c.maxSDPBytes
+	c.mu.Unlock()
+	if err := CheckSDPSize(offer.SDP, maxSDP); err != nil {
+		return webrtc.SessionDescription{}, err
+	}
+
 	// Log the offer SDP.
 	c.emitSDPEvent(EventSDPOffer, offer)
 
@@ -195,6 +215,13 @@ func (c *PeerConn) HandleOffer(offer webrtc.SessionDescription) (webrtc.SessionD
 
 // HandleAnswer sets the remote answer (for server-initiated renegotiation).
 func (c *PeerConn) HandleAnswer(answer webrtc.SessionDescription) error {
+	c.mu.Lock()
+	maxSDP := c.maxSDPBytes
+	c.mu.Unlock()
+	if err := CheckSDPSize(answer.SDP, maxSDP); err != nil {
+		return err
+	}
+
 	c.emitSDPEvent(EventSDPAnswer, answer)
 	if err := c.pc.SetRemoteDescription(answer); err != nil {
 		return fmt.Errorf("webrtc: set remote description (answer): %w", err)
@@ -203,13 +230,29 @@ func (c *PeerConn) HandleAnswer(answer webrtc.SessionDescription) error {
 }
 
 // AddICECandidate adds a remote ICE candidate and emits an event.
+// Candidates beyond the per-peer admission cap are rejected before Pion work.
 func (c *PeerConn) AddICECandidate(candidate webrtc.ICECandidateInit) error {
+	c.mu.Lock()
+	if err := CheckRemoteICECount(c.remoteICECount, c.maxRemoteICE); err != nil {
+		c.mu.Unlock()
+		return err
+	}
+	c.remoteICECount++
+	c.mu.Unlock()
+
 	c.events.Push(MakeEvent(c.ID, EventICECandidateRemote, map[string]string{
 		"candidate": candidate.Candidate,
 	}))
 	slog.Debug("webrtc: adding remote ICE candidate",
 		"peer", c.ID, "candidate", candidate.Candidate)
 	return c.pc.AddICECandidate(candidate)
+}
+
+// RemoteICECount returns how many remote ICE candidates have been admitted.
+func (c *PeerConn) RemoteICECount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.remoteICECount
 }
 
 // OnICECandidate registers a callback and instruments it with event emission.
@@ -267,19 +310,59 @@ func (c *PeerConn) Negotiate() {
 }
 
 // Close closes the underlying PeerConnection and emits a connection_closed event.
+// Close is idempotent: subsequent calls are no-ops.
 func (c *PeerConn) Close() error {
-	c.events.Push(MakeEvent(c.ID, EventConnectionClosed, nil))
-	c.mu.Lock()
-	cb := c.onClose
-	c.onClose = nil
-	c.mu.Unlock()
-	if cb != nil {
-		cb()
-	}
-	if c.pc != nil {
-		return c.pc.Close()
-	}
-	return nil
+	var err error
+	c.closeOnce.Do(func() {
+		c.mu.Lock()
+		c.closed = true
+		cb := c.onClose
+		c.onClose = nil
+		mgr := c.manager
+		c.mu.Unlock()
+
+		c.events.Push(MakeEvent(c.ID, EventConnectionClosed, nil))
+		if cb != nil {
+			cb()
+		}
+		if mgr != nil {
+			mgr.notifyPeerClosed(c, "")
+		}
+		if c.pc != nil {
+			err = c.pc.Close()
+		}
+	})
+	return err
+}
+
+// CloseWithReason is like Close but attaches a shutdown reason to the observer
+// event (e.g. PeerManager.CloseAll).
+func (c *PeerConn) CloseWithReason(reason string) error {
+	var err error
+	c.closeOnce.Do(func() {
+		c.mu.Lock()
+		c.closed = true
+		cb := c.onClose
+		c.onClose = nil
+		mgr := c.manager
+		c.mu.Unlock()
+
+		detail := map[string]string{}
+		if reason != "" {
+			detail["reason"] = reason
+		}
+		c.events.Push(MakeEvent(c.ID, EventConnectionClosed, detail))
+		if cb != nil {
+			cb()
+		}
+		if mgr != nil {
+			mgr.notifyPeerClosed(c, reason)
+		}
+		if c.pc != nil {
+			err = c.pc.Close()
+		}
+	})
+	return err
 }
 
 // DataChannel returns the control data channel if set.
@@ -341,9 +424,27 @@ func (c *PeerConn) emitSDPEvent(eventType EventType, sdp webrtc.SessionDescripti
 type PeerManager struct {
 	iceServers []webrtc.ICEServer
 	api        *webrtc.API
+	limits     AdmissionLimits
 
-	mu    sync.Mutex
-	peers map[string]*PeerConn
+	mu     sync.Mutex
+	peers  map[string]*PeerConn
+	closed bool
+
+	// closeWait tracks in-flight peer close operations for waitable shutdown.
+	closeWait sync.WaitGroup
+
+	// Observer hooks (no OTel dependency). Invoked outside the manager lock.
+	onPeerCreated []func(*PeerConn)
+	onPeerClosed  []func(PeerClosedEvent)
+}
+
+// PeerClosedEvent is delivered to peer-closed observers.
+// It carries no OTel dependency — plain structs only.
+type PeerClosedEvent struct {
+	Peer   *PeerConn
+	PeerID string
+	Reason string
+	At     time.Time
 }
 
 // ICEConfig holds ICE-related configuration matching the v2 WebRTCConfig shape.
@@ -354,30 +455,36 @@ type ICEConfig struct {
 	TURNCred    string
 	PublicIP    string
 	UDPMuxPort  int
+
+	// Admission bounds for peer creation and signaling. Zero fields use defaults.
+	Admission AdmissionLimits
 }
 
 // NewPeerManager creates a PeerManager from ICE config.
+// Invalid TURN sets or malformed ICE URLs cause a log error and an empty ICE
+// server list (callers that need fail-fast should use NewPeerManagerValidated).
 func NewPeerManager(cfg ICEConfig) *PeerManager {
-	servers := make([]webrtc.ICEServer, 0, 2)
-
-	if len(cfg.STUNServers) > 0 {
-		servers = append(servers, webrtc.ICEServer{
-			URLs: cfg.STUNServers,
-		})
-	}
-
-	if cfg.TURNServer != "" {
-		servers = append(servers, webrtc.ICEServer{
-			URLs:           []string{cfg.TURNServer},
-			Username:       cfg.TURNUser,
-			Credential:     cfg.TURNCred,
-			CredentialType: webrtc.ICECredentialTypePassword,
-		})
+	servers, err := BuildICEServers(cfg)
+	if err != nil {
+		// Keep startup resilient for existing call sites; log without credentials.
+		slog.Error("webrtc: invalid ICE config, continuing without ICE servers",
+			"error", err.Error(),
+			"stun_count", len(cfg.STUNServers),
+			"turn_configured", cfg.TURNConfigured())
+		servers = nil
+	} else if cfg.TURNConfigured() {
+		// Confirm TURN is present without logging the credential.
+		slog.Info("webrtc: ICE servers configured",
+			"stun_count", len(cfg.STUNServers),
+			"turn", true,
+			"turn_url", strings.TrimSpace(cfg.TURNServer),
+			"turn_user_set", strings.TrimSpace(cfg.TURNUser) != "")
 	}
 
 	pm := &PeerManager{
 		iceServers: servers,
 		peers:      make(map[string]*PeerConn),
+		limits:     cfg.Admission.WithDefaults(),
 	}
 
 	if cfg.UDPMuxPort > 0 {
@@ -413,18 +520,104 @@ func NewPeerManager(cfg ICEConfig) *PeerManager {
 	return pm
 }
 
+// NewPeerManagerValidated is like NewPeerManager but returns an error when
+// ICE/TURN config is invalid instead of logging and continuing.
+func NewPeerManagerValidated(cfg ICEConfig) (*PeerManager, error) {
+	if _, err := BuildICEServers(cfg); err != nil {
+		return nil, err
+	}
+	return NewPeerManager(cfg), nil
+}
+
 // NewPeerManagerWithAPI creates a PeerManager with a custom webrtc.API (for testing).
 func NewPeerManagerWithAPI(api *webrtc.API) *PeerManager {
 	return &PeerManager{
-		api:   api,
-		peers: make(map[string]*PeerConn),
+		api:    api,
+		peers:  make(map[string]*PeerConn),
+		limits: AdmissionLimits{}.WithDefaults(),
 	}
+}
+
+// SetAdmissionLimits replaces admission bounds (applies defaults for zeros).
+// Safe to call before peers are created; does not retroactively evict peers.
+func (pm *PeerManager) SetAdmissionLimits(limits AdmissionLimits) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	pm.limits = limits.WithDefaults()
+}
+
+// AdmissionLimits returns a copy of the current admission bounds.
+func (pm *PeerManager) AdmissionLimits() AdmissionLimits {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	return pm.limits
+}
+
+// ICEServers returns a defensive copy of configured ICE servers.
+// TURN credentials are included when configured — callers must not log them.
+func (pm *PeerManager) ICEServers() []webrtc.ICEServer {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	if len(pm.iceServers) == 0 {
+		return nil
+	}
+	out := make([]webrtc.ICEServer, len(pm.iceServers))
+	for i, s := range pm.iceServers {
+		out[i] = webrtc.ICEServer{
+			URLs:           append([]string(nil), s.URLs...),
+			Username:       s.Username,
+			Credential:     s.Credential,
+			CredentialType: s.CredentialType,
+		}
+	}
+	return out
+}
+
+// Configuration returns the webrtc.Configuration used for new peers.
+func (pm *PeerManager) Configuration() webrtc.Configuration {
+	return webrtc.Configuration{ICEServers: pm.ICEServers()}
+}
+
+// OnPeerCreated registers an observer invoked after a peer is created and
+// registered. Observers run outside the manager lock. No OTel dependency.
+func (pm *PeerManager) OnPeerCreated(fn func(*PeerConn)) {
+	if fn == nil {
+		return
+	}
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	pm.onPeerCreated = append(pm.onPeerCreated, fn)
+}
+
+// OnPeerClosed registers an observer invoked once when a peer closes.
+// Observers run outside the manager lock. No OTel dependency.
+func (pm *PeerManager) OnPeerClosed(fn func(PeerClosedEvent)) {
+	if fn == nil {
+		return
+	}
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	pm.onPeerClosed = append(pm.onPeerClosed, fn)
 }
 
 // CreatePeerConnection creates a new instrumented PeerConnection.
 func (pm *PeerManager) CreatePeerConnection() (*PeerConn, error) {
+	pm.mu.Lock()
+	if pm.closed {
+		pm.mu.Unlock()
+		return nil, ErrPeerManagerClosed
+	}
+	if err := CheckPeerCount(len(pm.peers), pm.limits.MaxPeers); err != nil {
+		pm.mu.Unlock()
+		return nil, err
+	}
+	limits := pm.limits
+	iceServers := pm.iceServers
+	api := pm.api
+	pm.mu.Unlock()
+
 	rtcCfg := webrtc.Configuration{
-		ICEServers: pm.iceServers,
+		ICEServers: iceServers,
 	}
 
 	var (
@@ -432,8 +625,8 @@ func (pm *PeerManager) CreatePeerConnection() (*PeerConn, error) {
 		err error
 	)
 
-	if pm.api != nil {
-		pc, err = pm.api.NewPeerConnection(rtcCfg)
+	if api != nil {
+		pc, err = api.NewPeerConnection(rtcCfg)
 	} else {
 		pc, err = webrtc.NewPeerConnection(rtcCfg)
 	}
@@ -442,10 +635,13 @@ func (pm *PeerManager) CreatePeerConnection() (*PeerConn, error) {
 	}
 
 	conn := &PeerConn{
-		ID:        ulid.Make().String(),
-		CreatedAt: time.Now(),
-		pc:        pc,
-		events:    NewEventRing(DefaultRingSize),
+		ID:           ulid.Make().String(),
+		CreatedAt:    time.Now(),
+		pc:           pc,
+		events:       NewEventRing(DefaultRingSize),
+		maxRemoteICE: limits.MaxRemoteICECandidates,
+		maxSDPBytes:  limits.MaxSDPBytes,
+		manager:      pm,
 	}
 
 	// Instrument all callbacks for verbose event capture.
@@ -493,9 +689,26 @@ func (pm *PeerManager) CreatePeerConnection() (*PeerConn, error) {
 		}
 	})
 
+	// Re-check capacity under lock before inserting (TOCTOU with concurrent creates).
 	pm.mu.Lock()
+	if pm.closed {
+		pm.mu.Unlock()
+		_ = pc.Close()
+		return nil, ErrPeerManagerClosed
+	}
+	if err := CheckPeerCount(len(pm.peers), pm.limits.MaxPeers); err != nil {
+		pm.mu.Unlock()
+		_ = pc.Close()
+		return nil, err
+	}
 	pm.peers[conn.ID] = conn
+	createdObs := append([]func(*PeerConn){}, pm.onPeerCreated...)
+	pm.closeWait.Add(1)
 	pm.mu.Unlock()
+
+	for _, fn := range createdObs {
+		fn(conn)
+	}
 
 	slog.Info("webrtc: peer connection created", "peer", conn.ID)
 	return conn, nil
@@ -585,6 +798,63 @@ func (pm *PeerManager) RemovePeer(id string) {
 
 	if ok {
 		_ = conn.Close()
+	}
+}
+
+// CloseAll marks the manager closed (rejecting new peers) and closes every
+// active peer with the given reason. It does not wait; use Wait or
+// CloseAllAndWait for waitable shutdown.
+func (pm *PeerManager) CloseAll(reason string) {
+	pm.mu.Lock()
+	pm.closed = true
+	peers := make([]*PeerConn, 0, len(pm.peers))
+	for _, p := range pm.peers {
+		peers = append(peers, p)
+	}
+	pm.mu.Unlock()
+
+	for _, p := range peers {
+		_ = p.CloseWithReason(reason)
+	}
+}
+
+// Wait blocks until every peer registered with the manager has finished
+// closing. Safe to call after CloseAll, or concurrently while peers drain.
+func (pm *PeerManager) Wait() {
+	pm.closeWait.Wait()
+}
+
+// CloseAllAndWait is CloseAll followed by Wait.
+func (pm *PeerManager) CloseAllAndWait(reason string) {
+	pm.CloseAll(reason)
+	pm.Wait()
+}
+
+// Closed reports whether CloseAll has been called.
+func (pm *PeerManager) Closed() bool {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	return pm.closed
+}
+
+// notifyPeerClosed is invoked once per peer from PeerConn.Close/CloseWithReason.
+// It removes the peer (if still present), signals closeWait, and fires observers.
+func (pm *PeerManager) notifyPeerClosed(conn *PeerConn, reason string) {
+	pm.mu.Lock()
+	delete(pm.peers, conn.ID)
+	obs := append([]func(PeerClosedEvent){}, pm.onPeerClosed...)
+	pm.mu.Unlock()
+
+	pm.closeWait.Done()
+
+	ev := PeerClosedEvent{
+		Peer:   conn,
+		PeerID: conn.ID,
+		Reason: reason,
+		At:     time.Now(),
+	}
+	for _, fn := range obs {
+		fn(ev)
 	}
 }
 
