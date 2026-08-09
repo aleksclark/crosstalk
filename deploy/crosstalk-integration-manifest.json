@@ -8,7 +8,7 @@
     "pr": 14,
     "remote": "origin",
     "sha_note": "SHA of the integration content commit (this stamp commit is a child that only records it)",
-    "stamp_sha": "8200e8a6065f6b8e398f8be09a3e9648740f9e15"
+    "stamp_sha": "a5332725aea4eadcfd3ee0a01621d800bcdef158"
   },
   "contracts": {
     "openapi": {
