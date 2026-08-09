@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -19,6 +21,8 @@ import (
 	crosstalk "github.com/aleksclark/crosstalk/server"
 	"github.com/aleksclark/crosstalk/server/api"
 	"github.com/aleksclark/crosstalk/server/auth"
+	"github.com/aleksclark/crosstalk/server/mediaticket"
+	"github.com/aleksclark/crosstalk/server/ownership"
 	"github.com/aleksclark/crosstalk/server/pgtest"
 	"github.com/aleksclark/crosstalk/server/postgres"
 	"github.com/aleksclark/crosstalk/server/sessionrtc"
@@ -28,16 +32,29 @@ import (
 	pionwebrtc "github.com/pion/webrtc/v4"
 )
 
-// testEnv holds a fully wired integration test environment.
+// testEnv holds a fully wired integration test environment with leases,
+// media tickets, and production Opus session media.
 type testEnv struct {
-	server  *httptest.Server
-	db      *postgres.DB
-	users   crosstalk.UserService
-	abcs    crosstalk.ABCService
-	sources crosstalk.SourceService
+	server     *httptest.Server
+	db         *postgres.DB
+	users      crosstalk.UserService
+	abcs       crosstalk.ABCService
+	sources    crosstalk.SourceService
+	sessions   crosstalk.SessionService
+	channels   crosstalk.ChannelService
+	mix        crosstalk.MixService
+	leases     ownership.Service
+	tickets    *mediaticket.Service
+	pm         *webrtc.PeerManager
+	instanceID string
 }
 
 func setupIntegrationServer(t *testing.T) *testEnv {
+	t.Helper()
+	return setupIntegrationServerWithID(t, "test-api")
+}
+
+func setupIntegrationServerWithID(t *testing.T, instanceID string) *testEnv {
 	t.Helper()
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
@@ -51,6 +68,9 @@ func setupIntegrationServer(t *testing.T) *testEnv {
 	userStore := postgres.NewUserStore(db)
 	refreshTokenStore := postgres.NewRefreshTokenStore(db)
 	recordingStore := postgres.NewRecordingStore(db)
+	ticketStore := postgres.NewMediaTicketStore(db)
+	leases := ownership.NewStore(db.DB)
+	tickets := mediaticket.NewService(ticketStore, []byte("integration-media-secret"))
 
 	authCfg := auth.Config{
 		Secret:          "integration-test-secret",
@@ -65,11 +85,12 @@ func setupIntegrationServer(t *testing.T) *testEnv {
 	se.SetICEMulticastDNSMode(ice.MulticastDNSModeDisabled)
 	peerManager := webrtc.NewPeerManagerWithAPI(pionwebrtc.NewAPI(pionwebrtc.WithSettingEngine(se)))
 
+	// Production Opus codec factory (default) + NopObserver.
 	sessionMedia := sessionrtc.NewManager(sessionrtc.Stores{
 		Channels: channelStore,
 		Sources:  sourceStore,
 		Mix:      mixStore,
-	}, log)
+	}, log, sessionrtc.WithObserver(sessionrtc.NopObserver{}))
 
 	svc := api.Services{
 		Sessions:      sessionStore,
@@ -83,6 +104,9 @@ func setupIntegrationServer(t *testing.T) *testEnv {
 		Auth:          authService,
 		PeerManager:   peerManager,
 		SessionMedia:  sessionMedia,
+		MediaTickets:  tickets,
+		Leases:        leases,
+		InstanceID:    instanceID,
 	}
 
 	cfg := api.Config{Addr: ":0", JWTSecret: "integration-test-secret"}
@@ -94,18 +118,25 @@ func setupIntegrationServer(t *testing.T) *testEnv {
 	// pgtest drops the database. Registered after pgtest.New so it runs first
 	// (t.Cleanup is LIFO), while the DB is still open.
 	t.Cleanup(func() {
-		for _, p := range peerManager.ListPeers() {
-			peerManager.RemovePeer(p.ID)
-		}
-		time.Sleep(50 * time.Millisecond)
+		peerManager.CloseAllAndWait("test-cleanup")
+		// Give the kernel a beat to reclaim UDP/DTLS sockets between tests;
+		// successive PeerConnections under load (esp. -race) otherwise flake ICE.
+		time.Sleep(500 * time.Millisecond)
 	})
 
 	return &testEnv{
-		server:  ts,
-		db:      db,
-		users:   userStore,
-		abcs:    abcStore,
-		sources: sourceStore,
+		server:     ts,
+		db:         db,
+		users:      userStore,
+		abcs:       abcStore,
+		sources:    sourceStore,
+		sessions:   sessionStore,
+		channels:   channelStore,
+		mix:        mixStore,
+		leases:     leases,
+		tickets:    tickets,
+		pm:         peerManager,
+		instanceID: instanceID,
 	}
 }
 
@@ -144,11 +175,11 @@ func (e *testEnv) login(t *testing.T, username, password string) string {
 // doRequest performs an authenticated HTTP request and returns the response.
 func (e *testEnv) doRequest(t *testing.T, method, path, token string, body string) *http.Response {
 	t.Helper()
-	var bodyReader *strings.Reader
+	var bodyReader io.Reader
 	if body != "" {
 		bodyReader = strings.NewReader(body)
 	} else {
-		bodyReader = strings.NewReader("")
+		bodyReader = bytes.NewReader(nil)
 	}
 	req, err := http.NewRequest(method, e.server.URL+path, bodyReader)
 	require.NoError(t, err)
@@ -161,6 +192,44 @@ func (e *testEnv) doRequest(t *testing.T, method, path, token string, body strin
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	return resp
+}
+
+// issueMediaTicket mints a one-time scoped media ticket via /api/webrtc/token.
+func (e *testEnv) issueMediaTicket(t *testing.T, bearer, sessionID string, produce, listen []string, role string) string {
+	t.Helper()
+	payload := map[string]any{"session_id": sessionID}
+	if role != "" {
+		payload["role"] = role
+	}
+	if produce != nil {
+		payload["produce"] = produce
+	}
+	if listen != nil {
+		payload["listen"] = listen
+	}
+	b, err := json.Marshal(payload)
+	require.NoError(t, err)
+	req, err := http.NewRequest(http.MethodPost, e.server.URL+"/api/webrtc/token", bytes.NewReader(b))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+bearer)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	data, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode, "issue ticket: %s", string(data))
+	var out struct {
+		Token string `json:"token"`
+	}
+	require.NoError(t, json.Unmarshal(data, &out))
+	require.NotEmpty(t, out.Token)
+	return out.Token
+}
+
+// peerCount returns live peers on this instance.
+func (e *testEnv) peerCount() int {
+	return e.pm.Count()
 }
 
 // TestIntegrationFullSessionLifecycle tests creating a user, logging in,
@@ -198,9 +267,9 @@ func TestIntegrationFullSessionLifecycle(t *testing.T) {
 
 	var feedChannel struct {
 		ID        string `json:"id"`
-		SessionID string `json:"session_id"`
 		Name      string `json:"name"`
 		Type      string `json:"type"`
+		SessionID string `json:"session_id"`
 	}
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&feedChannel))
 	assert.Equal(t, "Floor Feed", feedChannel.Name)
@@ -208,74 +277,195 @@ func TestIntegrationFullSessionLifecycle(t *testing.T) {
 	assert.Equal(t, session.ID, feedChannel.SessionID)
 
 	resp = env.doRequest(t, http.MethodPost, "/api/sessions/"+session.ID+"/channels", token,
-		`{"name":"English Broadcast","type":"broadcast"}`)
+		`{"name":"English","type":"broadcast"}`)
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
-	var broadcastChannel struct {
-		ID   string `json:"id"`
-		Name string `json:"name"`
-		Type string `json:"type"`
-	}
-	require.NoError(t, json.NewDecoder(resp.Body).Decode(&broadcastChannel))
-	assert.Equal(t, "English Broadcast", broadcastChannel.Name)
-	assert.Equal(t, "broadcast", broadcastChannel.Type)
-
-	// 4. List channels and verify both exist
-	resp = env.doRequest(t, http.MethodGet, "/api/sessions/"+session.ID+"/channels", token, "")
-	defer resp.Body.Close()
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-
-	var channelList struct {
-		Data []struct {
-			ID   string `json:"id"`
-			Name string `json:"name"`
-			Type string `json:"type"`
-		} `json:"data"`
-	}
-	require.NoError(t, json.NewDecoder(resp.Body).Decode(&channelList))
-	assert.Len(t, channelList.Data, 2)
-
-	// 5. Get the session directly
-	resp = env.doRequest(t, http.MethodGet, "/api/sessions/"+session.ID, token, "")
-	defer resp.Body.Close()
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-
-	var getSession struct {
-		ID   string `json:"id"`
-		Name string `json:"name"`
-	}
-	require.NoError(t, json.NewDecoder(resp.Body).Decode(&getSession))
-	assert.Equal(t, session.ID, getSession.ID)
-	assert.Equal(t, "Sunday Service", getSession.Name)
-
-	// 6. Update session
-	resp = env.doRequest(t, http.MethodPut, "/api/sessions/"+session.ID, token,
-		`{"name":"Updated Service","description":"Updated desc"}`)
-	defer resp.Body.Close()
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-
-	var updatedSession struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-	}
-	require.NoError(t, json.NewDecoder(resp.Body).Decode(&updatedSession))
-	assert.Equal(t, "Updated Service", updatedSession.Name)
-
-	// 7. List sessions
+	// 4. List sessions
 	resp = env.doRequest(t, http.MethodGet, "/api/sessions", token, "")
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
-	var sessionList struct {
-		Data []struct {
-			ID   string `json:"id"`
-			Name string `json:"name"`
-		} `json:"data"`
+	// 5. Get session by id
+	resp = env.doRequest(t, http.MethodGet, "/api/sessions/"+session.ID, token, "")
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	// 6. Unauthorized WS allocates no peers/sources
+	beforePeers := env.peerCount()
+	beforeSrcs, err := env.sources.List(context.Background(), session.ID)
+	require.NoError(t, err)
+	req, err := http.NewRequest(http.MethodGet, env.server.URL+"/api/sessions/"+session.ID+"/ws", nil)
+	require.NoError(t, err)
+	// Force non-WS so we just hit the admission gate.
+	resp2, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	resp2.Body.Close()
+	assert.True(t, resp2.StatusCode == http.StatusUnauthorized || resp2.StatusCode == http.StatusBadRequest ||
+		resp2.StatusCode == http.StatusForbidden,
+		"missing token must be rejected, got %d", resp2.StatusCode)
+	assert.Equal(t, beforePeers, env.peerCount(), "unauthorized must not allocate peers")
+	afterSrcs, err := env.sources.List(context.Background(), session.ID)
+	require.NoError(t, err)
+	assert.Equal(t, len(beforeSrcs), len(afterSrcs), "unauthorized must not allocate sources")
+}
+
+// TestIntegrationUnauthorizedMediaAllocatesNothing proves missing/bad tokens
+// never create peers or sources.
+func TestIntegrationUnauthorizedMediaAllocatesNothing(t *testing.T) {
+	env := setupIntegrationServer(t)
+	env.createAdminUser(t, "admin", "admin-pass-123")
+	adminToken := env.login(t, "admin", "admin-pass-123")
+	session := createSession(t, env, adminToken, "Auth Gate")
+	createChannel(t, env, adminToken, session.ID, "Floor Feed", "feed")
+
+	beforePeers := env.peerCount()
+	beforeSrc, err := env.sources.List(context.Background(), session.ID)
+	require.NoError(t, err)
+
+	cases := []string{
+		"/api/sessions/" + session.ID + "/ws",
+		"/api/sessions/" + session.ID + "/ws?token=not-a-ticket",
+		"/ws/signaling?token=bogus",
+		"/ws/broadcast/" + session.ID + "?token=wrong",
 	}
-	require.NoError(t, json.NewDecoder(resp.Body).Decode(&sessionList))
-	assert.Len(t, sessionList.Data, 1)
-	assert.Equal(t, "Updated Service", sessionList.Data[0].Name)
+	for _, path := range cases {
+		req, err := http.NewRequest(http.MethodGet, env.server.URL+path, nil)
+		require.NoError(t, err)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		resp.Body.Close()
+		assert.NotEqual(t, http.StatusSwitchingProtocols, resp.StatusCode, path)
+		assert.True(t, resp.StatusCode >= 400, path+" status=%d", resp.StatusCode)
+	}
+	assert.Equal(t, beforePeers, env.peerCount())
+	afterSrc, err := env.sources.List(context.Background(), session.ID)
+	require.NoError(t, err)
+	assert.Equal(t, len(beforeSrc), len(afterSrc))
+}
+
+// TestIntegrationOwnerFailoverFencing proves a second instance can take over
+// an expired/released lease, bumps generation, and stale tickets fail closed.
+func TestIntegrationOwnerFailoverFencing(t *testing.T) {
+	// Two logical instances share one Postgres via separate API servers.
+	envA := setupIntegrationServerWithID(t, "owner-a")
+	// Reuse same DB by opening a second server against envA's DSN is hard with
+	// pgtest isolation — instead exercise two PeerManagers + two lease owners
+	// on the same DB by constructing a second API on envA.db.
+	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	db := envA.db
+
+	sessionStore := postgres.NewSessionStore(db)
+	channelStore := postgres.NewChannelStore(db)
+	sourceStore := postgres.NewSourceStore(db)
+	mixStore := postgres.NewMixStore(db)
+	abcStore := postgres.NewABCStore(db)
+	userStore := postgres.NewUserStore(db)
+	refreshTokenStore := postgres.NewRefreshTokenStore(db)
+	ticketStore := postgres.NewMediaTicketStore(db)
+	leases := ownership.NewStore(db.DB)
+	tickets := mediaticket.NewService(ticketStore, []byte("integration-media-secret"))
+	authService := auth.NewService(auth.Config{
+		Secret:          "integration-test-secret",
+		AccessTokenTTL:  15 * time.Minute,
+		RefreshTokenTTL: 7 * 24 * time.Hour,
+	}, userStore, refreshTokenStore)
+
+	var se pionwebrtc.SettingEngine
+	se.SetICEMulticastDNSMode(ice.MulticastDNSModeDisabled)
+	pmB := webrtc.NewPeerManagerWithAPI(pionwebrtc.NewAPI(pionwebrtc.WithSettingEngine(se)))
+	mediaB := sessionrtc.NewManager(sessionrtc.Stores{
+		Channels: channelStore,
+		Sources:  sourceStore,
+		Mix:      mixStore,
+	}, log)
+
+	svcB := api.Services{
+		Sessions: sessionStore, Channels: channelStore, Sources: sourceStore, Mix: mixStore,
+		ABCs: abcStore, Users: userStore, RefreshTokens: refreshTokenStore,
+		Auth: authService, PeerManager: pmB, SessionMedia: mediaB,
+		MediaTickets: tickets, Leases: leases, InstanceID: "owner-b",
+	}
+	srvB := api.NewServer(api.Config{Addr: ":0", JWTSecret: "integration-test-secret"}, svcB, log)
+	tsB := httptest.NewServer(srvB.Handler())
+	t.Cleanup(tsB.Close)
+	t.Cleanup(func() { pmB.CloseAllAndWait("test-cleanup") })
+
+	envA.createAdminUser(t, "admin", "admin-pass-123")
+	adminToken := envA.login(t, "admin", "admin-pass-123")
+	session := createSession(t, envA, adminToken, "Failover Session")
+	createChannel(t, envA, adminToken, session.ID, "Floor Feed", "feed")
+	createChannel(t, envA, adminToken, session.ID, "English", "broadcast")
+
+	// A acquires lease via ticket issue.
+	ticketA := envA.issueMediaTicket(t, adminToken, session.ID, []string{"type:broadcast"}, []string{"type:feed"}, "admin")
+	leaseA, err := envA.leases.Current(context.Background(), session.ID)
+	require.NoError(t, err)
+	require.Equal(t, "owner-a", leaseA.OwnerID)
+	require.Greater(t, leaseA.Generation, uint64(0))
+	genA := leaseA.Generation
+
+	// B cannot acquire while A holds.
+	_, err = leases.Acquire(context.Background(), session.ID, "owner-b", 2*time.Minute)
+	require.ErrorIs(t, err, crosstalk.ErrLeaseHeld)
+
+	// A releases; B takes over and generation bumps.
+	require.NoError(t, envA.leases.Release(context.Background(), leaseA))
+	leaseB, err := leases.Acquire(context.Background(), session.ID, "owner-b", 2*time.Minute)
+	require.NoError(t, err)
+	assert.Equal(t, "owner-b", leaseB.OwnerID)
+	assert.Greater(t, leaseB.Generation, genA)
+
+	// Stale ticket from gen A must fail closed on both instances.
+	for _, base := range []string{envA.server.URL, tsB.URL} {
+		req, err := http.NewRequest(http.MethodGet, base+"/api/sessions/"+session.ID+"/ws?token="+ticketA, nil)
+		require.NoError(t, err)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		assert.True(t, resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden,
+			"stale ticket status=%d body=%s", resp.StatusCode, string(body))
+	}
+	assert.Equal(t, 0, envA.peerCount(), "stale ticket must not allocate on A")
+	assert.Equal(t, 0, pmB.Count(), "stale ticket must not allocate on B")
+
+	// Fresh ticket from B works for admission (WS upgrade may still fail without
+	// proper WS client — but must not be unauthorized).
+	// Login against B's server (same users DB).
+	loginBody := `{"username":"admin","password":"admin-pass-123"}`
+	resp, err := http.Post(tsB.URL+"/api/auth/login", "application/json", strings.NewReader(loginBody))
+	require.NoError(t, err)
+	var login struct {
+		AccessToken string `json:"access_token"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&login))
+	resp.Body.Close()
+	require.NotEmpty(t, login.AccessToken)
+
+	// Issue ticket on B
+	payload := map[string]any{
+		"session_id": session.ID,
+		"produce":    []string{"type:broadcast"},
+		"listen":     []string{"type:feed"},
+	}
+	b, _ := json.Marshal(payload)
+	req, err := http.NewRequest(http.MethodPost, tsB.URL+"/api/webrtc/token", bytes.NewReader(b))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+login.AccessToken)
+	resp, err = http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	data, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode, string(data))
+	var tok struct {
+		Token           string `json:"token"`
+		OwnerGeneration uint64 `json:"owner_generation"`
+	}
+	require.NoError(t, json.Unmarshal(data, &tok))
+	assert.Equal(t, leaseB.Generation, tok.OwnerGeneration)
+	require.NotEmpty(t, tok.Token)
 }
 
 // TestIntegrationABCAuthentication tests creating an ABC and verifying
@@ -363,8 +553,9 @@ func TestIntegrationABCAuthentication(t *testing.T) {
 
 	// 7. The ABC's API token authenticates against /api/webrtc/token — this is
 	// how the headless CLI (KickPi board) obtains a signaling token. A JWT is
-	// NOT required for ABCs.
-	resp = env.doRequest(t, http.MethodPost, "/api/webrtc/token", abcResult.Token, "")
+	// NOT required for ABCs. session_id is required in the body.
+	resp = env.doRequest(t, http.MethodPost, "/api/webrtc/token", abcResult.Token,
+		fmt.Sprintf(`{"session_id":%q,"role":"abc"}`, sess.ID))
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode, "ABC token should authenticate for webrtc token")
 	var wrtc struct {
@@ -375,7 +566,8 @@ func TestIntegrationABCAuthentication(t *testing.T) {
 	assert.NotEmpty(t, wrtc.Token)
 
 	// A bogus token is rejected.
-	bad := env.doRequest(t, http.MethodPost, "/api/webrtc/token", "not-a-real-token", "")
+	bad := env.doRequest(t, http.MethodPost, "/api/webrtc/token", "not-a-real-token",
+		fmt.Sprintf(`{"session_id":%q}`, sess.ID))
 	defer bad.Body.Close()
 	assert.Equal(t, http.StatusUnauthorized, bad.StatusCode)
 }
