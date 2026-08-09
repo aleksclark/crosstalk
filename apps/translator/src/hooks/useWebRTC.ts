@@ -26,6 +26,7 @@ export interface ICECandidate {
 
 export interface UseWebRTCOptions {
   sessionId: string;
+  /** Long-lived access JWT used only to mint a one-time media ticket. */
   token: string;
   audioDeviceId?: string;
   // Optional explicit SFU routing. When omitted the server routes by role
@@ -52,6 +53,40 @@ export interface UseWebRTCReturn {
   connect: () => Promise<void>;
   disconnect: () => void;
   toggleMute: () => void;
+}
+
+/** Mint a one-time media ticket via POST /api/webrtc/token. */
+export async function mintMediaTicket(
+  accessToken: string,
+  sessionId: string,
+  opts?: { produce?: string; listen?: string; role?: string },
+): Promise<string> {
+  const body: Record<string, unknown> = { session_id: sessionId };
+  if (opts?.role) body.role = opts.role;
+  if (opts?.produce !== undefined) {
+    body.produce = opts.produce === "" ? [] : opts.produce.split(",").filter(Boolean);
+  }
+  if (opts?.listen !== undefined) {
+    body.listen = opts.listen === "" ? [] : opts.listen.split(",").filter(Boolean);
+  }
+
+  const resp = await fetch("/api/webrtc/token", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    throw new Error(`media ticket mint failed (${resp.status}): ${text || resp.statusText}`);
+  }
+  const data = (await resp.json()) as { token?: string };
+  if (!data.token) {
+    throw new Error("media ticket mint returned empty token");
+  }
+  return data.token;
 }
 
 export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
@@ -123,6 +158,11 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
 
   const connect = useCallback(async () => {
     addEvent("connect", `Starting connection to session ${sessionId}`);
+
+    // Mint one-time media ticket (access JWT is not a WS admit credential).
+    addEvent("auth", "Requesting media ticket");
+    const mediaTicket = await mintMediaTicket(token, sessionId, { produce, listen });
+    addEvent("auth", "Media ticket obtained");
 
     // Get user media
     const constraints: MediaStreamConstraints = {
@@ -215,9 +255,9 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
       addEvent("iceGatheringState", pc.iceGatheringState);
     };
 
-    // WebSocket signaling
+    // WebSocket signaling with one-time media ticket (not access JWT).
     const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const params = new URLSearchParams({ token });
+    const params = new URLSearchParams({ token: mediaTicket });
     // Presence matters: a defined-but-empty value ("") means "route nothing in
     // this direction", while an undefined value means "let the server apply the
     // role default". The server distinguishes these via param presence, so only

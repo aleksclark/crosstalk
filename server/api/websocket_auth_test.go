@@ -156,17 +156,48 @@ func TestWebSocket_TranslatorACannotAccessSessionB(t *testing.T) {
 	beforePeers := env.peerCount()
 	beforeSrc := env.sourceCount(t, sidB)
 
-	// JWT without assignment.
+	// Access JWT is not a media admit credential when MediaTickets is configured.
+	// Unauthorized (ticket required), not assignment 403 — JWT never reaches authz.
 	conn, resp, err := env.dialWS(t, "/api/sessions/"+sidB+"/ws?token="+trTok)
 	if conn != nil {
 		_ = conn.Close(websocket.StatusNormalClosure, "")
 	}
 	require.Error(t, err)
 	if resp != nil {
-		assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+		assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 	}
 	assert.Equal(t, beforePeers, env.peerCount())
 	assert.Equal(t, beforeSrc, env.sourceCount(t, sidB))
+
+	// Ticket mint for unassigned session is still forbidden at issue time.
+	respIssue, dataIssue := env.doJSON(t, http.MethodPost, "/api/webrtc/token", trTok, map[string]any{
+		"session_id": sidB,
+	})
+	assert.Equal(t, http.StatusForbidden, respIssue.StatusCode, string(dataIssue))
+}
+
+func TestWebSocket_AccessJWTRejectedWhenTicketsConfigured(t *testing.T) {
+	env := setupAuthServer(t)
+	env.createUser(t, "admin", "admin123", "admin")
+	adminTok := env.login(t, "admin", "admin123")
+	sid, _ := env.createSession(t, adminTok, "JWT-Reject")
+	_ = env.createChannel(t, adminTok, sid, "Floor", "feed")
+	_ = env.createChannel(t, adminTok, sid, "English", "broadcast")
+
+	beforePeers := env.peerCount()
+	beforeSrc := env.sourceCount(t, sid)
+
+	// Even a valid assigned access JWT must not dial media WS directly.
+	conn, resp, err := env.dialWS(t, "/api/sessions/"+sid+"/ws?token="+adminTok)
+	if conn != nil {
+		_ = conn.Close(websocket.StatusNormalClosure, "")
+	}
+	require.Error(t, err)
+	if resp != nil {
+		assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	}
+	assert.Equal(t, beforePeers, env.peerCount())
+	assert.Equal(t, beforeSrc, env.sourceCount(t, sid))
 }
 
 func TestWebSocket_UnknownABCNoPeer(t *testing.T) {

@@ -100,6 +100,11 @@ func main() {
 		Mix:      mixStore,
 	}, log, sessionrtc.WithObserver(sessionrtc.NopObserver{}))
 
+	// Track leases this instance holds so SIGTERM can release them.
+	// Wire Note before API construction so ticket-issue acquires are observed.
+	leaseTracker := newLeaseTracker(leaseStore, cfg.InstanceID, cfg.LeaseTTL, cfg.LeaseRenew, log)
+	leaseTracker.Start(context.Background())
+
 	svc := api.Services{
 		Sessions:      sessionStore,
 		Channels:      channelStore,
@@ -115,6 +120,9 @@ func main() {
 		MediaTickets:  ticketService,
 		Leases:        leaseStore,
 		InstanceID:    cfg.InstanceID,
+		OnLeaseAcquired: func(lease ownership.Lease) {
+			leaseTracker.Note(lease)
+		},
 	}
 
 	webApps, err := web.Apps()
@@ -134,10 +142,6 @@ func main() {
 		Handler:           apiSrv.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-
-	// Track leases this instance holds so SIGTERM can release them.
-	leaseTracker := newLeaseTracker(leaseStore, cfg.InstanceID, cfg.LeaseTTL, cfg.LeaseRenew, log)
-	leaseTracker.Start(context.Background())
 
 	// Graceful shutdown
 	go func() {
@@ -390,8 +394,8 @@ func (t *leaseTracker) renewAll(ctx context.Context) {
 	}
 }
 
-// Note tracks a lease acquired out-of-band (e.g. by the API). Safe no-op helper
-// for future wiring; production ticket issue path acquires via api.Services.Leases.
+// Note tracks a lease acquired out-of-band (e.g. by API ticket issuance via
+// Services.OnLeaseAcquired). Enables renew loop and SIGTERM release.
 func (t *leaseTracker) Note(lease ownership.Lease) {
 	if lease.SessionID == "" || lease.OwnerID != t.instanceID {
 		return

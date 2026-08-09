@@ -193,7 +193,8 @@ func roleCompatible(actual, requested string) bool {
 }
 
 // ensureSessionLease returns the current unexpired lease, acquiring one for
-// this instance when none is held.
+// this instance when none is held. Successful acquires notify OnLeaseAcquired
+// so the process lease tracker can renew/release on SIGTERM.
 func (s *Server) ensureSessionLease(ctx context.Context, sessionID string) (ownership.Lease, error) {
 	if s.services.Leases == nil {
 		// Fall back to session row owner fields when lease service is absent
@@ -217,9 +218,24 @@ func (s *Server) ensureSessionLease(ctx context.Context, sessionID string) (owne
 		return ownership.Lease{}, err
 	}
 	if cur.OwnerID != "" && !cur.ExpiresAt.IsZero() {
+		// Already held — note if we own it so the tracker observes renewals.
+		if cur.OwnerID == s.instanceID() {
+			s.noteLease(cur)
+		}
 		return cur, nil
 	}
-	return s.services.Leases.Acquire(ctx, sessionID, s.instanceID(), defaultLeaseTTL)
+	lease, err := s.services.Leases.Acquire(ctx, sessionID, s.instanceID(), defaultLeaseTTL)
+	if err != nil {
+		return ownership.Lease{}, err
+	}
+	s.noteLease(lease)
+	return lease, nil
+}
+
+func (s *Server) noteLease(lease ownership.Lease) {
+	if s.services.OnLeaseAcquired != nil {
+		s.services.OnLeaseAcquired(lease)
+	}
 }
 
 func (s *Server) instanceID() string {
@@ -243,8 +259,10 @@ func (s *Server) lookupABCFromAuthHeader(ctx context.Context, authHeader string)
 }
 
 // admitSessionWS validates credentials for /api/sessions/{id}/ws BEFORE any
-// peer is allocated. Prefer a one-time media ticket; fall back to JWT/ABC only
-// when MediaTickets is not configured (tests without ticket wiring).
+// peer is allocated. When MediaTickets is configured, only a consumed one-time
+// media ticket is accepted — long-lived access JWTs and raw ABC API tokens must
+// mint via POST /api/webrtc/token first. JWT/ABC direct admit is allowed only
+// when MediaTickets is unset (tests without ticket wiring).
 func (s *Server) admitSessionWS(w http.ResponseWriter, r *http.Request, sessionID string) (*mediaAdmission, bool) {
 	q := r.URL.Query()
 	token := q.Get("token")
@@ -259,32 +277,33 @@ func (s *Server) admitSessionWS(w http.ResponseWriter, r *http.Request, sessionI
 		return nil, false
 	}
 
-	// Prefer media-ticket consumption when the service is wired AND the
-	// credential looks like a media ticket (signed media JWT or opaque nonce).
-	// User access JWTs also have three segments — do not treat every JWT as a
-	// media ticket or translators would never fall through to assignment checks.
-	if s.services.MediaTickets != nil && s.looksLikeMediaTicket(token) {
+	// Production path: MediaTickets wired → ticket-only admission.
+	if s.services.MediaTickets != nil {
+		if !s.looksLikeMediaTicket(token) {
+			// Access JWTs and ABC API tokens are not media admit credentials.
+			http.Error(w, "media ticket required", http.StatusUnauthorized)
+			return nil, false
+		}
 		adm, err := s.consumeMediaTicket(r.Context(), sessionID, token)
-		if err == nil {
-			// Apply optional query narrowing (intersect only).
-			adm.ProduceChannelIDs = s.narrowFromQuery(r.Context(), sessionID, adm.ProduceChannelIDs, q.Get("produce"), q.Has("produce"))
-			adm.ListenChannelIDs = s.narrowFromQuery(r.Context(), sessionID, adm.ListenChannelIDs, q.Get("listen"), q.Has("listen"))
-			if adm.Role == "listener" {
-				adm.ProduceChannelIDs = nil
+		if err != nil {
+			status := http.StatusUnauthorized
+			if errors.Is(err, errTicketSessionMismatch) {
+				status = http.StatusForbidden
 			}
-			return adm, true
+			http.Error(w, err.Error(), status)
+			return nil, false
 		}
-		// Media ticket credential failed → hard fail (no JWT fallback that
-		// would re-open fail-open paths).
-		status := http.StatusUnauthorized
-		if errors.Is(err, errTicketSessionMismatch) {
-			status = http.StatusForbidden
+		// Apply optional query narrowing (intersect only).
+		adm.ProduceChannelIDs = s.narrowFromQuery(r.Context(), sessionID, adm.ProduceChannelIDs, q.Get("produce"), q.Has("produce"))
+		adm.ListenChannelIDs = s.narrowFromQuery(r.Context(), sessionID, adm.ListenChannelIDs, q.Get("listen"), q.Has("listen"))
+		if adm.Role == "listener" {
+			adm.ProduceChannelIDs = nil
 		}
-		http.Error(w, err.Error(), status)
-		return nil, false
+		return adm, true
 	}
 
-	// JWT path (access token). Still enforce assignment; do not trust produce/listen.
+	// Dev/test fallback when MediaTickets is not configured: JWT/ABC with
+	// assignment checks. Do not trust client produce/listen beyond narrowing.
 	if s.auth != nil {
 		if claims, err := s.auth.ValidateAccessToken(token); err == nil {
 			if err := s.authorizeSessionAccess(r.Context(), claims, sessionID); err != nil {
@@ -318,7 +337,6 @@ func (s *Server) admitSessionWS(w http.ResponseWriter, r *http.Request, sessionI
 		}
 	}
 
-	// ABC API token path for session WS (unusual; boards use /ws/signaling).
 	if abc := s.lookupABC(r.Context(), token); abc != nil {
 		if abc.SessionID == nil || *abc.SessionID != sessionID {
 			http.Error(w, "abc not assigned to this session", http.StatusForbidden)

@@ -152,13 +152,12 @@ func (s *Server) mountWebRTC() {
 					ctrl.Install()
 				})
 
-				// Bridge an assigned ABC as a producer into its session's feed.
-				// Routing comes from server-derived admission, not query params.
+				// Bridge an assigned ABC from admitted channel IDs only.
+				// Do not invent type:feed when produce is empty (ticket/listener
+				// paths must not gain produce via empty-produce escape).
+				// ABC long-lived token admit still derives feed in admitSignalingWS.
 				if s.services.SessionMedia != nil && assigned != "" {
 					produce := s.channelNamesFromIDs(req.Context(), assigned, adm.ProduceChannelIDs)
-					if len(produce) == 0 {
-						produce = []string{"type:feed"}
-					}
 					listen := s.channelNamesFromIDs(req.Context(), assigned, adm.ListenChannelIDs)
 					identity := adm.Identity
 					if identity == "" && abc != nil {
@@ -201,10 +200,11 @@ func (s *Server) mountWebRTC() {
 //
 // Two endpoints:
 //
-//	GET /api/sessions/{id}/ws?token=<media_ticket|jwt>&produce=<names>&listen=<names>
-//	    Authenticated participants. Admission (ticket consume / assignment)
-//	    completes BEFORE peer allocation. produce/listen query params may only
-//	    narrow server-derived channel capabilities.
+//	GET /api/sessions/{id}/ws?token=<media_ticket>&produce=<names>&listen=<names>
+//	    Authenticated participants. When MediaTickets is configured, a consumed
+//	    one-time media ticket is required (mint via POST /api/webrtc/token).
+//	    Admission completes BEFORE peer allocation. produce/listen query params
+//	    may only narrow ticket channel capabilities.
 //
 //	GET /ws/broadcast/{id}?token=<broadcast_token>
 //	    Public receive-only listeners. The token is the session's broadcast

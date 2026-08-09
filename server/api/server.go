@@ -17,6 +17,7 @@ import (
 
 	crosstalk "github.com/aleksclark/crosstalk/server"
 	"github.com/aleksclark/crosstalk/server/auth"
+	"github.com/aleksclark/crosstalk/server/ownership"
 	"github.com/aleksclark/crosstalk/server/sessionrtc"
 	"github.com/aleksclark/crosstalk/server/webrtc"
 )
@@ -45,6 +46,8 @@ type Services struct {
 	SessionMedia *sessionrtc.Manager
 	// MediaTickets issues and consumes one-time session-scoped media
 	// admission tickets. Optional for unit tests that only exercise REST.
+	// When set, /api/sessions/{id}/ws requires a consumed media ticket
+	// (long-lived access JWTs are not media admit credentials).
 	MediaTickets MediaTicketIssuer
 	// Leases reads fenced session owner leases used when minting/consuming
 	// media tickets. Optional when MediaTickets is unset.
@@ -52,6 +55,10 @@ type Services struct {
 	// InstanceID identifies this server process as the session owner when
 	// auto-acquiring a lease for ticket issuance. Defaults to "api".
 	InstanceID string
+	// OnLeaseAcquired is invoked after this instance successfully acquires
+	// (or re-observes) a session lease during ticket issuance. Production
+	// wires this to the process lease tracker for renew/SIGTERM release.
+	OnLeaseAcquired func(ownership.Lease)
 }
 
 // Config holds API configuration.
