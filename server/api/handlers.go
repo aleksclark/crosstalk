@@ -61,11 +61,12 @@ func (s *Server) handleListSessions(ctx context.Context, input *ListSessionsRequ
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to list sessions")
 	}
+	sessions = s.filterSessionsForClaims(ctx, claims, sessions)
 
 	resp := &ListSessionsResponse{}
 	resp.Body.Data = make([]SessionOut, len(sessions))
 	for i, sess := range sessions {
-		resp.Body.Data[i] = sessionToOut(sess)
+		resp.Body.Data[i] = sessionToOutForClaims(sess, claims)
 	}
 	return resp, nil
 }
@@ -102,6 +103,9 @@ func (s *Server) handleGetSession(ctx context.Context, input *GetSessionRequest)
 	if err := s.requireRole(claims, "admin", "translator"); err != nil {
 		return nil, err
 	}
+	if err := s.authorizeSessionAccess(ctx, claims, input.ID); err != nil {
+		return nil, err
+	}
 
 	sess, err := s.services.Sessions.Get(ctx, input.ID)
 	if err != nil {
@@ -109,7 +113,7 @@ func (s *Server) handleGetSession(ctx context.Context, input *GetSessionRequest)
 	}
 
 	resp := &GetSessionResponse{}
-	resp.Body = sessionToOut(*sess)
+	resp.Body = sessionToOutForClaims(*sess, claims)
 	return resp, nil
 }
 
@@ -165,6 +169,9 @@ func (s *Server) handleGetBroadcastURL(ctx context.Context, input *GetBroadcastU
 	if err := s.requireRole(claims, "admin", "translator"); err != nil {
 		return nil, err
 	}
+	if err := s.authorizeSessionAccess(ctx, claims, input.ID); err != nil {
+		return nil, err
+	}
 
 	sess, err := s.services.Sessions.Get(ctx, input.ID)
 	if err != nil {
@@ -186,9 +193,25 @@ func (s *Server) handleRegenerateBroadcastURL(ctx context.Context, input *Regene
 		return nil, err
 	}
 
+	// Capture old token so we can identify listeners to drop after rotation.
+	var oldToken string
+	if sess, gerr := s.services.Sessions.Get(ctx, input.ID); gerr == nil && sess != nil {
+		oldToken = sess.BroadcastToken
+	}
+
 	token, err := s.services.Sessions.RegenerateBroadcastToken(ctx, input.ID)
 	if err != nil {
 		return nil, huma.Error404NotFound("session not found")
+	}
+
+	// Best-effort: drop active peers for this session so rotated tokens cannot
+	// keep listening. Full listener tracking is network-lane territory; when
+	// PeerManager is present we remove all peers (conservative fail-closed).
+	_ = oldToken
+	if s.services.PeerManager != nil {
+		for _, p := range s.services.PeerManager.ListPeers() {
+			s.services.PeerManager.RemovePeer(p.ID)
+		}
 	}
 
 	resp := &RegenerateBroadcastURLResponse{}
@@ -205,6 +228,9 @@ func (s *Server) handleListChannels(ctx context.Context, input *ListChannelsRequ
 		return nil, err
 	}
 	if err := s.requireRole(claims, "admin", "translator"); err != nil {
+		return nil, err
+	}
+	if err := s.authorizeSessionAccess(ctx, claims, input.ID); err != nil {
 		return nil, err
 	}
 
@@ -227,6 +253,9 @@ func (s *Server) handleListSources(ctx context.Context, input *ListSourcesReques
 		return nil, err
 	}
 	if err := s.requireRole(claims, "admin", "translator"); err != nil {
+		return nil, err
+	}
+	if err := s.authorizeSessionAccess(ctx, claims, input.ID); err != nil {
 		return nil, err
 	}
 
@@ -322,6 +351,9 @@ func (s *Server) handleGetMix(ctx context.Context, input *GetMixRequest) (*GetMi
 	if err := s.requireRole(claims, "admin", "translator"); err != nil {
 		return nil, err
 	}
+	if _, err := s.authorizeChannelAccess(ctx, claims, input.ID, input.ChID); err != nil {
+		return nil, err
+	}
 
 	entries, err := s.services.Mix.GetMix(ctx, input.ChID)
 	if err != nil {
@@ -342,6 +374,9 @@ func (s *Server) handleUpdateMix(ctx context.Context, input *UpdateMixRequest) (
 		return nil, err
 	}
 	if err := s.requireRole(claims, "admin", "translator"); err != nil {
+		return nil, err
+	}
+	if _, err := s.authorizeChannelAccess(ctx, claims, input.ID, input.ChID); err != nil {
 		return nil, err
 	}
 
@@ -390,6 +425,7 @@ func (s *Server) handleListABCs(ctx context.Context, input *ListABCsRequest) (*L
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to list ABCs")
 	}
+	abcs = s.filterABCsForClaims(ctx, claims, abcs)
 
 	resp := &ListABCsResponse{}
 	resp.Body.Data = make([]ABCOut, len(abcs))
@@ -827,6 +863,7 @@ func (s *Server) handleGetBroadcastInfo(ctx context.Context, input *GetBroadcast
 	return resp, nil
 }
 
+
 // --- WebRTC Handlers ---
 
 func (s *Server) handleWebRTCToken(ctx context.Context, input *WebRTCTokenRequest) (*WebRTCTokenResponse, error) {
@@ -954,6 +991,9 @@ func (s *Server) handleListRecordings(ctx context.Context, input *ListRecordings
 		return nil, err
 	}
 	if err := s.requireRole(claims, "admin", "translator"); err != nil {
+		return nil, err
+	}
+	if err := s.authorizeSessionAccess(ctx, claims, input.ID); err != nil {
 		return nil, err
 	}
 
