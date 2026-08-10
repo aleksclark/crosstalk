@@ -1,10 +1,4 @@
 #!/bin/bash
-# Write splash image to the ILI9341 framebuffer at boot.
-# Called by ct-splash.service very early in the boot process.
-#
-# The tinydrm fbdev emulation exposes a 32bpp XRGB8888 buffer.
-# After writing pixels, we issue FBIOPAN_DISPLAY to trigger the
-# DRM dirty-rect flush that sends data over SPI to the panel.
 set -eu
 
 FB=""
@@ -13,82 +7,100 @@ for dev in /dev/fb1 /dev/fb0; do
 done
 [ -z "$FB" ] && exit 0
 
-W=320
-H=240
+SPLASH=/usr/local/share/crosstalk/ct-splash.png
+[ -r "$SPLASH" ] || exit 0
 
-python3 -c "
-import struct, sys, fcntl, os, mmap
+python3 - "$FB" "$SPLASH" <<'PY'
+import fcntl
+import mmap
+import os
+import struct
+import sys
+import zlib
 
-W, H = $W, $H
-BPP = 4  # XRGB8888
+fb_path, png_path = sys.argv[1:]
+width, height, bytes_per_pixel = 320, 240, 4
 
-# Colors in XRGB8888 (little-endian uint32: 0x00RRGGBB)
-bg_val = 0x000A0A14  # dark blue-grey
-fg_val = 0x00A0B4DC  # light blue
+def read_png(path):
+    data = open(path, "rb").read()
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        raise ValueError("invalid PNG")
+    offset = 8
+    compressed = bytearray()
+    png_width = png_height = color_type = None
+    while offset < len(data):
+        length = struct.unpack(">I", data[offset:offset + 4])[0]
+        kind = data[offset + 4:offset + 8]
+        payload = data[offset + 8:offset + 8 + length]
+        offset += 12 + length
+        if kind == b"IHDR":
+            png_width, png_height, bit_depth, color_type, compression, filtering, interlace = struct.unpack(">IIBBBBB", payload)
+            if bit_depth != 8 or color_type not in (2, 6) or compression or filtering or interlace:
+                raise ValueError("unsupported PNG format")
+        elif kind == b"IDAT":
+            compressed.extend(payload)
+        elif kind == b"IEND":
+            break
+    channels = 3 if color_type == 2 else 4
+    stride = png_width * channels
+    raw = zlib.decompress(compressed)
+    rows = []
+    previous = bytearray(stride)
+    position = 0
+    for _ in range(png_height):
+        filter_type = raw[position]
+        position += 1
+        row = bytearray(raw[position:position + stride])
+        position += stride
+        for index in range(stride):
+            left = row[index - channels] if index >= channels else 0
+            up = previous[index]
+            upper_left = previous[index - channels] if index >= channels else 0
+            if filter_type == 1:
+                row[index] = (row[index] + left) & 255
+            elif filter_type == 2:
+                row[index] = (row[index] + up) & 255
+            elif filter_type == 3:
+                row[index] = (row[index] + ((left + up) // 2)) & 255
+            elif filter_type == 4:
+                predictor = left + up - upper_left
+                distances = (abs(predictor - left), abs(predictor - up), abs(predictor - upper_left))
+                row[index] = (row[index] + (left, up, upper_left)[distances.index(min(distances))]) & 255
+            elif filter_type != 0:
+                raise ValueError("unsupported PNG filter")
+        rows.append(row)
+        previous = row
+    return png_width, png_height, channels, rows
 
-bg = struct.pack('<I', bg_val)
-fg = struct.pack('<I', fg_val)
+png_width, png_height, channels, rows = read_png(png_path)
+if (png_width, png_height) != (width, height):
+    raise ValueError("splash PNG must be 320x240")
 
-font = {
- 'C': ['01110','10000','10000','10000','10000','10000','01110'],
- 'R': ['11110','10001','10001','11110','10100','10010','10001'],
- 'O': ['01110','10001','10001','10001','10001','10001','01110'],
- 'S': ['01110','10000','10000','01110','00001','00001','11110'],
- 'T': ['11111','00100','00100','00100','00100','00100','00100'],
- 'A': ['01110','10001','10001','11111','10001','10001','10001'],
- 'L': ['10000','10000','10000','10000','10000','10000','11111'],
- 'K': ['10001','10010','10100','11000','10100','10010','10001'],
-}
+buffer = bytearray(width * height * bytes_per_pixel)
+for y, row in enumerate(rows):
+    for x in range(width):
+        source = x * channels
+        red, green, blue = row[source:source + 3]
+        destination = (y * width + x) * bytes_per_pixel
+        buffer[destination:destination + bytes_per_pixel] = struct.pack("<I", (red << 16) | (green << 8) | blue)
 
-text = 'CROSSTALK'
-scale = 3
-gw, gh = 5 * scale, 7 * scale
-gap = scale
-tw = len(text) * (gw + gap) - gap
-sx = (W - tw) // 2
-sy = (H - gh) // 2
-
-buf = bytearray(bg * W * H)
-
-for ci, ch in enumerate(text):
-    glyph = font.get(ch)
-    if not glyph: continue
-    ox = sx + ci * (gw + gap)
-    for row, bits in enumerate(glyph):
-        for col, b in enumerate(bits):
-            if b == '1':
-                for dy in range(scale):
-                    for dx in range(scale):
-                        px = ox + col * scale + dx
-                        py = sy + row * scale + dy
-                        if 0 <= px < W and 0 <= py < H:
-                            off = (py * W + px) * BPP
-                            buf[off:off+BPP] = fg
-
-# Open fb, mmap, write pixels
-fd = os.open('$FB', os.O_RDWR)
-mm = mmap.mmap(fd, len(buf))
-mm.write(buf)
-
-# Unblank
-FBIOBLANK = 0x4611
-try: fcntl.ioctl(fd, FBIOBLANK, 0)
-except: pass
-
-# Trigger DRM dirty flush via PAN_DISPLAY
-FBIOGET_VSCREENINFO = 0x4600
-FBIOPAN_DISPLAY = 0x4606
-vinfo = bytearray(160)
+fd = os.open(fb_path, os.O_RDWR)
+framebuffer = mmap.mmap(fd, len(buffer))
+framebuffer.write(buffer)
 try:
-    fcntl.ioctl(fd, FBIOGET_VSCREENINFO, vinfo)
-    fcntl.ioctl(fd, FBIOPAN_DISPLAY, vinfo)
-except: pass
-
-mm.close()
+    fcntl.ioctl(fd, 0x4611, 0)
+except OSError:
+    pass
+try:
+    screen_info = bytearray(160)
+    fcntl.ioctl(fd, 0x4600, screen_info)
+    fcntl.ioctl(fd, 0x4606, screen_info)
+except OSError:
+    pass
+framebuffer.close()
 os.close(fd)
-"
+PY
 
-# Turn on backlight
 for bl in /sys/class/backlight/*/brightness; do
     [ -f "$bl" ] || continue
     max=$(cat "$(dirname "$bl")/max_brightness")

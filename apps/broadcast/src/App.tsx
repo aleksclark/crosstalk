@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { VUMeter } from "@crosstalk/theme";
+import { Logo, VUMeter } from "@crosstalk/theme";
 import { parseBroadcastParams } from "./params";
 import { fetchBroadcastInfo, BroadcastApiError, type BroadcastInfo } from "./api";
 import { useBroadcastListener, type ListenerConnectionState } from "./use-broadcast-listener";
@@ -68,7 +68,8 @@ export function App() {
 
 function LoadingScreen() {
   return (
-    <div className="min-h-screen flex items-center justify-center">
+    <div className="min-h-screen flex flex-col items-center justify-center gap-6">
+      <Logo className="h-28 w-auto" />
       <div className="animate-spin rounded-full h-12 w-12 border-4 border-slate-600 border-t-blue-500" />
     </div>
   );
@@ -84,6 +85,7 @@ function ErrorScreen({ message, code }: { message: string; code?: string }) {
   return (
     <div className="min-h-screen flex items-center justify-center p-6">
       <div className="text-center max-w-sm" data-testid="broadcast-error">
+        <Logo className="mx-auto mb-6 h-24 w-auto" />
         <div className="text-red-400 text-5xl mb-4" aria-hidden>
           ⚠
         </div>
@@ -144,6 +146,7 @@ function ListenerView({ sessionId, token, info, listening, onListen, debug }: Li
       <div className="w-full max-w-sm space-y-8">
         {/* Session header */}
         <div className="text-center">
+          <Logo className="mx-auto mb-5 h-24 w-auto" />
           <h1 className="text-2xl font-bold text-white mb-2">{info.session_name}</h1>
           {status?.tone === "live" && <LiveBadge />}
           {status && status.tone !== "live" && (

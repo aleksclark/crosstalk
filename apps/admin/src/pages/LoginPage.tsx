@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
+import { Logo } from "@crosstalk/theme";
 import { useAuth } from "../hooks/useAuth";
 
 export function LoginPage() {
@@ -31,8 +32,8 @@ export function LoginPage() {
         <div className="bg-card border border-border rounded-lg p-8 shadow-lg">
           {/* Header */}
           <div className="text-center mb-6">
-            <h1 className="text-2xl font-bold text-primary">CrossTalk</h1>
-            <p className="text-muted-foreground text-sm mt-1">
+            <Logo className="mx-auto h-24 w-auto" />
+            <p className="text-muted-foreground text-sm mt-3">
               Admin Panel Login
             </p>
           </div>
