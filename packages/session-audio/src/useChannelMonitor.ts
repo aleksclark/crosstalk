@@ -65,6 +65,7 @@ export function useChannelMonitor(
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const pendingRef = useRef<RTCIceCandidateInit[]>([]);
+  const pendingRemoteRef = useRef<RTCIceCandidateInit[]>([]);
 
   useEffect(() => {
     if (!channel || !sessionId || !token) {
@@ -140,11 +141,17 @@ export function useChannelMonitor(
         const msg = JSON.parse(ev.data as string);
         if (msg.type === "answer") {
           await pc.setRemoteDescription({ type: "answer", sdp: msg.sdp });
+          const pending = pendingRemoteRef.current;
+          pendingRemoteRef.current = [];
+          for (const candidate of pending) {
+            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          }
         } else if (msg.type === "candidate") {
-          try {
-            await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
-          } catch {
-            // ignore late/duplicate candidates
+          const candidate = msg.candidate as RTCIceCandidateInit;
+          if (pc.remoteDescription) {
+            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          } else {
+            pendingRemoteRef.current.push(candidate);
           }
         }
       };
@@ -161,6 +168,7 @@ export function useChannelMonitor(
     return () => {
       cancelled = true;
       pendingRef.current = [];
+      pendingRemoteRef.current = [];
       wsRef.current?.close();
       pcRef.current?.close();
       wsRef.current = null;

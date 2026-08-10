@@ -959,6 +959,15 @@ func (f *sessionFwd) ensureSource(ctx context.Context, peerID string, opts Bridg
 			}
 			return existing, nil
 		}
+		if existing := f.findSourceByName(ctx, label); existing != nil {
+			existing.PeerID = &identity
+			existing.Origin = origin
+			existing.Connected = true
+			if uerr := f.stores.Sources.Update(ctx, existing); uerr != nil {
+				return nil, fmt.Errorf("sessionrtc: reactivate source: %w", uerr)
+			}
+			return existing, nil
+		}
 		return nil, fmt.Errorf("sessionrtc: create source: %w", err)
 	}
 	return src, nil
@@ -974,6 +983,22 @@ func (f *sessionFwd) findSourceByIdentity(ctx context.Context, identity string) 
 	}
 	for i := range sources {
 		if sources[i].PeerID != nil && *sources[i].PeerID == identity {
+			return &sources[i]
+		}
+	}
+	return nil
+}
+
+func (f *sessionFwd) findSourceByName(ctx context.Context, name string) *crosstalk.Source {
+	if name == "" {
+		return nil
+	}
+	sources, err := f.stores.Sources.List(ctx, f.sessionID)
+	if err != nil {
+		return nil
+	}
+	for i := range sources {
+		if sources[i].Name == name {
 			return &sources[i]
 		}
 	}

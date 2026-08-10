@@ -257,7 +257,8 @@ echo "[5/7] Writing config (token via env/file, not argv)..."
 if ! remote "set -euo pipefail
   mkdir -p /etc/app
   cat > '${REMOTE_CFG}.new'
-  chmod 0600 '${REMOTE_CFG}.new'
+  chown app:audio '${REMOTE_CFG}.new'
+  chmod 0640 '${REMOTE_CFG}.new'
   mv -f '${REMOTE_CFG}.new' '${REMOTE_CFG}'
 " <<EOCFG
 {

@@ -31,15 +31,14 @@ export function SessionConnectPage() {
   // Load the session's broadcast token so translators can share the public
   // listener link (clickable + QR).
   useEffect(() => {
-    if (!sessionId || !token) return;
-    const client = createApiClient({ baseUrl: window.location.origin, token });
-    client
-      .GET("/api/sessions/{id}", { params: { path: { id: sessionId } } })
+    if (!sessionId || !audioClient) return;
+    audioClient
+      .GET("/api/sessions/{id}/broadcast-url", { params: { path: { id: sessionId } } })
       .then(({ data }) => {
         setBroadcastToken(data?.broadcast_token ?? null);
       })
       .catch(() => setBroadcastToken(null));
-  }, [sessionId, token]);
+  }, [sessionId, audioClient]);
 
   // Optional SFU routing overrides via ?produce=&listen= (deep links / e2e).
   // The mic connection is produce-only by default: monitoring of every channel

@@ -117,6 +117,7 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
   const wsRef = useRef<WebSocket | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
   const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
+  const pendingRemoteCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const statsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const addEvent = useCallback((type: string, detail: string) => {
@@ -298,18 +299,32 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
         await pc.setRemoteDescription({ type: "answer", sdp: msg.sdp });
         setRemoteSdp(msg.sdp);
         addEvent("sdp", "Remote description set (answer)");
+        const pending = pendingRemoteCandidatesRef.current;
+        pendingRemoteCandidatesRef.current = [];
+        for (const candidate of pending) {
+          await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        }
       } else if (msg.type === "offer") {
         await pc.setRemoteDescription({ type: "offer", sdp: msg.sdp });
         setRemoteSdp(msg.sdp);
         addEvent("sdp", "Remote description set (offer)");
+        const pending = pendingRemoteCandidatesRef.current;
+        pendingRemoteCandidatesRef.current = [];
+        for (const candidate of pending) {
+          await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        }
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         setLocalSdp(answer.sdp ?? null);
         ws.send(JSON.stringify({ type: "answer", sdp: answer.sdp }));
         addEvent("sdp", "Sent answer");
       } else if (msg.type === "candidate") {
-        await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
         const init = msg.candidate as RTCIceCandidateInit;
+        if (pc.remoteDescription) {
+          await pc.addIceCandidate(new RTCIceCandidate(init));
+        } else {
+          pendingRemoteCandidatesRef.current.push(init);
+        }
         const raw = init.candidate ?? "";
         setCandidates((prev) => [
           ...prev,
@@ -362,6 +377,7 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
     dcRef.current?.close();
     dcRef.current = null;
     pendingCandidatesRef.current = [];
+    pendingRemoteCandidatesRef.current = [];
     wsRef.current?.close();
     wsRef.current = null;
     pcRef.current?.close();

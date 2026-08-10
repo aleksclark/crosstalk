@@ -79,7 +79,8 @@ type ABCClient struct {
 	cfg         *ABCConfig
 	pwSvc       crosstalk.PipeWireService
 	disp        *display.Service
-	connFactory func(serverURL, token string, opts ...pion.ConnectionOption) pion.ConnectionInterface
+	connFactory  func(serverURL, token string, opts ...pion.ConnectionOption) pion.ConnectionInterface
+	captureSource func(context.Context, string, *webrtc.TrackLocalStaticRTP) error
 
 	mu               sync.Mutex
 	connected        bool
@@ -90,8 +91,9 @@ type ABCClient struct {
 // NewABCClient creates a new ABC client.
 func NewABCClient(cfg *ABCConfig, pwSvc crosstalk.PipeWireService) *ABCClient {
 	return &ABCClient{
-		cfg:   cfg,
-		pwSvc: pwSvc,
+		cfg:           cfg,
+		pwSvc:         pwSvc,
+		captureSource: pion.CaptureSource,
 	}
 }
 
@@ -167,6 +169,9 @@ func (c *ABCClient) Run(ctx context.Context) error {
 func (c *ABCClient) connectOnce(ctx context.Context) error {
 	slog.Info("abc: connecting", "server", c.cfg.ServerURL)
 
+	connectionCtx, cancelConnection := context.WithCancel(ctx)
+	defer cancelConnection()
+
 	controlOpened := make(chan struct{}, 1)
 	welcomeReceived := make(chan *protov2.WelcomeV2, 1)
 	disconnected := make(chan struct{}, 1)
@@ -235,9 +240,9 @@ func (c *ABCClient) connectOnce(ctx context.Context) error {
 		// recovers automatically when the device comes back.
 		pion.WithPublishAudio("abc-mic", func(track *webrtc.TrackLocalStaticRTP) {
 			go func() {
-				for ctx.Err() == nil {
-					err := pion.CaptureSource(ctx, c.cfg.SourceName, track)
-					if ctx.Err() != nil {
+				for connectionCtx.Err() == nil {
+					err := c.captureSource(connectionCtx, c.cfg.SourceName, track)
+					if connectionCtx.Err() != nil {
 						return
 					}
 					if err != nil {
@@ -247,7 +252,7 @@ func (c *ABCClient) connectOnce(ctx context.Context) error {
 						slog.Warn("abc: audio capture ended, restarting", "source", c.cfg.SourceName)
 					}
 					select {
-					case <-ctx.Done():
+					case <-connectionCtx.Done():
 						return
 					case <-time.After(time.Second):
 					}
@@ -260,7 +265,7 @@ func (c *ABCClient) connectOnce(ctx context.Context) error {
 				return
 			}
 			go func() {
-				if err := pion.PlaybackSink(ctx, c.cfg.SinkName, remote); err != nil && ctx.Err() == nil {
+				if err := pion.PlaybackSink(connectionCtx, c.cfg.SinkName, remote); err != nil && connectionCtx.Err() == nil {
 					slog.Error("abc: audio playback failed", "sink", c.cfg.SinkName, "error", err)
 				}
 			}()

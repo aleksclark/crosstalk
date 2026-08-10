@@ -239,8 +239,10 @@ func defaultCapabilitySelectors(role string) (produce, listen []string) {
 		return []string{"type:feed"}, nil
 	case "listener":
 		return nil, []string{"type:broadcast"}
-	case "translator", "admin":
+	case "translator":
 		return []string{"type:broadcast"}, []string{"type:feed"}
+	case "admin":
+		return []string{"type:broadcast"}, []string{"type:feed", "type:broadcast"}
 	default:
 		return nil, nil
 	}
