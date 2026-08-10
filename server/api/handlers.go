@@ -5,8 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"strings"
-	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/oklog/ulid/v2"
@@ -61,11 +59,12 @@ func (s *Server) handleListSessions(ctx context.Context, input *ListSessionsRequ
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to list sessions")
 	}
+	sessions = s.filterSessionsForClaims(ctx, claims, sessions)
 
 	resp := &ListSessionsResponse{}
 	resp.Body.Data = make([]SessionOut, len(sessions))
 	for i, sess := range sessions {
-		resp.Body.Data[i] = sessionToOut(sess)
+		resp.Body.Data[i] = sessionToOutForClaims(sess, claims)
 	}
 	return resp, nil
 }
@@ -102,6 +101,9 @@ func (s *Server) handleGetSession(ctx context.Context, input *GetSessionRequest)
 	if err := s.requireRole(claims, "admin", "translator"); err != nil {
 		return nil, err
 	}
+	if err := s.authorizeSessionAccess(ctx, claims, input.ID); err != nil {
+		return nil, err
+	}
 
 	sess, err := s.services.Sessions.Get(ctx, input.ID)
 	if err != nil {
@@ -109,7 +111,7 @@ func (s *Server) handleGetSession(ctx context.Context, input *GetSessionRequest)
 	}
 
 	resp := &GetSessionResponse{}
-	resp.Body = sessionToOut(*sess)
+	resp.Body = sessionToOutForClaims(*sess, claims)
 	return resp, nil
 }
 
@@ -165,6 +167,9 @@ func (s *Server) handleGetBroadcastURL(ctx context.Context, input *GetBroadcastU
 	if err := s.requireRole(claims, "admin", "translator"); err != nil {
 		return nil, err
 	}
+	if err := s.authorizeSessionAccess(ctx, claims, input.ID); err != nil {
+		return nil, err
+	}
 
 	sess, err := s.services.Sessions.Get(ctx, input.ID)
 	if err != nil {
@@ -186,9 +191,25 @@ func (s *Server) handleRegenerateBroadcastURL(ctx context.Context, input *Regene
 		return nil, err
 	}
 
+	// Capture old token so we can identify listeners to drop after rotation.
+	var oldToken string
+	if sess, gerr := s.services.Sessions.Get(ctx, input.ID); gerr == nil && sess != nil {
+		oldToken = sess.BroadcastToken
+	}
+
 	token, err := s.services.Sessions.RegenerateBroadcastToken(ctx, input.ID)
 	if err != nil {
 		return nil, huma.Error404NotFound("session not found")
+	}
+
+	// Best-effort: drop active peers for this session so rotated tokens cannot
+	// keep listening. Full listener tracking is network-lane territory; when
+	// PeerManager is present we remove all peers (conservative fail-closed).
+	_ = oldToken
+	if s.services.PeerManager != nil {
+		for _, p := range s.services.PeerManager.ListPeers() {
+			s.services.PeerManager.RemovePeer(p.ID)
+		}
 	}
 
 	resp := &RegenerateBroadcastURLResponse{}
@@ -205,6 +226,9 @@ func (s *Server) handleListChannels(ctx context.Context, input *ListChannelsRequ
 		return nil, err
 	}
 	if err := s.requireRole(claims, "admin", "translator"); err != nil {
+		return nil, err
+	}
+	if err := s.authorizeSessionAccess(ctx, claims, input.ID); err != nil {
 		return nil, err
 	}
 
@@ -227,6 +251,9 @@ func (s *Server) handleListSources(ctx context.Context, input *ListSourcesReques
 		return nil, err
 	}
 	if err := s.requireRole(claims, "admin", "translator"); err != nil {
+		return nil, err
+	}
+	if err := s.authorizeSessionAccess(ctx, claims, input.ID); err != nil {
 		return nil, err
 	}
 
@@ -322,6 +349,9 @@ func (s *Server) handleGetMix(ctx context.Context, input *GetMixRequest) (*GetMi
 	if err := s.requireRole(claims, "admin", "translator"); err != nil {
 		return nil, err
 	}
+	if _, err := s.authorizeChannelAccess(ctx, claims, input.ID, input.ChID); err != nil {
+		return nil, err
+	}
 
 	entries, err := s.services.Mix.GetMix(ctx, input.ChID)
 	if err != nil {
@@ -342,6 +372,9 @@ func (s *Server) handleUpdateMix(ctx context.Context, input *UpdateMixRequest) (
 		return nil, err
 	}
 	if err := s.requireRole(claims, "admin", "translator"); err != nil {
+		return nil, err
+	}
+	if _, err := s.authorizeChannelAccess(ctx, claims, input.ID, input.ChID); err != nil {
 		return nil, err
 	}
 
@@ -390,6 +423,7 @@ func (s *Server) handleListABCs(ctx context.Context, input *ListABCsRequest) (*L
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to list ABCs")
 	}
+	abcs = s.filterABCsForClaims(ctx, claims, abcs)
 
 	resp := &ListABCsResponse{}
 	resp.Body.Data = make([]ABCOut, len(abcs))
@@ -827,54 +861,6 @@ func (s *Server) handleGetBroadcastInfo(ctx context.Context, input *GetBroadcast
 	return resp, nil
 }
 
-// --- WebRTC Handlers ---
-
-func (s *Server) handleWebRTCToken(ctx context.Context, input *WebRTCTokenRequest) (*WebRTCTokenResponse, error) {
-	// Accept either a user JWT (admin/translator browsers) or an ABC API token
-	// (headless CLI clients on the KickPi boards). ABCs authenticate with the
-	// long-lived API token minted at registration, not a login JWT.
-	if _, err := s.requireAuth(ctx, input.Authorization); err != nil {
-		if abcErr := s.authenticateABC(ctx, input.Authorization); abcErr != nil {
-			return nil, err // surface the original 401
-		}
-	}
-
-	// Generate a short-lived token for WebRTC signaling
-	tokenBytes := make([]byte, 16)
-	if _, err := rand.Read(tokenBytes); err != nil {
-		return nil, huma.Error500InternalServerError("failed to generate token")
-	}
-
-	resp := &WebRTCTokenResponse{}
-	resp.Body.Token = hex.EncodeToString(tokenBytes)
-	resp.Body.ExpiresAt = time.Now().Add(30 * time.Second)
-	return resp, nil
-}
-
-// authenticateABC validates a Bearer ABC API token against the abcs table and,
-// on success, marks the ABC connected. Returns an error if the header is
-// missing/malformed or the token is unknown.
-func (s *Server) authenticateABC(ctx context.Context, authHeader string) error {
-	parts := strings.SplitN(authHeader, " ", 2)
-	if len(parts) != 2 || !strings.EqualFold(parts[0], "bearer") {
-		return huma.Error401Unauthorized("invalid authorization header format")
-	}
-	if s.services.ABCs == nil {
-		return huma.Error401Unauthorized("abc auth unavailable")
-	}
-	abc, err := s.services.ABCs.GetByTokenHash(ctx, auth.HashToken(parts[1]))
-	if err != nil {
-		return huma.Error401Unauthorized("invalid abc token")
-	}
-	now := time.Now().UTC()
-	abc.Connected = true
-	abc.LastSeen = &now
-	if err := s.services.ABCs.Update(ctx, abc); err != nil {
-		s.log.Warn("failed to mark abc connected", "abc", abc.ID, "error", err)
-	}
-	return nil
-}
-
 // --- Helpers ---
 
 func sessionToOut(s crosstalk.Session) SessionOut {
@@ -954,6 +940,9 @@ func (s *Server) handleListRecordings(ctx context.Context, input *ListRecordings
 		return nil, err
 	}
 	if err := s.requireRole(claims, "admin", "translator"); err != nil {
+		return nil, err
+	}
+	if err := s.authorizeSessionAccess(ctx, claims, input.ID); err != nil {
 		return nil, err
 	}
 

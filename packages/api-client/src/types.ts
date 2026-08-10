@@ -1042,6 +1042,25 @@ export interface components {
             /** @description Username */
             username: string;
         };
+        WebRTCTokenRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/WebRTCTokenRequestBody.json
+             */
+            readonly $schema?: string;
+            /** @description Optional channel name/id/type selectors to narrow listen capability */
+            listen?: string[] | null;
+            /** @description Optional channel name/id/type selectors to narrow produce capability */
+            produce?: string[] | null;
+            /**
+             * @description Requested role (server may override from identity)
+             * @enum {string}
+             */
+            role?: "translator" | "admin" | "abc" | "listener";
+            /** @description Session to connect to */
+            session_id: string;
+        };
         WebRTCTokenResponseBody: {
             /**
              * Format: uri
@@ -1051,10 +1070,23 @@ export interface components {
             readonly $schema?: string;
             /**
              * Format: date-time
-             * @description Token expiration time
+             * @description Ticket expiration time
              */
             expires_at: string;
-            /** @description Short-lived WebRTC signaling token */
+            /** @description Channel IDs the ticket may listen to */
+            listen_channel_ids: string[] | null;
+            /**
+             * Format: int64
+             * @description Fenced owner generation bound into the ticket
+             */
+            owner_generation: number;
+            /** @description Channel IDs the ticket may produce into */
+            produce_channel_ids: string[] | null;
+            /** @description Bound role */
+            role: string;
+            /** @description Bound session ID */
+            session_id: string;
+            /** @description One-time media admission ticket (JWT or opaque nonce) */
             token: string;
         };
     };
@@ -2285,7 +2317,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebRTCTokenRequestBody"];
+            };
+        };
         responses: {
             /** @description OK */
             200: {

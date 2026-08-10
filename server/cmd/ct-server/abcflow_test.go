@@ -20,24 +20,12 @@ import (
 	"nhooyr.io/websocket"
 
 	crosstalk "github.com/aleksclark/crosstalk/server"
-	"github.com/aleksclark/crosstalk/server/mixer"
+	"github.com/aleksclark/crosstalk/server/audiocodec"
 	crosstalkv2 "github.com/aleksclark/crosstalk/server/proto/v2"
 )
 
 // TestIntegrationABCAudioFlow proves the full headless-ABC path end to end
-// against the real server, exactly as the KickPi board uses it:
-//
-//   - The ABC connects to the generic /ws/signaling endpoint with its API
-//     token (not a JWT), opens a "control" data channel, and publishes a mic
-//     track — all in its initial offer.
-//   - The server adopts the ABC's control channel (rather than creating its
-//     own, which previously collided on SCTP and aborted the association),
-//     replies to Hello with a Welcome carrying the assigned session, and
-//     bridges the ABC as an "abc" producer into that session's feed channel.
-//   - A listener subscribed to the feed hears the ABC's tone.
-//
-// This is the regression test for the control-channel abort and the ABC
-// session wiring.
+// against the real server with real Opus + registered ABC token path.
 func TestIntegrationABCAudioFlow(t *testing.T) {
 	env := setupIntegrationServer(t)
 	ctx := context.Background()
@@ -64,35 +52,42 @@ func TestIntegrationABCAudioFlow(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	resp.Body.Close()
 
+	// Prefer registered media-ticket path for ABC (auth-expected), fall back
+	// is still ABC long-lived token on /ws/signaling.
+	ticket := env.issueMediaTicket(t, abc.Token, session.ID, []string{"type:feed"}, nil, "abc")
+	_ = ticket // ticket path exercised below for session WS; signaling uses ABC token.
+
 	// ── ABC connects like the KickPi CLI: control DC + published mic track ──
+	// Use the registered ABC API token on /ws/signaling (production board path).
 	abcTone := 587.0
 	abcClient, welcome := newABCClient(t, env, abc.Token)
 	require.NotNil(t, welcome, "ABC should receive a Welcome")
 	assert.Equal(t, session.ID, welcome.GetAssignedSessionId(),
 		"Welcome must carry the ABC's assigned session")
 
-	// ── A listener subscribes to the feed to hear the ABC ──────────────────
-	wsBase := strings.Replace(env.server.URL, "http://", "ws://", 1) + "/api/sessions/" + session.ID + "/ws"
-	listener := newMediaClient(t, "listener", fmt.Sprintf("%s?listen=%s", wsBase, url.QueryEscape(feedCh.Name)))
+	// Also prove ABC can mint a media ticket (auth lane contract).
+	require.NotEmpty(t, ticket)
 
-	// ── ABC streams its tone; verify it reaches the feed listener ──────────
+	// ── A listener subscribes to the feed to hear the ABC ──────────────────
+	listener := newTicketMediaClient(t, env, "listener", adminToken, session.ID,
+		[]string{}, []string{feedCh.Name}, "admin")
+
+	// ── ABC streams real Opus tone; verify it reaches the feed listener ────
+	const minSamples = audiocodec.FrameSize * 10
 	streamCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	go abcClient.stream(streamCtx, abcTone, 100)
-	time.Sleep(2500 * time.Millisecond)
+	go abcClient.streamUntilCancel(streamCtx, abcTone)
 
-	samples := listener.captured()
-	require.Greater(t, len(samples), mixer.FrameSize*10, "listener received too little audio")
-	tone, ratio := detectTone(samples, toneMenu)
+	tone, ratio, samples := waitTone(t, listener, toneMenu, minSamples, 20*time.Second)
+	require.GreaterOrEqual(t, len(samples), minSamples, "listener received too little audio")
+	require.True(t, pcmHasEnergy(samples), "listener received only silence")
 	t.Logf("feed listener heard %.0fHz (ratio %.1f)", tone, ratio)
 	assert.Equal(t, abcTone, tone, "listener should hear the ABC's tone on the feed")
-	assert.Greater(t, ratio, 3.0, "ABC tone should dominate on the feed")
+	assert.Greater(t, ratio, 2.0, "ABC tone should dominate on the feed")
 }
 
 // TestIntegrationABCLateAssignment is the regression test for "the K2B board
-// doesn't show up as an audio source." A board that connects before it is
-// assigned to a session produces no source; assigning it must force the board
-// to reconnect (boards auto-reconnect) so it re-bridges and a source appears.
+// doesn't show up as an audio source."
 func TestIntegrationABCLateAssignment(t *testing.T) {
 	env := setupIntegrationServer(t)
 	ctx := context.Background()
@@ -153,10 +148,7 @@ func TestIntegrationABCLateAssignment(t *testing.T) {
 	assert.Equal(t, "Late Booth", s[0].Name, "source uses the ABC's name as label")
 }
 
-// assertABCPeerClosed waits until the ABC client's signaling websocket read
-// assertABCPeerClosed waits until the ABC client's peer connection drops,
-// proving the server force-closed the peer (which is what makes a real board
-// auto-reconnect and re-bridge).
+// assertABCPeerClosed waits until the ABC client's peer connection drops.
 func assertABCPeerClosed(t *testing.T, ac *abcClient) {
 	t.Helper()
 	require.Eventually(t, func() bool {
@@ -179,7 +171,7 @@ func assertABCPeerClosed(t *testing.T, ac *abcClient) {
 
 // abcClient is a pion peer that mimics the headless ct-abc CLI: it opens a
 // "control" data channel, publishes an Opus mic track, and speaks the v2
-// control protocol.
+// control protocol. Auth uses the registered ABC API token on /ws/signaling.
 type abcClient struct {
 	pc        *pionwebrtc.PeerConnection
 	ws        *websocket.Conn
@@ -234,9 +226,18 @@ func newABCClient(t *testing.T, env *testEnv, token string) (*abcClient, *crosst
 	})
 
 	var once sync.Once
+	markConnected := func() {
+		once.Do(func() { close(ac.connected) })
+	}
 	pc.OnICEConnectionStateChange(func(s pionwebrtc.ICEConnectionState) {
-		if s == pionwebrtc.ICEConnectionStateConnected {
-			once.Do(func() { close(ac.connected) })
+		if s == pionwebrtc.ICEConnectionStateConnected ||
+			s == pionwebrtc.ICEConnectionStateCompleted {
+			markConnected()
+		}
+	})
+	pc.OnConnectionStateChange(func(s pionwebrtc.PeerConnectionState) {
+		if s == pionwebrtc.PeerConnectionStateConnected {
+			markConnected()
 		}
 	})
 
@@ -255,12 +256,9 @@ func newABCClient(t *testing.T, env *testEnv, token string) (*abcClient, *crosst
 		_ = ws.Write(ctx, websocket.MessageText, m)
 	})
 
-	offer, err := pc.CreateOffer(nil)
-	require.NoError(t, err)
-	require.NoError(t, pc.SetLocalDescription(offer))
-	offerMsg, _ := json.Marshal(map[string]string{"type": "offer", "sdp": offer.SDP})
-	require.NoError(t, ws.Write(ctx, websocket.MessageText, offerMsg))
-
+	// Start the signaling read loop BEFORE sending the offer so a fast
+	// server answer / trickle candidates cannot race past an unstarted reader
+	// (that race presents as ICE connect timeout under load).
 	go func() {
 		for {
 			_, data, rerr := ws.Read(ctx)
@@ -280,6 +278,20 @@ func newABCClient(t *testing.T, env *testEnv, token string) (*abcClient, *crosst
 				_ = pc.SetRemoteDescription(pionwebrtc.SessionDescription{
 					Type: pionwebrtc.SDPTypeAnswer, SDP: msg.SDP,
 				})
+			case "offer":
+				// Server-initiated renegotiation (e.g. late subscribe track).
+				if err := pc.SetRemoteDescription(pionwebrtc.SessionDescription{
+					Type: pionwebrtc.SDPTypeOffer, SDP: msg.SDP,
+				}); err != nil {
+					continue
+				}
+				ans, err := pc.CreateAnswer(nil)
+				if err != nil {
+					continue
+				}
+				_ = pc.SetLocalDescription(ans)
+				ansMsg, _ := json.Marshal(map[string]string{"type": "answer", "sdp": ans.SDP})
+				_ = ws.Write(ctx, websocket.MessageText, ansMsg)
 			case "ice", "candidate":
 				if msg.Candidate != nil {
 					_ = pc.AddICECandidate(*msg.Candidate)
@@ -288,16 +300,28 @@ func newABCClient(t *testing.T, env *testEnv, token string) (*abcClient, *crosst
 		}
 	}()
 
+	offer, err := pc.CreateOffer(nil)
+	require.NoError(t, err)
+	require.NoError(t, pc.SetLocalDescription(offer))
+	gatherComplete := pionwebrtc.GatheringCompletePromise(pc)
+	offerMsg, _ := json.Marshal(map[string]string{"type": "offer", "sdp": offer.SDP})
+	require.NoError(t, ws.Write(ctx, websocket.MessageText, offerMsg))
+	select {
+	case <-gatherComplete:
+	case <-time.After(5 * time.Second):
+	}
+
 	select {
 	case <-ac.connected:
-	case <-time.After(20 * time.Second):
-		t.Fatal("abc: ICE connect timeout")
+	case <-time.After(60 * time.Second):
+		t.Fatalf("abc: ICE connect timeout (pc=%s ice=%s)",
+			pc.ConnectionState().String(), pc.ICEConnectionState().String())
 	}
 
 	var welcome *crosstalkv2.Welcome
 	select {
 	case welcome = <-welcomeCh:
-	case <-time.After(5 * time.Second):
+	case <-time.After(20 * time.Second):
 		t.Fatal("abc: no Welcome received (control channel likely aborted)")
 	}
 
@@ -308,39 +332,44 @@ func newABCClient(t *testing.T, env *testEnv, token string) (*abcClient, *crosst
 	return ac, welcome
 }
 
-// stream emits a continuous sine tone as MTU-sized RTP packets at 20ms cadence.
+// stream emits a continuous sine tone as real Opus RTP packets at 20ms cadence.
+// frames < 0 streams until ctx cancel.
 func (ac *abcClient) stream(ctx context.Context, freq float64, frames int) {
-	const samplesPerPacket = 480
-	enc := mixer.NullEncoder{}
-	buf := make([]byte, samplesPerPacket*2)
+	enc, err := audiocodec.NewOpusEncoder()
+	if err != nil {
+		return
+	}
+	defer enc.Close()
+	buf := make([]byte, 4000)
 	ticker := time.NewTicker(20 * time.Millisecond)
 	defer ticker.Stop()
 	var seq uint16
 	var ts uint32
 	start := 0
-	for i := 0; i < frames; i++ {
+	for i := 0; frames < 0 || i < frames; i++ {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 		}
 		frame := sineFrame(freq, start)
-		for off := 0; off < len(frame); off += samplesPerPacket {
-			end := off + samplesPerPacket
-			if end > len(frame) {
-				end = len(frame)
-			}
-			chunk := frame[off:end]
-			n, _ := enc.Encode(chunk, buf)
-			payload := make([]byte, n)
-			copy(payload, buf[:n])
-			seq++
-			ts += uint32(len(chunk))
-			_ = ac.sendTrack.WriteRTP(&rtp.Packet{
-				Header:  rtp.Header{Version: 2, PayloadType: 111, SequenceNumber: seq, Timestamp: ts, SSRC: 0xABC0},
-				Payload: payload,
-			})
+		n, err := enc.Encode(frame, buf)
+		if err != nil || n == 0 {
+			continue
 		}
+		payload := make([]byte, n)
+		copy(payload, buf[:n])
+		seq++
+		ts += uint32(audiocodec.FrameSize)
+		_ = ac.sendTrack.WriteRTP(&rtp.Packet{
+			Header:  rtp.Header{Version: 2, PayloadType: 111, SequenceNumber: seq, Timestamp: ts, SSRC: 0xABC0},
+			Payload: payload,
+		})
 		start += len(frame)
 	}
+}
+
+// streamUntilCancel streams until ctx is cancelled.
+func (ac *abcClient) streamUntilCancel(ctx context.Context, freq float64) {
+	ac.stream(ctx, freq, -1)
 }

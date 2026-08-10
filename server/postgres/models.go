@@ -12,41 +12,103 @@ import (
 type sessionModel struct {
 	bun.BaseModel `bun:"table:sessions,alias:sess"`
 
-	ID             string    `bun:"id,pk"`
-	Name           string    `bun:"name,notnull"`
-	Description    string    `bun:"description,notnull"`
-	BroadcastToken *string   `bun:"broadcast_token"`
-	CreatedAt      time.Time `bun:"created_at,notnull"`
-	UpdatedAt      time.Time `bun:"updated_at,notnull"`
+	ID              string     `bun:"id,pk"`
+	Name            string     `bun:"name,notnull"`
+	Description     string     `bun:"description,notnull"`
+	BroadcastToken  *string    `bun:"broadcast_token"`
+	State           string     `bun:"state,notnull"`
+	OwnerID         string     `bun:"owner_id,notnull"`
+	OwnerGeneration int64      `bun:"owner_generation,notnull"`
+	LeaseUntil      *time.Time `bun:"lease_until"`
+	StartedAt       *time.Time `bun:"started_at"`
+	EndedAt         *time.Time `bun:"ended_at"`
+	CreatedAt       time.Time  `bun:"created_at,notnull"`
+	UpdatedAt       time.Time  `bun:"updated_at,notnull"`
 }
 
 func (m *sessionModel) toDomain() crosstalk.Session {
 	s := crosstalk.Session{
-		ID:          m.ID,
-		Name:        m.Name,
-		Description: m.Description,
-		CreatedAt:   m.CreatedAt,
-		UpdatedAt:   m.UpdatedAt,
+		ID:              m.ID,
+		Name:            m.Name,
+		Description:     m.Description,
+		State:           crosstalk.SessionState(m.State),
+		OwnerID:         m.OwnerID,
+		OwnerGeneration: uint64(m.OwnerGeneration),
+		LeaseUntil:      m.LeaseUntil,
+		StartedAt:       m.StartedAt,
+		EndedAt:         m.EndedAt,
+		CreatedAt:       m.CreatedAt,
+		UpdatedAt:       m.UpdatedAt,
 	}
 	if m.BroadcastToken != nil {
 		s.BroadcastToken = *m.BroadcastToken
+	}
+	if s.State == "" {
+		s.State = crosstalk.SessionWaiting
 	}
 	return s
 }
 
 func sessionFromDomain(s *crosstalk.Session) *sessionModel {
+	state := string(s.State)
+	if state == "" {
+		state = string(crosstalk.SessionWaiting)
+	}
 	m := &sessionModel{
-		ID:          s.ID,
-		Name:        s.Name,
-		Description: s.Description,
-		CreatedAt:   s.CreatedAt,
-		UpdatedAt:   s.UpdatedAt,
+		ID:              s.ID,
+		Name:            s.Name,
+		Description:     s.Description,
+		State:           state,
+		OwnerID:         s.OwnerID,
+		OwnerGeneration: int64(s.OwnerGeneration),
+		LeaseUntil:      s.LeaseUntil,
+		StartedAt:       s.StartedAt,
+		EndedAt:         s.EndedAt,
+		CreatedAt:       s.CreatedAt,
+		UpdatedAt:       s.UpdatedAt,
 	}
 	if s.BroadcastToken != "" {
 		t := s.BroadcastToken
 		m.BroadcastToken = &t
 	}
 	return m
+}
+
+// mediaTicketModel maps the media_tickets table.
+type mediaTicketModel struct {
+	bun.BaseModel `bun:"table:media_tickets,alias:mt"`
+
+	ID                string     `bun:"id,pk"`
+	NonceHash         string     `bun:"nonce_hash,notnull"`
+	SessionID         string     `bun:"session_id,notnull"`
+	OwnerID           string     `bun:"owner_id,notnull"`
+	OwnerGeneration   int64      `bun:"owner_generation,notnull"`
+	Subject           string     `bun:"subject,notnull"`
+	Role              string     `bun:"role,notnull"`
+	ProduceChannelIDs []string   `bun:"produce_channel_ids,array,notnull"`
+	ListenChannelIDs  []string   `bun:"listen_channel_ids,array,notnull"`
+	ExpiresAt         time.Time  `bun:"expires_at,notnull"`
+	ConsumedAt        *time.Time `bun:"consumed_at"`
+	CreatedAt         time.Time  `bun:"created_at,notnull"`
+}
+
+func (m *mediaTicketModel) toDomain() crosstalk.MediaTicket {
+	produce := append([]string(nil), m.ProduceChannelIDs...)
+	listen := append([]string(nil), m.ListenChannelIDs...)
+	return crosstalk.MediaTicket{
+		ID:                m.ID,
+		NonceHash:         m.NonceHash,
+		SessionID:         m.SessionID,
+		OwnerID:           m.OwnerID,
+		OwnerGeneration:   uint64(m.OwnerGeneration),
+		Subject:           m.Subject,
+		Role:              m.Role,
+		ProduceChannelIDs: produce,
+		ListenChannelIDs:  listen,
+		ExpiresAt:         m.ExpiresAt,
+		ConsumedAt:        m.ConsumedAt,
+		CreatedAt:         m.CreatedAt,
+	}
 }
 
 // channelModel maps the channels table.

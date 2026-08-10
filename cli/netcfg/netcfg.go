@@ -108,7 +108,7 @@ func parseScan(out string) []crosstalk.WiFiNetwork {
 		security := strings.TrimSpace(fields[2])
 		ssid := fields[3]
 		if ssid == "" {
-			continue // hidden network
+			continue // hidden network (no name in beacon); join via manual SSID
 		}
 		secured := security != "" && security != "--"
 
@@ -160,7 +160,55 @@ func splitTerse(line string) []string {
 	return fields
 }
 
+// redactSecrets strips passphrase material from nmcli output so it is safe to
+// include in error messages and logs.
+func redactSecrets(s string) string {
+	// nmcli may echo "password <value>" or "psk=<value>" in error text.
+	for _, key := range []string{"password", "passphrase", "psk"} {
+		s = redactKeyedSecret(s, key)
+	}
+	return s
+}
+
+func redactKeyedSecret(s, key string) string {
+	lower := strings.ToLower(s)
+	keyLower := strings.ToLower(key)
+	start := 0
+	for {
+		rel := strings.Index(lower[start:], keyLower)
+		if rel < 0 {
+			break
+		}
+		idx := start + rel
+		// Keep the key word, replace the following token.
+		restOff := idx + len(key)
+		if restOff > len(s) {
+			break
+		}
+		rest := s[restOff:]
+		i := 0
+		for i < len(rest) && (rest[i] == ' ' || rest[i] == '=' || rest[i] == ':') {
+			i++
+		}
+		j := i
+		for j < len(rest) && rest[j] != ' ' && rest[j] != '\n' && rest[j] != '\r' && rest[j] != '	' && rest[j] != '"' && rest[j] != '\'' {
+			j++
+		}
+		if j > i {
+			s = s[:restOff] + rest[:i] + "[REDACTED]" + rest[j:]
+			lower = strings.ToLower(s)
+			start = restOff + i + len("[REDACTED]")
+			continue
+		}
+		start = restOff
+	}
+	return s
+}
+
 // Connect joins a network, replacing any existing saved profile for that SSID.
+// It supports hidden SSIDs by creating an explicit connection profile with
+// 802-11-wireless.hidden=true when the open scan list does not contain the
+// SSID (manual entry path).
 func (m *Manager) Connect(ctx context.Context, ssid, passphrase string) error {
 	if ssid == "" {
 		return &crosstalk.ValidationError{Field: "ssid", Message: "required"}
@@ -169,6 +217,10 @@ func (m *Manager) Connect(ctx context.Context, ssid, passphrase string) error {
 	// Remove a stale profile so a changed passphrase takes effect.
 	_, _ = m.run(ctx, "nmcli", "connection", "delete", ssid)
 
+	// Prefer the simple "device wifi connect" path for broadcast SSIDs. If that
+	// fails because the SSID is not currently in the scan cache (common for
+	// hidden networks, and for single-radio boxes that just left AP mode), fall
+	// back to an explicit connection profile with hidden=true.
 	args := []string{"device", "wifi", "connect", ssid}
 	if passphrase != "" {
 		args = append(args, "password", passphrase)
@@ -178,11 +230,64 @@ func (m *Manager) Connect(ctx context.Context, ssid, passphrase string) error {
 	}
 
 	out, err := m.run(ctx, "nmcli", args...)
-	if err != nil {
-		return fmt.Errorf("connecting to %q: %w: %s", ssid, err, strings.TrimSpace(string(out)))
+	if err == nil {
+		slog.Info("netcfg: joined network", "ssid", ssid)
+		return nil
 	}
-	slog.Info("netcfg: joined network", "ssid", ssid)
+	firstErr := fmt.Errorf("connecting to %q: %w: %s", ssid, err, redactSecrets(strings.TrimSpace(string(out))))
+
+	// Explicit profile path: works for hidden SSIDs and when the radio has not
+	// yet refreshed its scan list after leaving AP mode.
+	if err := m.connectViaProfile(ctx, ssid, passphrase); err != nil {
+		return fmt.Errorf("%v; hidden/profile fallback: %w", firstErr, err)
+	}
+	slog.Info("netcfg: joined network via profile", "ssid", ssid, "hidden", true)
 	return nil
+}
+
+// connectViaProfile creates/up an NM connection profile for ssid. Always marks
+// the SSID as hidden so operators can join networks that do not beacon a name.
+func (m *Manager) connectViaProfile(ctx context.Context, ssid, passphrase string) error {
+	// Ensure no leftover profile with this name.
+	_, _ = m.run(ctx, "nmcli", "connection", "delete", ssid)
+
+	args := []string{
+		"connection", "add",
+		"type", "wifi",
+		"con-name", ssid,
+		"ifname", m.ifaceOrStar(),
+		"ssid", ssid,
+		"wifi.hidden", "yes",
+		"ipv4.method", "auto",
+		"ipv6.method", "auto",
+	}
+	if passphrase != "" {
+		args = append(args,
+			"wifi-sec.key-mgmt", "wpa-psk",
+			"wifi-sec.psk", passphrase,
+		)
+	}
+
+	out, err := m.run(ctx, "nmcli", args...)
+	if err != nil {
+		return fmt.Errorf("creating wifi profile %q: %w: %s", ssid, err, redactSecrets(strings.TrimSpace(string(out))))
+	}
+
+	out, err = m.run(ctx, "nmcli", "connection", "up", ssid)
+	if err != nil {
+		// Clean up the failed profile so a later retry with a corrected
+		// passphrase is not blocked by a sticky bad secret.
+		_, _ = m.run(ctx, "nmcli", "connection", "delete", ssid)
+		return fmt.Errorf("activating wifi profile %q: %w: %s", ssid, err, redactSecrets(strings.TrimSpace(string(out))))
+	}
+	return nil
+}
+
+func (m *Manager) ifaceOrStar() string {
+	if m.Iface != "" {
+		return m.Iface
+	}
+	return "*"
 }
 
 // StartHotspot brings up a shared-mode access point and installs a captive DNS
@@ -211,7 +316,7 @@ func (m *Manager) StartHotspot(ctx context.Context, ssid, passphrase string) err
 	if dev != "" {
 		if out, err := m.run(ctx, "nmcli", "device", "disconnect", dev); err != nil {
 			slog.Debug("netcfg: could not disconnect wifi before hotspot",
-				"iface", dev, "error", err, "output", strings.TrimSpace(string(out)))
+				"iface", dev, "error", err, "output", redactSecrets(strings.TrimSpace(string(out))))
 		} else {
 			slog.Info("netcfg: disconnected wifi station before hotspot", "iface", dev)
 		}
@@ -230,7 +335,7 @@ func (m *Manager) StartHotspot(ctx context.Context, ssid, passphrase string) err
 
 	out, err := m.run(ctx, "nmcli", args...)
 	if err != nil {
-		return fmt.Errorf("starting hotspot %q: %w: %s", ssid, err, strings.TrimSpace(string(out)))
+		return fmt.Errorf("starting hotspot %q: %w: %s", ssid, err, redactSecrets(strings.TrimSpace(string(out))))
 	}
 	slog.Info("netcfg: hotspot up", "ssid", ssid)
 	return nil
@@ -240,7 +345,13 @@ func (m *Manager) StartHotspot(ctx context.Context, ssid, passphrase string) err
 func (m *Manager) StopHotspot(ctx context.Context) error {
 	out, err := m.run(ctx, "nmcli", "connection", "down", hotspotConnName)
 	if err != nil {
-		return fmt.Errorf("stopping hotspot: %w: %s", err, strings.TrimSpace(string(out)))
+		// Already down is fine — treat as success so teardown is idempotent.
+		msg := strings.ToLower(string(out))
+		if strings.Contains(msg, "not active") || strings.Contains(msg, "unknown connection") {
+			slog.Info("netcfg: hotspot already down")
+			return nil
+		}
+		return fmt.Errorf("stopping hotspot: %w: %s", err, redactSecrets(strings.TrimSpace(string(out))))
 	}
 	slog.Info("netcfg: hotspot down")
 	return nil

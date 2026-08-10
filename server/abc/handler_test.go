@@ -124,6 +124,15 @@ func (m *mockSessionService) RegenerateBroadcastToken(_ context.Context, _ strin
 	return "", fmt.Errorf("not implemented")
 }
 
+func (m *mockSessionService) TransitionState(_ context.Context, id string, to crosstalk.SessionState, _ *uint64) error {
+	s, ok := m.sessions[id]
+	if !ok {
+		return fmt.Errorf("session not found: %s", id)
+	}
+	s.State = to
+	return nil
+}
+
 func TestAuthenticate_ValidToken(t *testing.T) {
 	abcSvc := newMockABCService()
 	sessionSvc := newMockSessionService()

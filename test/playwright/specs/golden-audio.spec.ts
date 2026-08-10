@@ -6,13 +6,15 @@
  * ║  system exactly as human operators would drive it.                        ║
  * ║                                                                            ║
  * ║   • Admin SPA   — logs in and creates the session (real UI).              ║
- * ║   • Translator SPA — two browsers connect with real microphones           ║
- * ║       (Chromium fake mic fed a WAV tone) over real WebRTC.                ║
+ * ║   • ABC booth   — floor mic produces into "feed" via /ws/signaling        ║
+ * ║       (translators cannot expand produce into feed; ABC is the board).    ║
+ * ║   • Translator SPA — browser connects with real mic over WebRTC,          ║
+ * ║       listens to feed and produces into broadcast.                        ║
  * ║   • Broadcast SPA — a listener browser plays the live stream.             ║
- * ║   • ct-server   — real Pion SFU forwards the Opus RTP between them.       ║
+ * ║   • ct-server   — real Pion SFU + decoded mixer forwards Opus.            ║
  * ║                                                                            ║
  * ║  Topology under test:                                                     ║
- * ║      Floor  ──produce→ "feed"      ─▶ Translator (hears floor)            ║
+ * ║      Floor(ABC) ──produce→ "feed"      ─▶ Translator (hears floor)        ║
  * ║      Translator ──produce→ "broadcast" ─▶ Broadcast listener (hears xl8r) ║
  * ║                                                                            ║
  * ║  Each producer emits a distinct tone. The test decodes the audio actually ║
@@ -28,6 +30,8 @@ import {
   adminLoginUI,
   apiFetch,
   createChannel,
+  createAssignedABC,
+  connectABCFloorProducer,
   getBroadcastToken,
   makeToneWav,
   installInboundAudioCapture,
@@ -84,8 +88,11 @@ test.describe("Golden Audio — SPA-driven end-to-end", () => {
     await expect(page.getByText(sessionName)).toBeVisible({ timeout: 15_000 });
 
     // Resolve the session id + create its channels (no admin UI for channels).
-    const sessions = (await apiFetch(request, adminToken, "get", "/api/sessions"))
-      .data as Array<{ id: string; name: string }>;
+    const sessionsBody = await apiFetch(request, adminToken, "get", "/api/sessions");
+    const sessions = (sessionsBody.data ?? sessionsBody) as Array<{
+      id: string;
+      name: string;
+    }>;
     const session = sessions.find((s) => s.name === sessionName);
     expect(session, "created session present via API").toBeTruthy();
     const sessionId = session!.id;
@@ -94,37 +101,39 @@ test.describe("Golden Audio — SPA-driven end-to-end", () => {
     await createChannel(request, adminToken, sessionId, "English Broadcast", "broadcast");
     const broadcastToken = await getBroadcastToken(request, adminToken, sessionId);
 
-    // Two translator accounts: one drives the "floor" source, one translates.
-    // Unique per run so Playwright retries don't collide on the username.
+    // Floor producer = ABC (only role that may produce into feed by default).
+    const floorAbc = await createAssignedABC(
+      request,
+      adminToken,
+      sessionId,
+      `Floor Booth ${Date.now()}`,
+    );
+
+    // Translator account assigned to the session (media tickets fail closed otherwise).
     const pw = "audio-pass-123";
-    const floorUser = `floor_${Date.now()}`;
     const mariaUser = `maria_${Date.now()}`;
-    await apiFetch(request, adminToken, "post", "/api/translators", {
-      username: floorUser,
-      password: pw,
-    });
-    await apiFetch(request, adminToken, "post", "/api/translators", {
+    const mariaAcct = await apiFetch(request, adminToken, "post", "/api/translators", {
       username: mariaUser,
       password: pw,
     });
+    await apiFetch(
+      request,
+      adminToken,
+      "put",
+      `/api/translators/${mariaAcct.id as string}/sessions`,
+      { session_ids: [sessionId] },
+    );
 
-    // ══ 2. Floor browser: connect a mic (440Hz) producing into "feed" ══════
+    // ══ 2. Floor browser: ABC mic (440Hz) producing into feed ══════════════
     const floorBrowser = await launchWithMic(floorWav);
     const floorCtx = await floorBrowser.newContext({
       baseURL: BASE_URL,
       permissions: ["microphone"],
     });
+    // Still install capture hooks so any inbound tracks are decoded if present.
     await installInboundAudioCapture(floorCtx);
     const floorPage = await floorCtx.newPage();
-    await loginTranslator(floorPage, floorUser, pw);
-    // Deep link: produce into the feed channel, listen to nothing.
-    await floorPage.goto(
-      `/translator/sessions/${sessionId}/connect?produce=${encodeURIComponent(feed.name)}&listen=`,
-    );
-    await floorPage.getByRole("button", { name: /^connect$/i }).click();
-    await expect(
-      floorPage.getByRole("button", { name: /disconnect/i }),
-    ).toBeVisible({ timeout: 30_000 });
+    await connectABCFloorProducer(floorPage, floorAbc.token);
 
     // ══ 3. Translator browser: mic (880Hz) → broadcast, listening to feed ══
     const transBrowser = await launchWithMic(translatorWav);
@@ -135,12 +144,38 @@ test.describe("Golden Audio — SPA-driven end-to-end", () => {
     await installInboundAudioCapture(transCtx);
     const transPage = await transCtx.newPage();
     await loginTranslator(transPage, mariaUser, pw);
-    // Default routing for a translator: produce → broadcast, listen → feed.
-    await transPage.goto(`/translator/sessions/${sessionId}/connect`);
+    // Explicit deep link: produce default (broadcast) + listen to the floor feed
+    // on the same PC so feed audio is captured without depending solely on the
+    // separate SessionAudioManager monitor connections.
+    await transPage.goto(
+      `/translator/sessions/${sessionId}/connect?listen=${encodeURIComponent(feed.name)}`,
+    );
+    await expect(transPage.getByRole("button", { name: /^connect$/i })).toBeVisible({
+      timeout: 15_000,
+    });
     await transPage.getByRole("button", { name: /^connect$/i }).click();
     await expect(
       transPage.getByRole("button", { name: /disconnect/i }),
-    ).toBeVisible({ timeout: 30_000 });
+    ).toBeVisible({ timeout: 60_000 });
+
+    // Wait until both producers register as sources (ABC floor + translator).
+    // Response body is { data: SourceOut[] } — never treat the envelope as the list.
+    await expect
+      .poll(
+        async () => {
+          const body = await apiFetch(
+            request,
+            adminToken,
+            "get",
+            `/api/sessions/${sessionId}/sources`,
+          );
+          const srcs = (body.data ?? body) as Array<{ id: string; name: string; connected?: boolean }>;
+          if (!Array.isArray(srcs)) return 0;
+          return srcs.filter((s) => s.connected !== false).length;
+        },
+        { timeout: 30_000 },
+      )
+      .toBeGreaterThanOrEqual(2);
 
     // ══ 4. Broadcast browser: listen to the session ═══════════════════════
     const listenBrowser = await chromium.launch({
@@ -159,16 +194,23 @@ test.describe("Golden Audio — SPA-driven end-to-end", () => {
     );
     await listenPage.getByRole("button", { name: /listen/i }).click();
 
-    // Give the SFU a moment to establish both hops and pipe audio.
-    await transPage.waitForTimeout(4000);
+    // Give the SFU a moment to establish both hops and pipe audio, then poll.
+    await transPage.waitForTimeout(3000);
 
     // ══ 5. Verify the correct tone reached each destination ════════════════
-    // The translator monitors every session channel, so it receives multiple
-    // inbound streams (the floor feed AND the broadcast it produces into).
-    // Assert the floor tone is present among them (the floor→feed→translator
-    // hop works).
-    const translatorTones = await dominantFrequencies(transPage, 2500);
-    const heardByListener = await dominantFrequency(listenPage, 2500);
+    // Poll until the floor tone is audible on the translator (feed hop) and the
+    // broadcast listener hears the translator tone.
+    let translatorTones: number[] = [];
+    let heardByListener = { hz: 0, energy: 0, streams: 0, tracks: "" };
+    const deadline = Date.now() + 35_000;
+    while (Date.now() < deadline) {
+      translatorTones = await dominantFrequencies(transPage, 1500);
+      heardByListener = await dominantFrequency(listenPage, 1500);
+      const floorOk = translatorTones.some((hz) => Math.abs(hz - FLOOR_HZ) <= 25);
+      const bcastOk = Math.abs(heardByListener.hz - TRANSLATOR_HZ) <= 25;
+      if (floorOk && bcastOk) break;
+      await transPage.waitForTimeout(500);
+    }
 
     // eslint-disable-next-line no-console
     console.log(
