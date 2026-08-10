@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { createApiClient, type components } from "@crosstalk/api-client";
+import { Logo } from "@crosstalk/theme";
 
 type Session = components["schemas"]["SessionOut"];
 
@@ -31,9 +32,12 @@ export function SessionListPage() {
   return (
     <div className="min-h-screen p-4 max-w-2xl mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-bold text-white">Sessions</h1>
-          {user && <p className="text-sm text-gray-400">Logged in as {user.username}</p>}
+        <div className="flex items-center gap-4">
+          <Logo className="h-16 w-auto" />
+          <div>
+            <h1 className="text-xl font-bold text-white">Sessions</h1>
+            {user && <p className="text-sm text-gray-400">Logged in as {user.username}</p>}
+          </div>
         </div>
         <button
           onClick={logout}

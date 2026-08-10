@@ -24,7 +24,9 @@ $SSH "chmod +x /usr/local/bin/ct-client"
 echo "[3/4] Installing service unit..."
 $SCP "${SCRIPT_DIR}/deploy/app.service" "root@${BOARD_IP}:/etc/systemd/system/app.service"
 $SCP "${SCRIPT_DIR}/deploy/ct-splash.sh" "root@${BOARD_IP}:/usr/local/bin/ct-splash.sh"
-$SSH "chmod +x /usr/local/bin/ct-splash.sh; systemctl daemon-reload"
+$SSH "chmod +x /usr/local/bin/ct-splash.sh; mkdir -p /usr/local/share/crosstalk"
+$SCP "${SCRIPT_DIR}/deploy/ct-splash.png" "root@${BOARD_IP}:/usr/local/share/crosstalk/ct-splash.png"
+$SSH "systemctl daemon-reload"
 
 # 4. Start
 echo "[4/4] Starting service..."

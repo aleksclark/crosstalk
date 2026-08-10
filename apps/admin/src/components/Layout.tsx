@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { Logo } from "@crosstalk/theme";
 import { useAuth } from "../hooks/useAuth";
 import { cn } from "../lib/utils";
 
@@ -40,8 +41,8 @@ export function Layout() {
       >
         <div className="flex flex-col h-full">
           {/* Logo / brand */}
-          <div className="flex items-center gap-2 px-6 py-4 border-b border-border">
-            <span className="text-xl font-bold text-primary">CrossTalk</span>
+          <div className="flex items-center gap-3 px-6 py-3 border-b border-border">
+            <Logo className="h-10 w-auto" />
             <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
               Admin
             </span>
@@ -109,7 +110,10 @@ export function Layout() {
               />
             </svg>
           </button>
-          <span className="text-sm font-bold text-primary">CrossTalk Admin</span>
+          <div className="flex items-center gap-2">
+            <Logo className="h-8 w-auto" />
+            <span className="text-xs text-muted-foreground">Admin</span>
+          </div>
           <div className="w-6" />
         </header>
 

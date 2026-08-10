@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { Logo } from "@crosstalk/theme";
 import { useAuth } from "../hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 
@@ -33,8 +34,8 @@ export function LoginPage() {
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-sm space-y-6">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-white">CrossTalk</h1>
-          <p className="text-gray-400 mt-1">Translator Login</p>
+          <Logo className="mx-auto h-28 w-auto" />
+          <p className="text-gray-400 mt-3">Translator Login</p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (

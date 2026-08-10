@@ -34,6 +34,35 @@ test.describe("Admin SPA", () => {
     expect(sessions.some((s) => s.name === name)).toBeTruthy();
   });
 
+  test("ABC provisioned in the UI persists and shows its token once", async ({
+    page,
+    request,
+  }) => {
+    const token = await adminLoginUI(page);
+    const name = `UI ABC ${Date.now()}`;
+
+    await page.getByRole("link", { name: /ABCs/i }).click();
+    await expect(page).toHaveURL(/\/admin\/abcs/);
+    await page.getByRole("button", { name: /new abc/i }).click();
+    await page.getByPlaceholder(/booth a/i).fill(name);
+    await page.getByRole("button", { name: /^create$/i }).click();
+
+    const tokenField = page.getByRole("textbox", { name: /abc token/i });
+    await expect(tokenField).toBeVisible({ timeout: 15_000 });
+    await expect(tokenField).not.toHaveValue("");
+    await expect(page.getByText(/cannot be retrieved/i)).toBeVisible();
+    await expect(page.getByText(name).first()).toBeVisible();
+
+    const abcs = (await apiFetch(request, token, "get", "/api/abcs")).data as Array<{
+      name: string;
+    }>;
+    expect(abcs.some((abc) => abc.name === name)).toBeTruthy();
+
+    await page.reload();
+    await expect(page.getByText(name)).toBeVisible({ timeout: 15_000 });
+    await expect(tokenField).toHaveCount(0);
+  });
+
   test("translator created in the UI persists across reload and can log in", async ({
     page,
   }) => {
