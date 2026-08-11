@@ -21,6 +21,135 @@ const (
 	BearerAuthScopes bearerAuthContextKey = "bearerAuth.Scopes"
 )
 
+// Defines values for ABCAudioReportedOutInputGainState.
+const (
+	ABCAudioReportedOutInputGainStateApplied        ABCAudioReportedOutInputGainState = "applied"
+	ABCAudioReportedOutInputGainStateDeviceMismatch ABCAudioReportedOutInputGainState = "device_mismatch"
+	ABCAudioReportedOutInputGainStateError          ABCAudioReportedOutInputGainState = "error"
+	ABCAudioReportedOutInputGainStatePending        ABCAudioReportedOutInputGainState = "pending"
+	ABCAudioReportedOutInputGainStateUnknown        ABCAudioReportedOutInputGainState = "unknown"
+	ABCAudioReportedOutInputGainStateUnsupported    ABCAudioReportedOutInputGainState = "unsupported"
+)
+
+// Valid indicates whether the value is a known member of the ABCAudioReportedOutInputGainState enum.
+func (e ABCAudioReportedOutInputGainState) Valid() bool {
+	switch e {
+	case ABCAudioReportedOutInputGainStateApplied:
+		return true
+	case ABCAudioReportedOutInputGainStateDeviceMismatch:
+		return true
+	case ABCAudioReportedOutInputGainStateError:
+		return true
+	case ABCAudioReportedOutInputGainStatePending:
+		return true
+	case ABCAudioReportedOutInputGainStateUnknown:
+		return true
+	case ABCAudioReportedOutInputGainStateUnsupported:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ABCAudioReportedOutOutputMuteState.
+const (
+	ABCAudioReportedOutOutputMuteStateApplied        ABCAudioReportedOutOutputMuteState = "applied"
+	ABCAudioReportedOutOutputMuteStateDeviceMismatch ABCAudioReportedOutOutputMuteState = "device_mismatch"
+	ABCAudioReportedOutOutputMuteStateError          ABCAudioReportedOutOutputMuteState = "error"
+	ABCAudioReportedOutOutputMuteStatePending        ABCAudioReportedOutOutputMuteState = "pending"
+	ABCAudioReportedOutOutputMuteStateUnknown        ABCAudioReportedOutOutputMuteState = "unknown"
+	ABCAudioReportedOutOutputMuteStateUnsupported    ABCAudioReportedOutOutputMuteState = "unsupported"
+)
+
+// Valid indicates whether the value is a known member of the ABCAudioReportedOutOutputMuteState enum.
+func (e ABCAudioReportedOutOutputMuteState) Valid() bool {
+	switch e {
+	case ABCAudioReportedOutOutputMuteStateApplied:
+		return true
+	case ABCAudioReportedOutOutputMuteStateDeviceMismatch:
+		return true
+	case ABCAudioReportedOutOutputMuteStateError:
+		return true
+	case ABCAudioReportedOutOutputMuteStatePending:
+		return true
+	case ABCAudioReportedOutOutputMuteStateUnknown:
+		return true
+	case ABCAudioReportedOutOutputMuteStateUnsupported:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ABCAudioReportedOutOutputVolumeState.
+const (
+	ABCAudioReportedOutOutputVolumeStateApplied        ABCAudioReportedOutOutputVolumeState = "applied"
+	ABCAudioReportedOutOutputVolumeStateDeviceMismatch ABCAudioReportedOutOutputVolumeState = "device_mismatch"
+	ABCAudioReportedOutOutputVolumeStateError          ABCAudioReportedOutOutputVolumeState = "error"
+	ABCAudioReportedOutOutputVolumeStatePending        ABCAudioReportedOutOutputVolumeState = "pending"
+	ABCAudioReportedOutOutputVolumeStateUnknown        ABCAudioReportedOutOutputVolumeState = "unknown"
+	ABCAudioReportedOutOutputVolumeStateUnsupported    ABCAudioReportedOutOutputVolumeState = "unsupported"
+)
+
+// Valid indicates whether the value is a known member of the ABCAudioReportedOutOutputVolumeState enum.
+func (e ABCAudioReportedOutOutputVolumeState) Valid() bool {
+	switch e {
+	case ABCAudioReportedOutOutputVolumeStateApplied:
+		return true
+	case ABCAudioReportedOutOutputVolumeStateDeviceMismatch:
+		return true
+	case ABCAudioReportedOutOutputVolumeStateError:
+		return true
+	case ABCAudioReportedOutOutputVolumeStatePending:
+		return true
+	case ABCAudioReportedOutOutputVolumeStateUnknown:
+		return true
+	case ABCAudioReportedOutOutputVolumeStateUnsupported:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ABCAudioSettingsOutOverallState.
+const (
+	ABCAudioSettingsOutOverallStateApplied        ABCAudioSettingsOutOverallState = "applied"
+	ABCAudioSettingsOutOverallStateDeviceMismatch ABCAudioSettingsOutOverallState = "device_mismatch"
+	ABCAudioSettingsOutOverallStateError          ABCAudioSettingsOutOverallState = "error"
+	ABCAudioSettingsOutOverallStateOffline        ABCAudioSettingsOutOverallState = "offline"
+	ABCAudioSettingsOutOverallStatePartial        ABCAudioSettingsOutOverallState = "partial"
+	ABCAudioSettingsOutOverallStatePending        ABCAudioSettingsOutOverallState = "pending"
+	ABCAudioSettingsOutOverallStateStale          ABCAudioSettingsOutOverallState = "stale"
+	ABCAudioSettingsOutOverallStateUnconfigured   ABCAudioSettingsOutOverallState = "unconfigured"
+	ABCAudioSettingsOutOverallStateUnsupported    ABCAudioSettingsOutOverallState = "unsupported"
+)
+
+// Valid indicates whether the value is a known member of the ABCAudioSettingsOutOverallState enum.
+func (e ABCAudioSettingsOutOverallState) Valid() bool {
+	switch e {
+	case ABCAudioSettingsOutOverallStateApplied:
+		return true
+	case ABCAudioSettingsOutOverallStateDeviceMismatch:
+		return true
+	case ABCAudioSettingsOutOverallStateError:
+		return true
+	case ABCAudioSettingsOutOverallStateOffline:
+		return true
+	case ABCAudioSettingsOutOverallStatePartial:
+		return true
+	case ABCAudioSettingsOutOverallStatePending:
+		return true
+	case ABCAudioSettingsOutOverallStateStale:
+		return true
+	case ABCAudioSettingsOutOverallStateUnconfigured:
+		return true
+	case ABCAudioSettingsOutOverallStateUnsupported:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CreateChannelRequestBodyType.
 const (
 	CreateChannelRequestBodyTypeBroadcast CreateChannelRequestBodyType = "broadcast"
@@ -41,16 +170,16 @@ func (e CreateChannelRequestBodyType) Valid() bool {
 
 // Defines values for CreateUserRequestBodyRole.
 const (
-	Admin      CreateUserRequestBodyRole = "admin"
-	Translator CreateUserRequestBodyRole = "translator"
+	CreateUserRequestBodyRoleAdmin      CreateUserRequestBodyRole = "admin"
+	CreateUserRequestBodyRoleTranslator CreateUserRequestBodyRole = "translator"
 )
 
 // Valid indicates whether the value is a known member of the CreateUserRequestBodyRole enum.
 func (e CreateUserRequestBodyRole) Valid() bool {
 	switch e {
-	case Admin:
+	case CreateUserRequestBodyRoleAdmin:
 		return true
-	case Translator:
+	case CreateUserRequestBodyRoleTranslator:
 		return true
 	default:
 		return false
@@ -75,6 +204,166 @@ func (e UpdateChannelRequestBodyType) Valid() bool {
 	}
 }
 
+// Defines values for WebRTCTokenRequestBodyRole.
+const (
+	WebRTCTokenRequestBodyRoleAbc        WebRTCTokenRequestBodyRole = "abc"
+	WebRTCTokenRequestBodyRoleAdmin      WebRTCTokenRequestBodyRole = "admin"
+	WebRTCTokenRequestBodyRoleListener   WebRTCTokenRequestBodyRole = "listener"
+	WebRTCTokenRequestBodyRoleTranslator WebRTCTokenRequestBodyRole = "translator"
+)
+
+// Valid indicates whether the value is a known member of the WebRTCTokenRequestBodyRole enum.
+func (e WebRTCTokenRequestBodyRole) Valid() bool {
+	switch e {
+	case WebRTCTokenRequestBodyRoleAbc:
+		return true
+	case WebRTCTokenRequestBodyRoleAdmin:
+		return true
+	case WebRTCTokenRequestBodyRoleListener:
+		return true
+	case WebRTCTokenRequestBodyRoleTranslator:
+		return true
+	default:
+		return false
+	}
+}
+
+// ABCAudioCapabilityOut defines model for ABCAudioCapabilityOut.
+type ABCAudioCapabilityOut struct {
+	AlsaCardId *string `json:"alsa_card_id,omitempty"`
+
+	// Backend Audio backend (e.g. alsa)
+	Backend  *string `json:"backend,omitempty"`
+	CardName *string `json:"card_name,omitempty"`
+
+	// DeviceUid Canonical device UID
+	DeviceUid string `json:"device_uid"`
+
+	// Direction input, output, or both
+	Direction      *string                 `json:"direction,omitempty"`
+	Extra          *map[string]interface{} `json:"extra,omitempty"`
+	Path           *string                 `json:"path,omitempty"`
+	ProductId      *string                 `json:"product_id,omitempty"`
+	Serial         *string                 `json:"serial,omitempty"`
+	SupportsGain   *bool                   `json:"supports_gain,omitempty"`
+	SupportsMute   *bool                   `json:"supports_mute,omitempty"`
+	SupportsVolume *bool                   `json:"supports_volume,omitempty"`
+	VendorId       *string                 `json:"vendor_id,omitempty"`
+}
+
+// ABCAudioDesiredOut defines model for ABCAudioDesiredOut.
+type ABCAudioDesiredOut struct {
+	// CommandId Deterministic command id for this revision
+	CommandId *string `json:"command_id,omitempty"`
+
+	// InputDeviceUid Desired input device UID
+	InputDeviceUid *string `json:"input_device_uid,omitempty"`
+
+	// InputGainPercent Desired input gain percent
+	InputGainPercent *int64 `json:"input_gain_percent,omitempty"`
+
+	// OutputDeviceUid Desired output device UID
+	OutputDeviceUid *string `json:"output_device_uid,omitempty"`
+
+	// OutputMuted Desired output mute
+	OutputMuted *bool `json:"output_muted,omitempty"`
+
+	// OutputVolumePercent Desired output volume percent
+	OutputVolumePercent *int64 `json:"output_volume_percent,omitempty"`
+
+	// Revision Desired revision (0 = unconfigured)
+	Revision int64 `json:"revision"`
+
+	// UpdatedAt When desired state last changed
+	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+}
+
+// ABCAudioInputDesiredIn defines model for ABCAudioInputDesiredIn.
+type ABCAudioInputDesiredIn struct {
+	// DeviceUid Canonical USB input device UID
+	DeviceUid string `json:"device_uid"`
+
+	// GainPercent Desired input gain percent (0-100)
+	GainPercent int64 `json:"gain_percent"`
+}
+
+// ABCAudioOutputDesiredIn defines model for ABCAudioOutputDesiredIn.
+type ABCAudioOutputDesiredIn struct {
+	// DeviceUid Canonical USB output device UID
+	DeviceUid string `json:"device_uid"`
+
+	// Muted Desired output mute state
+	Muted bool `json:"muted"`
+
+	// VolumePercent Desired output volume percent (0-100)
+	VolumePercent int64 `json:"volume_percent"`
+}
+
+// ABCAudioReportedOut defines model for ABCAudioReportedOut.
+type ABCAudioReportedOut struct {
+	Capabilities *[]ABCAudioCapabilityOut `json:"capabilities,omitempty"`
+
+	// CommandId Last reported command id
+	CommandId      *string `json:"command_id,omitempty"`
+	ErrorCode      *string `json:"error_code,omitempty"`
+	ErrorDetail    *string `json:"error_detail,omitempty"`
+	InputDeviceUid *string `json:"input_device_uid,omitempty"`
+
+	// InputGainState Per-control state
+	InputGainState              ABCAudioReportedOutInputGainState `json:"input_gain_state"`
+	ObservedInputGainPercent    *int64                            `json:"observed_input_gain_percent,omitempty"`
+	ObservedOutputMuted         *bool                             `json:"observed_output_muted,omitempty"`
+	ObservedOutputVolumePercent *int64                            `json:"observed_output_volume_percent,omitempty"`
+	OutputDeviceUid             *string                           `json:"output_device_uid,omitempty"`
+
+	// OutputMuteState Per-control state
+	OutputMuteState ABCAudioReportedOutOutputMuteState `json:"output_mute_state"`
+
+	// OutputVolumeState Per-control state
+	OutputVolumeState ABCAudioReportedOutOutputVolumeState `json:"output_volume_state"`
+
+	// ReportedAt Server receipt time of last report
+	ReportedAt *time.Time `json:"reported_at,omitempty"`
+
+	// Revision Highest conclusive reported desired revision
+	Revision int64 `json:"revision"`
+}
+
+// ABCAudioReportedOutInputGainState Per-control state
+type ABCAudioReportedOutInputGainState string
+
+// ABCAudioReportedOutOutputMuteState Per-control state
+type ABCAudioReportedOutOutputMuteState string
+
+// ABCAudioReportedOutOutputVolumeState Per-control state
+type ABCAudioReportedOutOutputVolumeState string
+
+// ABCAudioSettingsOut defines model for ABCAudioSettingsOut.
+type ABCAudioSettingsOut struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+
+	// AbcId ABC id
+	AbcId string `json:"abc_id"`
+
+	// AcceptedRevision Revision accepted by this request (GET echoes current desired)
+	AcceptedRevision int64 `json:"accepted_revision"`
+
+	// Connected Whether the ABC is currently connected
+	Connected bool               `json:"connected"`
+	Desired   ABCAudioDesiredOut `json:"desired"`
+
+	// OverallState Derived aggregate state
+	OverallState ABCAudioSettingsOutOverallState `json:"overall_state"`
+	Reported     ABCAudioReportedOut             `json:"reported"`
+
+	// Stale Whether reported state is considered stale
+	Stale bool `json:"stale"`
+}
+
+// ABCAudioSettingsOutOverallState Derived aggregate state
+type ABCAudioSettingsOutOverallState string
+
 // ABCOut defines model for ABCOut.
 type ABCOut struct {
 	// Schema A URL to the JSON Schema for this object.
@@ -91,6 +380,9 @@ type ABCOut struct {
 
 	// LastSeen Last time ABC was seen
 	LastSeen *time.Time `json:"last_seen,omitempty"`
+
+	// MonitorChannelId Channel the ABC monitors for return audio
+	MonitorChannelId *string `json:"monitor_channel_id,omitempty"`
 
 	// Name ABC name
 	Name string `json:"name"`
@@ -450,6 +742,20 @@ type MixEntryOut struct {
 	SourceId string `json:"source_id"`
 }
 
+// PutABCAudioSettingsRequestBody defines model for PutABCAudioSettingsRequestBody.
+type PutABCAudioSettingsRequestBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+
+	// ExpectedRevision Expected current desired revision (0 when unconfigured)
+	ExpectedRevision int64                   `json:"expected_revision"`
+	Input            ABCAudioInputDesiredIn  `json:"input"`
+	Output           ABCAudioOutputDesiredIn `json:"output"`
+
+	// RequestId Client idempotency key (UUID/ULID)
+	RequestId string `json:"request_id"`
+}
+
 // RecordingOut defines model for RecordingOut.
 type RecordingOut struct {
 	// ChannelId Channel ID (if channel recording)
@@ -591,6 +897,9 @@ type UpdateABCRequestBody struct {
 	// Schema A URL to the JSON Schema for this object.
 	Schema *string `json:"$schema,omitempty"`
 
+	// MonitorChannelId Channel the ABC monitors for return audio
+	MonitorChannelId *string `json:"monitor_channel_id,omitempty"`
+
 	// Name ABC name
 	Name *string `json:"name,omitempty"`
 
@@ -671,15 +980,51 @@ type UserOut struct {
 	Username string `json:"username"`
 }
 
+// WebRTCTokenRequestBody defines model for WebRTCTokenRequestBody.
+type WebRTCTokenRequestBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+
+	// Listen Optional channel name/id/type selectors to narrow listen capability
+	Listen *[]string `json:"listen,omitempty"`
+
+	// Produce Optional channel name/id/type selectors to narrow produce capability
+	Produce *[]string `json:"produce,omitempty"`
+
+	// Role Requested role (server may override from identity)
+	Role *WebRTCTokenRequestBodyRole `json:"role,omitempty"`
+
+	// SessionId Session to connect to
+	SessionId string `json:"session_id"`
+}
+
+// WebRTCTokenRequestBodyRole Requested role (server may override from identity)
+type WebRTCTokenRequestBodyRole string
+
 // WebRTCTokenResponseBody defines model for WebRTCTokenResponseBody.
 type WebRTCTokenResponseBody struct {
 	// Schema A URL to the JSON Schema for this object.
 	Schema *string `json:"$schema,omitempty"`
 
-	// ExpiresAt Token expiration time
+	// ExpiresAt Ticket expiration time
 	ExpiresAt time.Time `json:"expires_at"`
 
-	// Token Short-lived WebRTC signaling token
+	// ListenChannelIds Channel IDs the ticket may listen to
+	ListenChannelIds *[]string `json:"listen_channel_ids"`
+
+	// OwnerGeneration Fenced owner generation bound into the ticket
+	OwnerGeneration int64 `json:"owner_generation"`
+
+	// ProduceChannelIds Channel IDs the ticket may produce into
+	ProduceChannelIds *[]string `json:"produce_channel_ids"`
+
+	// Role Bound role
+	Role string `json:"role"`
+
+	// SessionId Bound session ID
+	SessionId string `json:"session_id"`
+
+	// Token One-time media admission ticket (JWT or opaque nonce)
 	Token string `json:"token"`
 }
 
@@ -712,6 +1057,18 @@ type GetAbcParams struct {
 
 // UpdateAbcParams defines parameters for UpdateAbc.
 type UpdateAbcParams struct {
+	// Authorization Bearer token
+	Authorization *string `json:"Authorization,omitempty"`
+}
+
+// GetAbcAudioSettingsParams defines parameters for GetAbcAudioSettings.
+type GetAbcAudioSettingsParams struct {
+	// Authorization Bearer token
+	Authorization *string `json:"Authorization,omitempty"`
+}
+
+// PutAbcAudioSettingsParams defines parameters for PutAbcAudioSettings.
+type PutAbcAudioSettingsParams struct {
 	// Authorization Bearer token
 	Authorization *string `json:"Authorization,omitempty"`
 }
@@ -878,6 +1235,9 @@ type CreateAbcJSONRequestBody = CreateABCRequestBody
 // UpdateAbcJSONRequestBody defines body for UpdateAbc for application/json ContentType.
 type UpdateAbcJSONRequestBody = UpdateABCRequestBody
 
+// PutAbcAudioSettingsJSONRequestBody defines body for PutAbcAudioSettings for application/json ContentType.
+type PutAbcAudioSettingsJSONRequestBody = PutABCAudioSettingsRequestBody
+
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequestBody
 
@@ -913,6 +1273,9 @@ type AssignTranslatorSessionsJSONRequestBody = AssignTranslatorSessionsRequestBo
 
 // CreateUserJSONRequestBody defines body for CreateUser for application/json ContentType.
 type CreateUserJSONRequestBody = CreateUserRequestBody
+
+// GetWebrtcTokenJSONRequestBody defines body for GetWebrtcToken for application/json ContentType.
+type GetWebrtcTokenJSONRequestBody = WebRTCTokenRequestBody
 
 // RequestEditorFn  is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -1005,6 +1368,14 @@ type ClientInterface interface {
 	UpdateAbcWithBody(ctx context.Context, id string, params *UpdateAbcParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	UpdateAbc(ctx context.Context, id string, params *UpdateAbcParams, body UpdateAbcJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAbcAudioSettings request
+	GetAbcAudioSettings(ctx context.Context, id string, params *GetAbcAudioSettingsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutAbcAudioSettingsWithBody request with any body
+	PutAbcAudioSettingsWithBody(ctx context.Context, id string, params *PutAbcAudioSettingsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PutAbcAudioSettings(ctx context.Context, id string, params *PutAbcAudioSettingsParams, body PutAbcAudioSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// RestartAbc request
 	RestartAbc(ctx context.Context, id string, params *RestartAbcParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1117,8 +1488,10 @@ type ClientInterface interface {
 	// DeleteUser request
 	DeleteUser(ctx context.Context, id string, params *DeleteUserParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetWebrtcToken request
-	GetWebrtcToken(ctx context.Context, params *GetWebrtcTokenParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// GetWebrtcTokenWithBody request with any body
+	GetWebrtcTokenWithBody(ctx context.Context, params *GetWebrtcTokenParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	GetWebrtcToken(ctx context.Context, params *GetWebrtcTokenParams, body GetWebrtcTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 func (c *Client) ListAbcs(ctx context.Context, params *ListAbcsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -1195,6 +1568,42 @@ func (c *Client) UpdateAbcWithBody(ctx context.Context, id string, params *Updat
 
 func (c *Client) UpdateAbc(ctx context.Context, id string, params *UpdateAbcParams, body UpdateAbcJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateAbcRequest(c.Server, id, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAbcAudioSettings(ctx context.Context, id string, params *GetAbcAudioSettingsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAbcAudioSettingsRequest(c.Server, id, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PutAbcAudioSettingsWithBody(ctx context.Context, id string, params *PutAbcAudioSettingsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutAbcAudioSettingsRequestWithBody(c.Server, id, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PutAbcAudioSettings(ctx context.Context, id string, params *PutAbcAudioSettingsParams, body PutAbcAudioSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutAbcAudioSettingsRequest(c.Server, id, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -1697,8 +2106,20 @@ func (c *Client) DeleteUser(ctx context.Context, id string, params *DeleteUserPa
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetWebrtcToken(ctx context.Context, params *GetWebrtcTokenParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetWebrtcTokenRequest(c.Server, params)
+func (c *Client) GetWebrtcTokenWithBody(ctx context.Context, params *GetWebrtcTokenParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetWebrtcTokenRequestWithBody(c.Server, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetWebrtcToken(ctx context.Context, params *GetWebrtcTokenParams, body GetWebrtcTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetWebrtcTokenRequest(c.Server, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -1932,6 +2353,117 @@ func NewUpdateAbcRequestWithBody(server string, id string, params *UpdateAbcPara
 	}
 
 	operationPath := fmt.Sprintf("/api/abcs/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.Authorization != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Authorization", *params.Authorization, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Authorization", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewGetAbcAudioSettingsRequest generates requests for GetAbcAudioSettings
+func NewGetAbcAudioSettingsRequest(server string, id string, params *GetAbcAudioSettingsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/abcs/%s/audio-settings", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.Authorization != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Authorization", *params.Authorization, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Authorization", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewPutAbcAudioSettingsRequest calls the generic PutAbcAudioSettings builder with application/json body
+func NewPutAbcAudioSettingsRequest(server string, id string, params *PutAbcAudioSettingsParams, body PutAbcAudioSettingsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPutAbcAudioSettingsRequestWithBody(server, id, params, "application/json", bodyReader)
+}
+
+// NewPutAbcAudioSettingsRequestWithBody generates requests for PutAbcAudioSettings with any type of body
+func NewPutAbcAudioSettingsRequestWithBody(server string, id string, params *PutAbcAudioSettingsParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/abcs/%s/audio-settings", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -3448,8 +3980,19 @@ func NewDeleteUserRequest(server string, id string, params *DeleteUserParams) (*
 	return req, nil
 }
 
-// NewGetWebrtcTokenRequest generates requests for GetWebrtcToken
-func NewGetWebrtcTokenRequest(server string, params *GetWebrtcTokenParams) (*http.Request, error) {
+// NewGetWebrtcTokenRequest calls the generic GetWebrtcToken builder with application/json body
+func NewGetWebrtcTokenRequest(server string, params *GetWebrtcTokenParams, body GetWebrtcTokenJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewGetWebrtcTokenRequestWithBody(server, params, "application/json", bodyReader)
+}
+
+// NewGetWebrtcTokenRequestWithBody generates requests for GetWebrtcToken with any type of body
+func NewGetWebrtcTokenRequestWithBody(server string, params *GetWebrtcTokenParams, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -3467,10 +4010,12 @@ func NewGetWebrtcTokenRequest(server string, params *GetWebrtcTokenParams) (*htt
 		return nil, err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	if params != nil {
 
@@ -3551,6 +4096,14 @@ type ClientWithResponsesInterface interface {
 	UpdateAbcWithBodyWithResponse(ctx context.Context, id string, params *UpdateAbcParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAbcResponse, error)
 
 	UpdateAbcWithResponse(ctx context.Context, id string, params *UpdateAbcParams, body UpdateAbcJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAbcResponse, error)
+
+	// GetAbcAudioSettingsWithResponse request
+	GetAbcAudioSettingsWithResponse(ctx context.Context, id string, params *GetAbcAudioSettingsParams, reqEditors ...RequestEditorFn) (*GetAbcAudioSettingsResponse, error)
+
+	// PutAbcAudioSettingsWithBodyWithResponse request with any body
+	PutAbcAudioSettingsWithBodyWithResponse(ctx context.Context, id string, params *PutAbcAudioSettingsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutAbcAudioSettingsResponse, error)
+
+	PutAbcAudioSettingsWithResponse(ctx context.Context, id string, params *PutAbcAudioSettingsParams, body PutAbcAudioSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*PutAbcAudioSettingsResponse, error)
 
 	// RestartAbcWithResponse request
 	RestartAbcWithResponse(ctx context.Context, id string, params *RestartAbcParams, reqEditors ...RequestEditorFn) (*RestartAbcResponse, error)
@@ -3663,8 +4216,10 @@ type ClientWithResponsesInterface interface {
 	// DeleteUserWithResponse request
 	DeleteUserWithResponse(ctx context.Context, id string, params *DeleteUserParams, reqEditors ...RequestEditorFn) (*DeleteUserResponse, error)
 
-	// GetWebrtcTokenWithResponse request
-	GetWebrtcTokenWithResponse(ctx context.Context, params *GetWebrtcTokenParams, reqEditors ...RequestEditorFn) (*GetWebrtcTokenResponse, error)
+	// GetWebrtcTokenWithBodyWithResponse request with any body
+	GetWebrtcTokenWithBodyWithResponse(ctx context.Context, params *GetWebrtcTokenParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*GetWebrtcTokenResponse, error)
+
+	GetWebrtcTokenWithResponse(ctx context.Context, params *GetWebrtcTokenParams, body GetWebrtcTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*GetWebrtcTokenResponse, error)
 }
 
 type ListAbcsResponse struct {
@@ -3816,6 +4371,67 @@ func (r UpdateAbcResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r UpdateAbcResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetAbcAudioSettingsResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *ABCAudioSettingsOut
+	ApplicationproblemJSONDefault *ErrorModel
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAbcAudioSettingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAbcAudioSettingsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetAbcAudioSettingsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PutAbcAudioSettingsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON202      *ABCAudioSettingsOut
+}
+
+// Status returns HTTPResponse.Status
+func (r PutAbcAudioSettingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PutAbcAudioSettingsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PutAbcAudioSettingsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -4813,6 +5429,32 @@ func (c *ClientWithResponses) UpdateAbcWithResponse(ctx context.Context, id stri
 	return ParseUpdateAbcResponse(rsp)
 }
 
+// GetAbcAudioSettingsWithResponse request returning *GetAbcAudioSettingsResponse
+func (c *ClientWithResponses) GetAbcAudioSettingsWithResponse(ctx context.Context, id string, params *GetAbcAudioSettingsParams, reqEditors ...RequestEditorFn) (*GetAbcAudioSettingsResponse, error) {
+	rsp, err := c.GetAbcAudioSettings(ctx, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAbcAudioSettingsResponse(rsp)
+}
+
+// PutAbcAudioSettingsWithBodyWithResponse request with arbitrary body returning *PutAbcAudioSettingsResponse
+func (c *ClientWithResponses) PutAbcAudioSettingsWithBodyWithResponse(ctx context.Context, id string, params *PutAbcAudioSettingsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutAbcAudioSettingsResponse, error) {
+	rsp, err := c.PutAbcAudioSettingsWithBody(ctx, id, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutAbcAudioSettingsResponse(rsp)
+}
+
+func (c *ClientWithResponses) PutAbcAudioSettingsWithResponse(ctx context.Context, id string, params *PutAbcAudioSettingsParams, body PutAbcAudioSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*PutAbcAudioSettingsResponse, error) {
+	rsp, err := c.PutAbcAudioSettings(ctx, id, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutAbcAudioSettingsResponse(rsp)
+}
+
 // RestartAbcWithResponse request returning *RestartAbcResponse
 func (c *ClientWithResponses) RestartAbcWithResponse(ctx context.Context, id string, params *RestartAbcParams, reqEditors ...RequestEditorFn) (*RestartAbcResponse, error) {
 	rsp, err := c.RestartAbc(ctx, id, params, reqEditors...)
@@ -5170,9 +5812,17 @@ func (c *ClientWithResponses) DeleteUserWithResponse(ctx context.Context, id str
 	return ParseDeleteUserResponse(rsp)
 }
 
-// GetWebrtcTokenWithResponse request returning *GetWebrtcTokenResponse
-func (c *ClientWithResponses) GetWebrtcTokenWithResponse(ctx context.Context, params *GetWebrtcTokenParams, reqEditors ...RequestEditorFn) (*GetWebrtcTokenResponse, error) {
-	rsp, err := c.GetWebrtcToken(ctx, params, reqEditors...)
+// GetWebrtcTokenWithBodyWithResponse request with arbitrary body returning *GetWebrtcTokenResponse
+func (c *ClientWithResponses) GetWebrtcTokenWithBodyWithResponse(ctx context.Context, params *GetWebrtcTokenParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*GetWebrtcTokenResponse, error) {
+	rsp, err := c.GetWebrtcTokenWithBody(ctx, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetWebrtcTokenResponse(rsp)
+}
+
+func (c *ClientWithResponses) GetWebrtcTokenWithResponse(ctx context.Context, params *GetWebrtcTokenParams, body GetWebrtcTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*GetWebrtcTokenResponse, error) {
+	rsp, err := c.GetWebrtcToken(ctx, params, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -5338,6 +5988,65 @@ func ParseUpdateAbcResponse(rsp *http.Response) (*UpdateAbcResponse, error) {
 			return nil, err
 		}
 		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAbcAudioSettingsResponse parses an HTTP response from a GetAbcAudioSettingsWithResponse call
+func ParseGetAbcAudioSettingsResponse(rsp *http.Response) (*GetAbcAudioSettingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAbcAudioSettingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ABCAudioSettingsOut
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePutAbcAudioSettingsResponse parses an HTTP response from a PutAbcAudioSettingsWithResponse call
+func ParsePutAbcAudioSettingsResponse(rsp *http.Response) (*PutAbcAudioSettingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PutAbcAudioSettingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest ABCAudioSettingsOut
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
 
 	}
 
