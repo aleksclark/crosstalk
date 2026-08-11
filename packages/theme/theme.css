@@ -1,45 +1,491 @@
 /*
- * CrossTalk shared theme tokens.
+ * CrossTalk shared theme — Editorial Instrument foundation.
  *
- * A single dark palette shared by all three SPAs (admin, translator,
- * broadcast). This file contains ONLY plain CSS: design-token custom
- * properties plus safe base styles, so it works identically under Tailwind v3
- * (admin, translator) and Tailwind v4 (broadcast).
+ * Sole product accent: cyan #3DE0F0 (hardcoded, not multi-selectable at runtime).
+ * Dark is canonical; light parity via data-theme="light" or .light.
  *
- * Apps map these tokens to utility color names:
- *   - Tailwind v3: via the exported preset (@crosstalk/theme/preset).
- *   - Tailwind v4: via an `@theme inline` block referencing these variables.
+ * ONE token source for admin (TW v3), translator (TW v3), and broadcast (TW v4).
+ * Backward-compatible aliases (--background, --primary, …) keep existing utilities working.
  */
 
-:root {
-  --background: 222.2 84% 4.9%;
-  --foreground: 210 40% 98%;
+/* -------------------------------------------------------------------------- */
+/* Self-hosted faces (latin + latin-ext). @font-face ONLY lives here.           */
+/* -------------------------------------------------------------------------- */
 
-  --card: 222.2 84% 7%;
-  --card-foreground: 210 40% 98%;
-
-  --primary: 217.2 91.2% 59.8%;
-  --primary-foreground: 222.2 47.4% 11.2%;
-
-  --muted: 217.2 32.6% 17.5%;
-  --muted-foreground: 215 20.2% 65.1%;
-
-  --accent: 217.2 32.6% 17.5%;
-  --accent-foreground: 210 40% 98%;
-
-  --destructive: 0 62.8% 30.6%;
-  --destructive-foreground: 210 40% 98%;
-
-  --border: 217.2 32.6% 17.5%;
-  --input: 217.2 32.6% 17.5%;
-  --ring: 217.2 91.2% 59.8%;
-
-  --radius: 0.5rem;
+/* Archivo 400/500/600/700 */
+@font-face {
+  font-family: "Archivo";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/Archivo-400-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Archivo";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/Archivo-400-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Archivo";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./fonts/Archivo-500-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Archivo";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./fonts/Archivo-500-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Archivo";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./fonts/Archivo-600-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Archivo";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./fonts/Archivo-600-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Archivo";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./fonts/Archivo-700-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Archivo";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./fonts/Archivo-700-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
-html,
+/* Newsreader 400/600 */
+@font-face {
+  font-family: "Newsreader";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/Newsreader-400-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Newsreader";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/Newsreader-400-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Newsreader";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./fonts/Newsreader-600-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Newsreader";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./fonts/Newsreader-600-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* IBM Plex Mono 400/500 */
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/IBMPlexMono-400-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/IBMPlexMono-400-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./fonts/IBMPlexMono-500-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./fonts/IBMPlexMono-500-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Tailwind v4 semantic aliases (centralized; apps must not re-author).       */
+/* Plain CSS / TW v3 consumers ignore this at-rule.                           */
+/* -------------------------------------------------------------------------- */
+@theme inline {
+  --color-background: var(--house-bg-canvas);
+  --color-foreground: var(--house-text-primary);
+  --color-card: var(--house-bg-surface);
+  --color-card-foreground: var(--house-text-primary);
+  --color-popover: var(--house-bg-surface);
+  --color-popover-foreground: var(--house-text-primary);
+  --color-primary: var(--house-accent);
+  --color-primary-foreground: var(--house-accent-ink);
+  --color-secondary: transparent;
+  --color-secondary-foreground: var(--house-text-secondary);
+  --color-muted: var(--house-bg-raised);
+  --color-muted-foreground: var(--house-text-tertiary);
+  --color-accent: var(--house-selected-bg);
+  --color-accent-foreground: var(--house-text-primary);
+  --color-destructive: var(--house-status-danger);
+  --color-destructive-foreground: var(--house-status-danger-ink);
+  --color-border: var(--house-rule-subtle);
+  --color-input: var(--house-rule-strong);
+  --color-ring: var(--house-focus);
+  --color-status-ok: var(--house-status-ok);
+  --color-status-warning: var(--house-status-warning);
+  --color-status-danger: var(--house-status-danger);
+  --color-status-info: var(--house-status-info);
+  --font-sans: var(--house-font-product);
+  --font-serif: var(--house-font-editorial);
+  --font-mono: var(--house-font-technical);
+  --radius-sm: var(--house-radius-sm);
+  --radius-md: var(--house-radius-md);
+  --radius-lg: var(--house-radius-md);
+  --radius-full: var(--house-radius-pill);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Dark canonical (default)                                                   */
+/* -------------------------------------------------------------------------- */
+:root,
+:root[data-theme="dark"],
+.dark {
+  color-scheme: dark;
+
+  /* Sole product accent — cyan. Not multi-selectable at runtime. */
+  --house-accent-base: #3DE0F0;
+  --house-accent-ink: #15170e;
+
+  --house-bg-canvas: oklch(0.178 0.008 250);
+  --house-bg-sunken: oklch(0.152 0.008 250);
+  --house-bg-surface: oklch(0.212 0.009 250);
+  --house-bg-raised: oklch(0.252 0.010 250);
+  --house-rule-subtle: oklch(0.298 0.010 250);
+  --house-rule-strong: oklch(0.392 0.012 250);
+  --house-text-primary: oklch(0.955 0.005 250);
+  --house-text-secondary: oklch(0.822 0.007 250);
+  --house-text-tertiary: oklch(0.668 0.009 250);
+
+  --house-status-ok: oklch(0.80 0.14 152);
+  --house-status-warning: oklch(0.83 0.15 78);
+  --house-status-danger: oklch(0.72 0.16 26);
+  --house-status-info: oklch(0.80 0.08 235);
+  --house-status-danger-ink: oklch(0.18 0.04 26);
+
+  --house-status-ok-bg: color-mix(in oklab, var(--house-status-ok) 12%, var(--house-bg-canvas));
+  --house-status-warning-bg: color-mix(in oklab, var(--house-status-warning) 12%, var(--house-bg-canvas));
+  --house-status-danger-bg: color-mix(in oklab, var(--house-status-danger) 12%, var(--house-bg-canvas));
+  --house-status-info-bg: color-mix(in oklab, var(--house-status-info) 10%, var(--house-bg-canvas));
+}
+
+/* -------------------------------------------------------------------------- */
+/* Light parity                                                               */
+/* -------------------------------------------------------------------------- */
+:root[data-theme="light"],
+.light {
+  color-scheme: light;
+
+  --house-bg-canvas: oklch(0.985 0.003 250);
+  --house-bg-sunken: oklch(0.952 0.004 250);
+  --house-bg-surface: oklch(1 0 0);
+  --house-bg-raised: oklch(0.938 0.005 250);
+  --house-rule-subtle: oklch(0.882 0.006 250);
+  --house-rule-strong: oklch(0.782 0.010 250);
+  --house-text-primary: oklch(0.215 0.012 250);
+  --house-text-secondary: oklch(0.405 0.012 250);
+  --house-text-tertiary: oklch(0.538 0.012 250);
+
+  --house-status-ok: oklch(0.48 0.13 152);
+  --house-status-warning: oklch(0.52 0.13 68);
+  --house-status-danger: oklch(0.50 0.18 26);
+  --house-status-info: oklch(0.45 0.09 235);
+  --house-status-danger-ink: #fff;
+
+  --house-status-ok-bg: color-mix(in oklab, var(--house-status-ok) 9%, var(--house-bg-canvas));
+  --house-status-warning-bg: color-mix(in oklab, var(--house-status-warning) 9%, var(--house-bg-canvas));
+  --house-status-danger-bg: color-mix(in oklab, var(--house-status-danger) 8%, var(--house-bg-canvas));
+  --house-status-info-bg: color-mix(in oklab, var(--house-status-info) 8%, var(--house-bg-canvas));
+}
+
+/* -------------------------------------------------------------------------- */
+/* Shared geometry / type / motion (comfortable density only)                 */
+/* -------------------------------------------------------------------------- */
+:root {
+  --house-accent: var(--house-accent-base);
+  --house-accent-strong: color-mix(in oklab, var(--house-accent-base) 72%, black);
+  --house-focus: var(--house-accent-base);
+  --house-selected-bg: color-mix(in oklab, var(--house-accent-base) 11%, var(--house-bg-canvas));
+
+  --house-font-product: "Archivo", sans-serif;
+  --house-font-editorial: "Newsreader", serif;
+  --house-font-technical: "IBM Plex Mono", monospace;
+
+  --house-type-display: 48px;
+  --house-type-page-title: 30px;
+  --house-type-section: 15px;
+  --house-type-lede: 14px;
+  --house-type-body: 14px;
+  --house-type-body-compact: 13px;
+  --house-type-control: 13px;
+  --house-type-label: 12px;
+  --house-type-metadata: 11px;
+  --house-type-eyebrow: 10px;
+  --house-type-data: 30px;
+  --house-type-code: 12px;
+
+  --house-leading-display: 1.05;
+  --house-leading-title: 1.12;
+  --house-leading-section: 1.2;
+  --house-leading-body: 1.6;
+  --house-leading-control: 1;
+  --house-leading-metadata: 1.5;
+
+  --house-space-1: 4px;
+  --house-space-2: 8px;
+  --house-space-3: 12px;
+  --house-space-4: 16px;
+  --house-space-6: 24px;
+  --house-space-8: 32px;
+  --house-space-12: 48px;
+
+  --house-radius-sm: 2px;
+  --house-radius-md: 2px;
+  --house-radius-pill: 999px;
+  --house-rule-width: 1px;
+  --house-rule-selected: 2px;
+  --house-focus-width: 2px;
+  --house-focus-offset: 2px;
+
+  --house-control-height: 34px;
+  --house-row-height: 40px;
+  --house-page-gutter: 28px;
+  --house-nav-width: 218px;
+  --house-read-width: 960px;
+  --house-target-mobile: 44px;
+
+  --house-icon-grid: 24px;
+  --house-icon-stroke: 1.75;
+  --house-icon-default: 16px;
+  --house-icon-compact: 14px;
+  --house-icon-emphasis: 18px;
+
+  --house-motion-enter: 170ms ease-out;
+  --house-shadow-modal: 0 18px 48px rgb(0 0 0 / 55%);
+  --house-shadow-toast: 0 12px 32px rgb(0 0 0 / 32%);
+
+  /*
+   * Backward-compatible aliases for existing Tailwind utilities.
+   * Values are full colors (not HSL channel triples). Preset maps with var().
+   */
+  --background: var(--house-bg-canvas);
+  --foreground: var(--house-text-primary);
+  --card: var(--house-bg-surface);
+  --card-foreground: var(--house-text-primary);
+  --popover: var(--house-bg-surface);
+  --popover-foreground: var(--house-text-primary);
+  --primary: var(--house-accent);
+  --primary-foreground: var(--house-accent-ink);
+  --secondary: transparent;
+  --secondary-foreground: var(--house-text-secondary);
+  --muted: var(--house-bg-raised);
+  --muted-foreground: var(--house-text-tertiary);
+  --accent: var(--house-selected-bg);
+  --accent-foreground: var(--house-text-primary);
+  --destructive: var(--house-status-danger);
+  --destructive-foreground: var(--house-status-danger-ink);
+  --border: var(--house-rule-subtle);
+  --input: var(--house-rule-strong);
+  --ring: var(--house-focus);
+  --radius: var(--house-radius-md);
+
+  /* Status aliases used by VU meter / status primitives */
+  --status-ok: var(--house-status-ok);
+  --status-warning: var(--house-status-warning);
+  --status-danger: var(--house-status-danger);
+  --status-info: var(--house-status-info);
+}
+
+/* Mobile floors: 44px controls / 48px rows */
+@media (max-width: 640px) {
+  :root {
+    --house-type-display: 32px;
+    --house-type-page-title: 22px;
+    --house-type-data: 22px;
+    --house-control-height: 44px;
+    --house-row-height: 48px;
+    --house-page-gutter: 16px;
+    --house-nav-width: 0px;
+    --house-read-width: 100%;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Base                                                                       */
+/* -------------------------------------------------------------------------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--house-bg-canvas);
+}
+
 body {
-  background-color: hsl(var(--background));
-  color: hsl(var(--foreground));
-  font-family: system-ui, -apple-system, sans-serif;
+  margin: 0;
+  min-height: 100svh;
+  background: var(--house-bg-canvas);
+  color: var(--house-text-primary);
+  font: 400 var(--house-type-body) / var(--house-leading-body) var(--house-font-product);
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus {
+  outline: none;
+}
+:focus-visible {
+  outline: var(--house-focus-width) solid var(--house-focus);
+  outline-offset: var(--house-focus-offset);
+}
+
+/* Type utilities */
+.house-type-display {
+  font: 400 var(--house-type-display) / var(--house-leading-display) var(--house-font-editorial);
+}
+.house-type-title {
+  font: 700 var(--house-type-page-title) / var(--house-leading-title) var(--house-font-product);
+  letter-spacing: -0.022em;
+}
+.house-type-section {
+  font: 600 var(--house-type-section) / var(--house-leading-section) var(--house-font-product);
+}
+.house-type-lede {
+  font: 400 var(--house-type-lede) / 1.55 var(--house-font-product);
+  color: var(--house-text-secondary);
+}
+.house-type-body {
+  font: 400 var(--house-type-body) / var(--house-leading-body) var(--house-font-product);
+}
+.house-type-body-compact {
+  font: 400 var(--house-type-body-compact) / 1.5 var(--house-font-product);
+}
+.house-type-control {
+  font: 500 var(--house-type-control) / var(--house-leading-control) var(--house-font-product);
+}
+.house-type-label {
+  font: 500 var(--house-type-label) / 1.3 var(--house-font-product);
+}
+.house-type-meta {
+  font: 400 var(--house-type-metadata) / var(--house-leading-metadata) var(--house-font-technical);
+  color: var(--house-text-tertiary);
+}
+.house-type-eyebrow {
+  font: 500 var(--house-type-eyebrow) / 1 var(--house-font-technical);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.house-type-data {
+  font: 500 var(--house-type-data) / 1 var(--house-font-technical);
+  font-variant-numeric: tabular-nums;
+}
+.house-type-code {
+  font: 400 var(--house-type-code) / 1.7 var(--house-font-technical);
+}
+
+.house-icon {
+  width: var(--house-icon-default);
+  height: var(--house-icon-default);
+  display: inline-block;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: var(--house-icon-stroke);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.house-icon--compact {
+  width: var(--house-icon-compact);
+  height: var(--house-icon-compact);
+}
+.house-icon--emphasis {
+  width: var(--house-icon-emphasis);
+  height: var(--house-icon-emphasis);
+}
+
+.house-surface {
+  background: var(--house-bg-surface);
+  border: 1px solid var(--house-rule-subtle);
+  border-radius: var(--house-radius-md);
+}
+.house-sunken {
+  background: var(--house-bg-sunken);
+}
+.house-modal {
+  box-shadow: var(--house-shadow-modal);
+}
+.house-toast {
+  box-shadow: var(--house-shadow-toast);
+}
+
+.house-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }

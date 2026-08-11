@@ -10,20 +10,20 @@ export interface VUMeterProps {
   className?: string;
 }
 
-// Peak colour thresholds (fraction of full scale).
+// Peak colour thresholds (fraction of full scale) — preserved exactly.
 const WARN = 0.6;
 const PEAK = 0.85;
 
+/** Map level to house status tokens (not raw brand/palette hex). */
 function levelColor(level: number): string {
-  if (level >= PEAK) return "#ef4444"; // red-500
-  if (level >= WARN) return "#eab308"; // yellow-500
-  return "#22c55e"; // green-500
+  if (level >= PEAK) return "var(--house-status-danger)";
+  if (level >= WARN) return "var(--house-status-warning)";
+  return "var(--house-status-ok)";
 }
 
 // VUMeter is a shared, theme-consistent audio level meter used across all SPAs.
-// It is styled with inline styles (no Tailwind classes) so it renders
-// identically regardless of each app's Tailwind version or content scanning.
-// The track/text pick up the shared theme via CSS custom properties.
+// Styled with inline token-driven styles so it renders identically regardless
+// of each app's Tailwind version or content scanning.
 export function VUMeter({ level, label, showValue = true, className }: VUMeterProps) {
   const clamped = Math.max(0, Math.min(1, level));
   const pct = Math.round(clamped * 100);
@@ -31,13 +31,14 @@ export function VUMeter({ level, label, showValue = true, className }: VUMeterPr
   return (
     <div
       className={className}
-      style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}
+      style={{ display: "flex", alignItems: "center", gap: "var(--house-space-2)", minWidth: 0 }}
     >
       {label != null && (
         <span
           style={{
-            fontSize: 12,
-            color: "hsl(var(--muted-foreground))",
+            fontSize: "var(--house-type-label)",
+            fontFamily: "var(--house-font-product)",
+            color: "var(--house-text-tertiary)",
             width: 96,
             flexShrink: 0,
             whiteSpace: "nowrap",
@@ -53,8 +54,8 @@ export function VUMeter({ level, label, showValue = true, className }: VUMeterPr
           flex: 1,
           height: 10,
           minWidth: 40,
-          borderRadius: 9999,
-          background: "hsl(var(--muted))",
+          borderRadius: "var(--house-radius-pill)",
+          background: "var(--house-bg-raised)",
           overflow: "hidden",
         }}
       >
@@ -70,8 +71,9 @@ export function VUMeter({ level, label, showValue = true, className }: VUMeterPr
       {showValue && (
         <span
           style={{
-            fontSize: 12,
-            color: "hsl(var(--muted-foreground))",
+            fontSize: "var(--house-type-label)",
+            fontFamily: "var(--house-font-technical)",
+            color: "var(--house-text-tertiary)",
             width: 34,
             textAlign: "right",
             fontVariantNumeric: "tabular-nums",
