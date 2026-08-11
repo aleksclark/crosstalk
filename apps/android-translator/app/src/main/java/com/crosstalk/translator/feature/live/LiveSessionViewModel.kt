@@ -147,13 +147,17 @@ class LiveSessionViewModel(
         if (s.channelsLoading) return
         val feed = s.feedName.ifBlank { "Unknown channel" }
         val broadcast = s.broadcastName.ifBlank { "Unknown channel" }
+        // Do not pre-select every session channel ID. Empty selectors preserve
+        // server-derived translator ticket scope (feed listen / broadcast produce).
+        // Display names come from the session channel list for UX; service re-resolves
+        // against the minted ticket after mint.
         gateway.join(
             sessionId = s.sessionId,
             sessionName = s.sessionName,
             feedName = feed,
             broadcastName = broadcast,
-            feedIds = s.feedIds,
-            broadcastIds = s.broadcastIds,
+            feedIds = emptyList(),
+            broadcastIds = emptyList(),
         )
     }
 

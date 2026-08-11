@@ -11,7 +11,7 @@ import org.junit.Test
 class CredentialVaultTest {
     @Test
     fun roundTripsRefreshTokenThroughFakeCipher() = runBlocking {
-        val vault = CredentialVault.createForTests(cipher = FakeKeystoreCipher())
+        val vault = createTestCredentialVault(cipher = FakeKeystoreCipher())
         vault.saveRefreshToken("refresh-secret-abc")
         assertEquals("refresh-secret-abc", vault.readRefreshToken())
 
@@ -27,7 +27,7 @@ class CredentialVaultTest {
 
     @Test
     fun clearRemovesEnvelope() = runBlocking {
-        val vault = CredentialVault.createForTests()
+        val vault = createTestCredentialVault()
         vault.saveRefreshToken("to-clear")
         vault.clear()
         assertNull(vault.readRefreshToken())
@@ -36,7 +36,7 @@ class CredentialVaultTest {
 
     @Test
     fun unknownFormatVersionFailsClosedAndClears() = runBlocking {
-        val vault = CredentialVault.createForTests()
+        val vault = createTestCredentialVault()
         vault.saveRefreshToken("keep-me")
         val envelope = vault.readEnvelope()
         assertNotNull(envelope)
@@ -60,7 +60,7 @@ class CredentialVaultTest {
 
     @Test
     fun rotationReplacesCiphertextAtomically() = runBlocking {
-        val vault = CredentialVault.createForTests()
+        val vault = createTestCredentialVault()
         vault.saveRefreshToken("token-v1")
         val first = vault.readEnvelope()!!
         vault.saveRefreshToken("token-v2")

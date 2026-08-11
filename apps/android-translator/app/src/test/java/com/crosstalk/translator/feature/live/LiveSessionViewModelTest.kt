@@ -236,7 +236,7 @@ class LiveSessionViewModelTest {
             return channels
         }
 
-        override suspend fun mintMediaTicket(sessionId: String, role: String): MediaTicket =
+        override suspend fun mintMediaTicket(sessionId: String): MediaTicket =
             error("unused")
     }
 }

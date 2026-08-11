@@ -34,16 +34,23 @@ object MediaTicketValidator {
         if (ticket.expiresAtEpochMs <= clock.nowEpochMs()) {
             return Result.Rejected("Ticket expired")
         }
-        // Produce = broadcast for translator; listen = feed.
+        // Client selectors may only narrow. Empty request = accept server-derived ticket scope.
+        // Non-empty request must be a subset of ticket channel IDs (never widen).
+        val produce = ticket.produceChannelIds.toSet()
+        val listen = ticket.listenChannelIds.toSet()
         if (requestedBroadcastIds.isNotEmpty()) {
-            val produce = ticket.produceChannelIds.toSet()
-            if (produce.isNotEmpty() && !produce.containsAll(requestedBroadcastIds)) {
+            if (produce.isEmpty()) {
+                return Result.Rejected("Ticket missing produce channels")
+            }
+            if (!produce.containsAll(requestedBroadcastIds)) {
                 return Result.Rejected("Ticket produce channels do not cover selection")
             }
         }
         if (requestedFeedIds.isNotEmpty()) {
-            val listen = ticket.listenChannelIds.toSet()
-            if (listen.isNotEmpty() && !listen.containsAll(requestedFeedIds)) {
+            if (listen.isEmpty()) {
+                return Result.Rejected("Ticket missing listen channels")
+            }
+            if (!listen.containsAll(requestedFeedIds)) {
                 return Result.Rejected("Ticket listen channels do not cover selection")
             }
         }

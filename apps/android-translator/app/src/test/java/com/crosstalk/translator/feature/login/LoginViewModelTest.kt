@@ -2,6 +2,7 @@ package com.crosstalk.translator.feature.login
 
 import com.crosstalk.translator.auth.AuthRepository
 import com.crosstalk.translator.auth.CredentialVault
+import com.crosstalk.translator.auth.createTestCredentialVault
 import com.crosstalk.translator.auth.FakeKeystoreCipher
 import com.crosstalk.translator.contract.ApiException
 import com.crosstalk.translator.contract.AuthTokens
@@ -89,7 +90,7 @@ class LoginViewModelTest {
     }
 
     private fun repo(api: CrossTalkApi): AuthRepository {
-        val vault = CredentialVault.createForTests(cipher = FakeKeystoreCipher())
+        val vault = createTestCredentialVault(cipher = FakeKeystoreCipher())
         return AuthRepository(api = api, vault = vault, accessTokenSink = {})
     }
 
@@ -111,7 +112,7 @@ class LoginViewModelTest {
         override suspend fun listSessions(): List<SessionSummary> = emptyList()
         override suspend fun getSession(sessionId: String): SessionSummary = error("unused")
         override suspend fun listChannels(sessionId: String): List<ChannelInfo> = emptyList()
-        override suspend fun mintMediaTicket(sessionId: String, role: String): MediaTicket =
+        override suspend fun mintMediaTicket(sessionId: String): MediaTicket =
             error("unused")
     }
 }

@@ -90,21 +90,14 @@ class GeneratedApiAdapter(
             body.data.orEmpty().map { it.toInfo() }
         }
 
-    override suspend fun mintMediaTicket(sessionId: String, role: String): MediaTicket =
+    override suspend fun mintMediaTicket(sessionId: String): MediaTicket =
         mapErrors {
-            val requestRole = when (role.lowercase()) {
-                "translator" -> WebRTCTokenRequestBody.Role.TRANSLATOR
-                "admin" -> WebRTCTokenRequestBody.Role.ADMIN
-                "abc" -> WebRTCTokenRequestBody.Role.ABC
-                "listener" -> WebRTCTokenRequestBody.Role.LISTENER
-                else -> WebRTCTokenRequestBody.Role.TRANSLATOR
-            }
-            // Body is intentionally only session_id + role. Omit produce/listen so the
-            // server applies translator defaults (broadcast produce, feed listen).
+            // Translator app hard-codes role. Omit produce/listen so the server applies
+            // translator defaults (broadcast produce, feed listen). Never elevate.
             val body = webRtcApi.getWebrtcToken(
                 webRTCTokenRequestBody = WebRTCTokenRequestBody(
                     sessionId = sessionId,
-                    role = requestRole,
+                    role = WebRTCTokenRequestBody.Role.TRANSLATOR,
                 ),
                 authorization = bearerHeader(),
             )

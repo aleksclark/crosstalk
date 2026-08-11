@@ -11,5 +11,6 @@ interface CrossTalkApi {
     suspend fun listSessions(): List<SessionSummary>
     suspend fun getSession(sessionId: String): SessionSummary
     suspend fun listChannels(sessionId: String): List<ChannelInfo>
-    suspend fun mintMediaTicket(sessionId: String, role: String = "translator"): MediaTicket
+    /** Always mints a translator-scoped one-time media ticket (server derives capabilities). */
+    suspend fun mintMediaTicket(sessionId: String): MediaTicket
 }

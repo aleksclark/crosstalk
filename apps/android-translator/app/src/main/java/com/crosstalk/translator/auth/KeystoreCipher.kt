@@ -79,25 +79,6 @@ class AndroidKeystoreCipher(
     }
 }
 
-/** In-memory AES-GCM stand-in for JVM unit tests (no Android Keystore). */
-class FakeKeystoreCipher(
-    private val keyBytes: ByteArray = ByteArray(32) { (it + 7).toByte() },
-) : KeystoreCipher {
-    override fun encrypt(plaintext: ByteArray): EncryptedPayload {
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        val key = javax.crypto.spec.SecretKeySpec(keyBytes, "AES")
-        cipher.init(Cipher.ENCRYPT_MODE, key)
-        return EncryptedPayload(ciphertext = cipher.doFinal(plaintext), iv = cipher.iv)
-    }
-
-    override fun decrypt(payload: EncryptedPayload): ByteArray {
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        val key = javax.crypto.spec.SecretKeySpec(keyBytes, "AES")
-        cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, payload.iv))
-        return cipher.doFinal(payload.ciphertext)
-    }
-}
-
 fun ByteArray.toBase64(): String =
     Base64.getEncoder().encodeToString(this)
 

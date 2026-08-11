@@ -10,6 +10,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.crosstalk.translator.CrossTalkApplication
 import com.crosstalk.translator.auth.AuthRepository
 import com.crosstalk.translator.auth.CredentialVault
+import com.crosstalk.translator.auth.createTestCredentialVault
 import com.crosstalk.translator.contract.ApiException
 import com.crosstalk.translator.contract.AuthTokens
 import com.crosstalk.translator.contract.ChannelInfo
@@ -51,7 +52,7 @@ class TranslatorAudioServiceTest {
         shadowApp.grantPermissions(Manifest.permission.RECORD_AUDIO)
 
         api = FakeApi()
-        val vault = CredentialVault.createForTests()
+        val vault = createTestCredentialVault()
         runBlocking {
             vault.saveRefreshToken("refresh-test")
         }
@@ -66,7 +67,7 @@ class TranslatorAudioServiceTest {
         }
 
         val container = app.container
-        container.rtcEngineFactory = {
+        container.installRtcEngineFactoryForTests {
             FakeRtcEngine().also {
                 fakeRtc = it
                 engines += it
@@ -371,7 +372,7 @@ class TranslatorAudioServiceTest {
 
         override suspend fun listChannels(sessionId: String): List<ChannelInfo> = emptyList()
 
-        override suspend fun mintMediaTicket(sessionId: String, role: String): MediaTicket {
+        override suspend fun mintMediaTicket(sessionId: String): MediaTicket {
             mintCount++
             if (failMintWithNetwork) {
                 throw ApiException.Network("offline")
@@ -379,7 +380,7 @@ class TranslatorAudioServiceTest {
             return MediaTicket(
                 token = "ticket-$mintCount",
                 sessionId = sessionId,
-                role = role,
+                role = "translator",
                 expiresAtEpochMs = System.currentTimeMillis() + 60_000L,
                 produceChannelIds = listOf("bc-1"),
                 listenChannelIds = listOf("feed-1"),

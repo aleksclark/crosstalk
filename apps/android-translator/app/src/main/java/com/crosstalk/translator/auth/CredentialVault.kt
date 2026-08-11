@@ -5,16 +5,12 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStoreFile
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import java.io.File
 
 /**
  * Persists only encrypted refresh-token envelopes in DataStore.
@@ -106,46 +102,5 @@ class CredentialVault(
             )
             return CredentialVault(dataStore = store, cipher = cipher)
         }
-
-        /**
-         * JVM unit-test vault backed by an in-memory DataStore (no Android Main dispatcher).
-         */
-        fun createForTests(
-            cipher: KeystoreCipher = FakeKeystoreCipher(),
-            initial: Preferences = emptyPreferences(),
-        ): CredentialVault {
-            return CredentialVault(
-                dataStore = InMemoryPreferencesDataStore(initial),
-                cipher = cipher,
-            )
-        }
-
-        /** @deprecated Prefer [createForTests] without a shared file. */
-        fun createForTests(
-            file: File,
-            cipher: KeystoreCipher = FakeKeystoreCipher(),
-        ): CredentialVault {
-            // Keep signature for callers; ignore file to avoid multi-instance DataStore races.
-            return createForTests(cipher = cipher)
-        }
     }
-}
-
-/**
- * Minimal in-memory [DataStore] for unit tests. Avoids Android Main / file locks.
- */
-internal class InMemoryPreferencesDataStore(
-    initial: Preferences = emptyPreferences(),
-) : DataStore<Preferences> {
-    private val state = MutableStateFlow(initial)
-    private val mutex = Mutex()
-
-    override val data: Flow<Preferences> = state
-
-    override suspend fun updateData(transform: suspend (t: Preferences) -> Preferences): Preferences =
-        mutex.withLock {
-            val next = transform(state.value)
-            state.value = next
-            next
-        }
 }

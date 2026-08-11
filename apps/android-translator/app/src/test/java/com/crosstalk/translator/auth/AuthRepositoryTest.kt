@@ -35,7 +35,7 @@ class AuthRepositoryTest {
     fun setUp() {
         server = MockWebServer()
         server.start()
-        vault = CredentialVault.createForTests()
+        vault = createTestCredentialVault()
         val client = ApiClientFactory.create(allowCleartext = true)
         adapter = GeneratedApiAdapter(
             baseUrl = server.url("/").toString().trimEnd('/'),
@@ -267,7 +267,7 @@ class AuthRepositoryTest {
         override suspend fun listSessions(): List<SessionSummary> = emptyList()
         override suspend fun getSession(sessionId: String): SessionSummary = error("not used")
         override suspend fun listChannels(sessionId: String): List<ChannelInfo> = emptyList()
-        override suspend fun mintMediaTicket(sessionId: String, role: String): MediaTicket =
+        override suspend fun mintMediaTicket(sessionId: String): MediaTicket =
             error("not used")
     }
 }

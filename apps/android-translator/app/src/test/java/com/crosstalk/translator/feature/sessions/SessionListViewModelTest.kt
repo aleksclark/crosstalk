@@ -3,6 +3,7 @@ package com.crosstalk.translator.feature.sessions
 import com.crosstalk.translator.auth.AuthRepository
 import com.crosstalk.translator.auth.AuthState
 import com.crosstalk.translator.auth.CredentialVault
+import com.crosstalk.translator.auth.createTestCredentialVault
 import com.crosstalk.translator.auth.FakeKeystoreCipher
 import com.crosstalk.translator.contract.ApiException
 import com.crosstalk.translator.contract.AuthTokens
@@ -96,7 +97,7 @@ class SessionListViewModelTest {
     }
 
     private fun repo(api: CrossTalkApi): AuthRepository {
-        val vault = CredentialVault.createForTests(cipher = FakeKeystoreCipher())
+        val vault = createTestCredentialVault(cipher = FakeKeystoreCipher())
         return AuthRepository(api = api, vault = vault, accessTokenSink = {})
     }
 
@@ -121,7 +122,7 @@ class SessionListViewModelTest {
             sessions.first { it.id == sessionId }
 
         override suspend fun listChannels(sessionId: String): List<ChannelInfo> = emptyList()
-        override suspend fun mintMediaTicket(sessionId: String, role: String): MediaTicket =
+        override suspend fun mintMediaTicket(sessionId: String): MediaTicket =
             error("unused")
     }
 }

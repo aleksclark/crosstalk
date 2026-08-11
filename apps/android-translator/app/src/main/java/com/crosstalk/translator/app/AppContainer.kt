@@ -15,6 +15,7 @@ import com.crosstalk.translator.service.BoundAudioServiceGateway
 import com.crosstalk.translator.service.LastSessionStore
 import com.crosstalk.translator.util.SystemClock
 import okhttp3.OkHttpClient
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Manual constructor-injection graph for the single-module app.
@@ -67,15 +68,27 @@ class AppContainer(
     }
 
     /**
-     * Production factory: each connect/reconnect attempt may construct a fresh engine.
-     * Tests / instrumentation may replace this before service start.
+     * Production factory: each connect/reconnect attempt constructs a fresh engine.
+     * Not publicly mutable. Debug/test builds may install a factory via
+     * [installRtcEngineFactoryForTests]; release rejects replacement.
      */
-    @Volatile
-    var rtcEngineFactory: () -> RtcEngine = {
-        LibWebRtcEngine(
-            appContext = appContext,
-            httpClient = okHttpClient,
-        )
+    private val rtcEngineFactoryRef =
+        AtomicReference<() -> RtcEngine> {
+            LibWebRtcEngine(
+                appContext = appContext,
+                httpClient = okHttpClient,
+            )
+        }
+
+    val rtcEngineFactory: () -> RtcEngine
+        get() = rtcEngineFactoryRef.get()
+
+    /**
+     * Test-only injection. Release builds throw — production cannot swap in a fake RTC engine.
+     */
+    fun installRtcEngineFactoryForTests(factory: () -> RtcEngine) {
+        check(BuildConfig.DEBUG) { "RTC factory replacement is forbidden in release builds" }
+        rtcEngineFactoryRef.set(factory)
     }
 
     val audioServiceGateway: AudioServiceGateway by lazy {

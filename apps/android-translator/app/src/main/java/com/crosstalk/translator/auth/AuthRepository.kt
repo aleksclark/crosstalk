@@ -130,7 +130,7 @@ class AuthRepository(
         withAuthRetry { api.listChannels(sessionId) }
 
     suspend fun mintMediaTicket(sessionId: String): MediaTicket =
-        withAuthRetry { api.mintMediaTicket(sessionId = sessionId, role = "translator") }
+        withAuthRetry { api.mintMediaTicket(sessionId = sessionId) }
 
     /**
      * Returns a valid access token, refreshing once if needed.
