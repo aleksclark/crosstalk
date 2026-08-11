@@ -24,6 +24,19 @@ import (
 
 func setupTestServer(t *testing.T) (*httptest.Server, *auth.Service, crosstalk.UserService) {
 	t.Helper()
+	ts, authService, userStore, _, _ := setupTestServerFull(t)
+	return ts, authService, userStore
+}
+
+// setupTestServerFull returns the httptest server plus core services including ABC audio.
+func setupTestServerFull(t *testing.T) (
+	*httptest.Server,
+	*auth.Service,
+	crosstalk.UserService,
+	crosstalk.ABCService,
+	crosstalk.ABCAudioService,
+) {
+	t.Helper()
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 	db := pgtest.New(t)
 
@@ -32,6 +45,7 @@ func setupTestServer(t *testing.T) (*httptest.Server, *auth.Service, crosstalk.U
 	sourceStore := postgres.NewSourceStore(db)
 	mixStore := postgres.NewMixStore(db)
 	abcStore := postgres.NewABCStore(db)
+	abcAudioStore := postgres.NewABCAudioStore(db)
 	userStore := postgres.NewUserStore(db)
 	refreshTokenStore := postgres.NewRefreshTokenStore(db)
 
@@ -48,6 +62,7 @@ func setupTestServer(t *testing.T) (*httptest.Server, *auth.Service, crosstalk.U
 		Sources:       sourceStore,
 		Mix:           mixStore,
 		ABCs:          abcStore,
+		ABCAudio:      abcAudioStore,
 		Users:         userStore,
 		RefreshTokens: refreshTokenStore,
 		Auth:          authService,
@@ -58,7 +73,7 @@ func setupTestServer(t *testing.T) (*httptest.Server, *auth.Service, crosstalk.U
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 
-	return ts, authService, userStore
+	return ts, authService, userStore, abcStore, abcAudioStore
 }
 
 func createAdminAndLogin(t *testing.T, ts *httptest.Server, users crosstalk.UserService) string {

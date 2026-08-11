@@ -80,6 +80,7 @@ func setupAuthServer(t *testing.T) *authEnv {
 		Sources:       sourceStore,
 		Mix:           mixStore,
 		ABCs:          abcStore,
+		ABCAudio:      postgres.NewABCAudioStore(db),
 		Users:         userStore,
 		RefreshTokens: refreshTokenStore,
 		Auth:          authService,
