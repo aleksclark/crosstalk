@@ -69,6 +69,7 @@ func setupIntegrationServerWithID(t *testing.T, instanceID string) *testEnv {
 	refreshTokenStore := postgres.NewRefreshTokenStore(db)
 	recordingStore := postgres.NewRecordingStore(db)
 	ticketStore := postgres.NewMediaTicketStore(db)
+	abcAudioStore := postgres.NewABCAudioStore(db)
 	leases := ownership.NewStore(db.DB)
 	tickets := mediaticket.NewService(ticketStore, []byte("integration-media-secret"))
 
@@ -98,6 +99,7 @@ func setupIntegrationServerWithID(t *testing.T, instanceID string) *testEnv {
 		Sources:       sourceStore,
 		Mix:           mixStore,
 		ABCs:          abcStore,
+		ABCAudio:      abcAudioStore,
 		Users:         userStore,
 		RefreshTokens: refreshTokenStore,
 		Recordings:    recordingStore,

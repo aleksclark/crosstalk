@@ -67,6 +67,7 @@ func main() {
 	refreshTokenStore := postgres.NewRefreshTokenStore(db)
 	ticketStore := postgres.NewMediaTicketStore(db)
 	recordingStore := postgres.NewRecordingStore(db)
+	abcAudioStore := postgres.NewABCAudioStore(db)
 
 	leaseStore := ownership.NewStore(db.DB)
 	ticketService := mediaticket.NewService(ticketStore, []byte(cfg.MediaTicketSecret))
@@ -111,6 +112,7 @@ func main() {
 		Sources:       sourceStore,
 		Mix:           mixStore,
 		ABCs:          abcStore,
+		ABCAudio:      abcAudioStore,
 		Users:         userStore,
 		RefreshTokens: refreshTokenStore,
 		Recordings:    recordingStore,

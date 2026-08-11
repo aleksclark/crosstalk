@@ -80,11 +80,14 @@ type Server struct {
 	auth     *auth.Service
 	log      *slog.Logger
 
-	// abcPeers maps an ABC ID to its live signaling peer ID so a change to the
+	// abcPeers maps an ABC ID to its live signaling peer so a change to the
 	// ABC's session/monitor assignment can force the (auto-reconnecting) board
-	// to re-establish its connection and pick up the new routing.
+	// to re-establish its connection and pick up the new routing. Generation
+	// is monotonically increasing so stale close callbacks cannot remove a
+	// newer connection (see registerABCPeer / deregisterABCPeer).
 	abcPeersMu sync.Mutex
-	abcPeers   map[string]string
+	abcPeers   map[string]abcPeerEntry
+	abcPeerGen uint64
 }
 
 // NewServer creates a new API server with all routes registered.
@@ -115,7 +118,7 @@ func NewServer(cfg Config, svc Services, log *slog.Logger) *Server {
 		services: svc,
 		auth:     svc.Auth,
 		log:      log,
-		abcPeers: make(map[string]string),
+		abcPeers: make(map[string]abcPeerEntry),
 	}
 
 	s.registerRoutes()

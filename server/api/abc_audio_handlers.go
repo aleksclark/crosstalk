@@ -100,8 +100,9 @@ func (s *Server) handlePutABCAudioSettings(ctx context.Context, input *PutABCAud
 		resp.Status = http.StatusOK // 200 duplicate / no-op
 	}
 
-	// Lane D will hook reconcile/push after durable accept. Persist-only here.
-	// TODO(lane-d): best-effort reconcile/send AudioControlCommand after SetDesired.
+	// Best-effort push to a locally connected ABC. Durable state is already
+	// committed; send failure leaves pending and does not roll back desired.
+	s.reconcileABCAudio(input.ID)
 
 	return resp, nil
 }
