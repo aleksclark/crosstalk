@@ -7,3 +7,9 @@ export type {
   UseChannelMonitorOptions,
   UseChannelMonitorReturn,
 } from "./useChannelMonitor";
+export {
+  BroadcastShare,
+  buildBroadcastUrl,
+  redactBroadcastUrl,
+} from "./BroadcastShare";
+export type { BroadcastShareProps } from "./BroadcastShare";

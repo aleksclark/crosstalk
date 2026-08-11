@@ -2,8 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { getApiClient } from "../lib/api";
-import { SessionAudioManager } from "@crosstalk/session-audio";
-import { BroadcastShare } from "../components/BroadcastShare";
+import { BroadcastShare, SessionAudioManager } from "@crosstalk/session-audio";
 import type { components } from "@crosstalk/api-client";
 
 type Session = components["schemas"]["SessionOut"];

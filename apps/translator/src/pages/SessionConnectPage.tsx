@@ -1,12 +1,11 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { createApiClient } from "@crosstalk/api-client";
-import { SessionAudioManager } from "@crosstalk/session-audio";
+import { BroadcastShare, SessionAudioManager } from "@crosstalk/session-audio";
 import { VUMeter, useAudioLevel } from "@crosstalk/theme";
 import { useAuth } from "../hooks/useAuth";
 import { useWebRTC } from "../hooks/useWebRTC";
 import { WebRTCDebugPanel } from "../components/WebRTCDebugPanel";
-import { BroadcastShare } from "../components/BroadcastShare";
 
 export function SessionConnectPage() {
   const { id: sessionId } = useParams<{ id: string }>();
