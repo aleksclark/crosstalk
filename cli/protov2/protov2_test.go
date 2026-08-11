@@ -18,8 +18,6 @@ func TestBuildAndParseHelloV2(t *testing.T) {
 }
 
 func TestBuildAndParseWelcomeV2(t *testing.T) {
-	// Manually encode a Welcome at field 10 of ControlMessage.
-	// Welcome: peer_id=1, server_version=2, assigned_session_id=3
 	welcome := encodeTestWelcome("peer-123", "1.0.0", "session-456")
 
 	msg, err := protov2.ParseControlMessageV2(welcome)
@@ -59,7 +57,6 @@ func TestParseEmptyMessage(t *testing.T) {
 }
 
 func TestParseInvalidData(t *testing.T) {
-	// Invalid protobuf (truncated varint).
 	_, err := protov2.ParseControlMessageV2([]byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff})
 	require.Error(t, err)
 }
@@ -73,36 +70,175 @@ func TestBuildSourceStatusV2(t *testing.T) {
 	assert.Equal(t, protov2.PayloadSourceStatus, msg.Type)
 }
 
-// --- Test helpers: manually encode v2 messages ---
+func TestParseAudioControlCommand_Boundaries(t *testing.T) {
+	// volume 0, mute false, gain 100
+	vol0 := uint32(0)
+	muted := false
+	gain100 := uint32(100)
+	inner := encodeAudioCommand("abc-audio/id/1", 7,
+		"usb:0d8c:0014:serial:S1", &vol0, &muted,
+		"usb:0d8c:0014:serial:S1", &gain100,
+	)
+	msg, err := protov2.ParseControlMessageV2(wrapField(14, inner))
+	require.NoError(t, err)
+	assert.Equal(t, protov2.PayloadAudioControlCommand, msg.Type)
+	require.NotNil(t, msg.AudioControlCommand)
+	cmd := msg.AudioControlCommand
+	assert.Equal(t, "abc-audio/id/1", cmd.CommandID)
+	assert.Equal(t, uint64(7), cmd.DesiredRevision)
+	require.NotNil(t, cmd.Output)
+	require.NotNil(t, cmd.Output.VolumePercent)
+	assert.Equal(t, uint32(0), *cmd.Output.VolumePercent)
+	require.NotNil(t, cmd.Output.Muted)
+	assert.False(t, *cmd.Output.Muted)
+	require.NotNil(t, cmd.Input)
+	require.NotNil(t, cmd.Input.GainPercent)
+	assert.Equal(t, uint32(100), *cmd.Input.GainPercent)
+}
+
+func TestParseAudioControlCommand_UnknownFieldsSkipped(t *testing.T) {
+	var inner []byte
+	inner = appendTestString(inner, 1, "cmd-1")
+	inner = appendTestVarintField(inner, 2, 3)
+	// unknown field 99 string
+	inner = appendTestString(inner, 99, "future")
+	// output with unknown nested field
+	var out []byte
+	out = appendTestString(out, 1, "usb:0d8c:0014:path:x")
+	out = appendTestVarintField(out, 2, 50)
+	out = appendTestString(out, 77, "ignore-me")
+	inner = appendTestBytes(inner, 3, out)
+
+	msg, err := protov2.ParseControlMessageV2(wrapField(14, inner))
+	require.NoError(t, err)
+	require.NotNil(t, msg.AudioControlCommand)
+	assert.Equal(t, uint64(3), msg.AudioControlCommand.DesiredRevision)
+	require.NotNil(t, msg.AudioControlCommand.Output)
+	assert.Equal(t, uint32(50), *msg.AudioControlCommand.Output.VolumePercent)
+}
+
+func TestParseOversizedMessageRejected(t *testing.T) {
+	big := make([]byte, protov2.MaxControlMessageBytes+1)
+	_, err := protov2.ParseControlMessageV2(big)
+	require.Error(t, err)
+}
+
+func TestBuildAudioControlReport_Limits(t *testing.T) {
+	vol := uint32(0)
+	muted := false
+	gain := uint32(100)
+	rep := protov2.AudioControlReport{
+		CommandID:       "abc-audio/x/1",
+		DesiredRevision: 1,
+		Devices: []protov2.AudioDeviceCapability{
+			{
+				DeviceUID:      "usb:0d8c:0014:serial:S1",
+				Direction:      "both",
+				Backend:        "alsa",
+				SupportsVolume: true,
+				SupportsMute:   true,
+				SupportsGain:   true,
+			},
+		},
+		Output: &protov2.AudioOutputObserved{
+			DeviceUID:     "usb:0d8c:0014:serial:S1",
+			VolumePercent: &vol,
+			Muted:         &muted,
+			VolumeState:   protov2.AudioApplyApplied,
+			MuteState:     protov2.AudioApplyApplied,
+		},
+		Input: &protov2.AudioInputObserved{
+			DeviceUID:   "usb:0d8c:0014:serial:S1",
+			GainPercent: &gain,
+			GainState:   protov2.AudioApplyApplied,
+		},
+	}
+	data, err := protov2.BuildAudioControlReport(rep)
+	require.NoError(t, err)
+	require.NotEmpty(t, data)
+	// field 3 payload type when parsed (we only parse command path; type is set to last field)
+	msg, err := protov2.ParseControlMessageV2(data)
+	require.NoError(t, err)
+	assert.Equal(t, protov2.PayloadAudioControlReport, msg.Type)
+
+	// Oversized device list
+	tooMany := protov2.AudioControlReport{Devices: make([]protov2.AudioDeviceCapability, protov2.MaxDevices+1)}
+	for i := range tooMany.Devices {
+		tooMany.Devices[i].DeviceUID = "x"
+	}
+	_, err = protov2.BuildAudioControlReport(tooMany)
+	require.Error(t, err)
+}
+
+func TestBuildAudioControlReport_ErrorDetailCap(t *testing.T) {
+	detail := string(make([]byte, protov2.MaxErrorDetailBytes+1))
+	for i := range detail {
+		detail = detail[:i] + "a" + detail[i+1:]
+	}
+	_, err := protov2.BuildAudioControlReport(protov2.AudioControlReport{
+		ErrorDetail: detail,
+	})
+	require.Error(t, err)
+}
+
+// --- Test helpers ---
 
 func encodeTestWelcome(peerID, serverVersion, assignedSession string) []byte {
-	// Build Welcome inner message.
 	var inner []byte
 	inner = appendTestString(inner, 1, peerID)
 	inner = appendTestString(inner, 2, serverVersion)
 	if assignedSession != "" {
 		inner = appendTestString(inner, 3, assignedSession)
 	}
-	// Wrap in ControlMessage field 10.
-	var msg []byte
-	msg = appendTestBytes(msg, 10, inner)
-	return msg
+	return wrapField(10, inner)
 }
 
 func encodeTestRestart(reason string) []byte {
 	var inner []byte
 	inner = appendTestString(inner, 1, reason)
-	var msg []byte
-	msg = appendTestBytes(msg, 12, inner)
-	return msg
+	return wrapField(12, inner)
 }
 
 func encodeTestSessionAssignment(sessionID, role string) []byte {
 	var inner []byte
 	inner = appendTestString(inner, 1, sessionID)
 	inner = appendTestString(inner, 2, role)
+	return wrapField(13, inner)
+}
+
+func encodeAudioCommand(cmdID string, rev uint64, outUID string, vol *uint32, muted *bool, inUID string, gain *uint32) []byte {
+	var inner []byte
+	inner = appendTestString(inner, 1, cmdID)
+	inner = appendTestVarintField(inner, 2, rev)
+	if outUID != "" {
+		var out []byte
+		out = appendTestString(out, 1, outUID)
+		if vol != nil {
+			out = appendTestVarintField(out, 2, uint64(*vol))
+		}
+		if muted != nil {
+			if *muted {
+				out = appendTestVarintField(out, 3, 1)
+			} else {
+				out = appendTestVarintField(out, 3, 0)
+			}
+		}
+		inner = appendTestBytes(inner, 3, out)
+	}
+	if inUID != "" {
+		var in []byte
+		in = appendTestString(in, 1, inUID)
+		if gain != nil {
+			in = appendTestVarintField(in, 2, uint64(*gain))
+		}
+		inner = appendTestBytes(inner, 4, in)
+	}
+	return inner
+}
+
+func wrapField(fieldNum int, inner []byte) []byte {
 	var msg []byte
-	msg = appendTestBytes(msg, 13, inner)
+	msg = appendTestBytes(msg, fieldNum, inner)
 	return msg
 }
 
@@ -115,6 +251,13 @@ func appendTestBytes(data []byte, fieldNum int, value []byte) []byte {
 	data = appendTestVarint(data, tag)
 	data = appendTestVarint(data, uint64(len(value)))
 	data = append(data, value...)
+	return data
+}
+
+func appendTestVarintField(data []byte, fieldNum int, v uint64) []byte {
+	tag := uint64(fieldNum << 3)
+	data = appendTestVarint(data, tag)
+	data = appendTestVarint(data, v)
 	return data
 }
 
