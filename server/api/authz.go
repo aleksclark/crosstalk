@@ -88,6 +88,22 @@ func (s *Server) filterSessionsForClaims(ctx context.Context, claims *auth.Claim
 	return out
 }
 
+// assignedSessionIDs returns the translator's assigned session IDs.
+// Fail-closed: lookup errors surface to the caller.
+func (s *Server) assignedSessionIDs(ctx context.Context, translatorID string) ([]string, error) {
+	if s.services.Users == nil {
+		return nil, fmt.Errorf("users service not configured")
+	}
+	ids, err := s.services.Users.GetAssignedSessions(ctx, translatorID)
+	if err != nil {
+		return nil, err
+	}
+	if ids == nil {
+		return []string{}, nil
+	}
+	return ids, nil
+}
+
 // sessionToOutForClaims maps a session for API responses. Broadcast tokens are
 // admin-only on list/get to avoid leaking share URLs; translators use the
 // dedicated broadcast-url endpoint after assignment checks.

@@ -5,6 +5,9 @@ import "context"
 // SessionService manages sessions.
 type SessionService interface {
 	List(ctx context.Context) ([]Session, error)
+	// ListPage returns a bounded, sorted, optionally filtered page of sessions.
+	// Assignment scope (RestrictToIDs) is applied before pagination.
+	ListPage(ctx context.Context, q ListQuery) (SessionPage, error)
 	Get(ctx context.Context, id string) (*Session, error)
 	Create(ctx context.Context, s *Session) error
 	Update(ctx context.Context, s *Session) error
@@ -45,6 +48,9 @@ type MixService interface {
 // ABCService manages Audio Broadcast Clients.
 type ABCService interface {
 	List(ctx context.Context) ([]ABC, error)
+	// ListPage returns a bounded page of ABCs with batch-resolved session names.
+	// RestrictToIDs scopes by assigned session_id before pagination.
+	ListPage(ctx context.Context, q ListQuery) (ABCPage, error)
 	Get(ctx context.Context, id string) (*ABC, error)
 	Create(ctx context.Context, abc *ABC) error
 	Update(ctx context.Context, abc *ABC) error
@@ -61,6 +67,9 @@ type UserService interface {
 	Update(ctx context.Context, u *User) error
 	Delete(ctx context.Context, id string) error
 	ListByRole(ctx context.Context, role string) ([]User, error)
+	// ListTranslatorsPage returns a bounded page of translator accounts with
+	// assigned session IDs and names resolved in one bounded lookup.
+	ListTranslatorsPage(ctx context.Context, q ListQuery) (TranslatorPage, error)
 	AssignSessions(ctx context.Context, translatorID string, sessionIDs []string) error
 	GetAssignedSessions(ctx context.Context, translatorID string) ([]string, error)
 }

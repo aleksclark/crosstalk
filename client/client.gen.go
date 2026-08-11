@@ -41,16 +41,16 @@ func (e CreateChannelRequestBodyType) Valid() bool {
 
 // Defines values for CreateUserRequestBodyRole.
 const (
-	Admin      CreateUserRequestBodyRole = "admin"
-	Translator CreateUserRequestBodyRole = "translator"
+	CreateUserRequestBodyRoleAdmin      CreateUserRequestBodyRole = "admin"
+	CreateUserRequestBodyRoleTranslator CreateUserRequestBodyRole = "translator"
 )
 
 // Valid indicates whether the value is a known member of the CreateUserRequestBodyRole enum.
 func (e CreateUserRequestBodyRole) Valid() bool {
 	switch e {
-	case Admin:
+	case CreateUserRequestBodyRoleAdmin:
 		return true
-	case Translator:
+	case CreateUserRequestBodyRoleTranslator:
 		return true
 	default:
 		return false
@@ -75,6 +75,150 @@ func (e UpdateChannelRequestBodyType) Valid() bool {
 	}
 }
 
+// Defines values for WebRTCTokenRequestBodyRole.
+const (
+	WebRTCTokenRequestBodyRoleAbc        WebRTCTokenRequestBodyRole = "abc"
+	WebRTCTokenRequestBodyRoleAdmin      WebRTCTokenRequestBodyRole = "admin"
+	WebRTCTokenRequestBodyRoleListener   WebRTCTokenRequestBodyRole = "listener"
+	WebRTCTokenRequestBodyRoleTranslator WebRTCTokenRequestBodyRole = "translator"
+)
+
+// Valid indicates whether the value is a known member of the WebRTCTokenRequestBodyRole enum.
+func (e WebRTCTokenRequestBodyRole) Valid() bool {
+	switch e {
+	case WebRTCTokenRequestBodyRoleAbc:
+		return true
+	case WebRTCTokenRequestBodyRoleAdmin:
+		return true
+	case WebRTCTokenRequestBodyRoleListener:
+		return true
+	case WebRTCTokenRequestBodyRoleTranslator:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListAbcsParamsSort.
+const (
+	ListAbcsParamsSortCreatedAt ListAbcsParamsSort = "created_at"
+	ListAbcsParamsSortId        ListAbcsParamsSort = "id"
+	ListAbcsParamsSortName      ListAbcsParamsSort = "name"
+)
+
+// Valid indicates whether the value is a known member of the ListAbcsParamsSort enum.
+func (e ListAbcsParamsSort) Valid() bool {
+	switch e {
+	case ListAbcsParamsSortCreatedAt:
+		return true
+	case ListAbcsParamsSortId:
+		return true
+	case ListAbcsParamsSortName:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListAbcsParamsDirection.
+const (
+	ListAbcsParamsDirectionAsc  ListAbcsParamsDirection = "asc"
+	ListAbcsParamsDirectionDesc ListAbcsParamsDirection = "desc"
+)
+
+// Valid indicates whether the value is a known member of the ListAbcsParamsDirection enum.
+func (e ListAbcsParamsDirection) Valid() bool {
+	switch e {
+	case ListAbcsParamsDirectionAsc:
+		return true
+	case ListAbcsParamsDirectionDesc:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListSessionsParamsSort.
+const (
+	ListSessionsParamsSortCreatedAt ListSessionsParamsSort = "created_at"
+	ListSessionsParamsSortId        ListSessionsParamsSort = "id"
+	ListSessionsParamsSortName      ListSessionsParamsSort = "name"
+	ListSessionsParamsSortUpdatedAt ListSessionsParamsSort = "updated_at"
+)
+
+// Valid indicates whether the value is a known member of the ListSessionsParamsSort enum.
+func (e ListSessionsParamsSort) Valid() bool {
+	switch e {
+	case ListSessionsParamsSortCreatedAt:
+		return true
+	case ListSessionsParamsSortId:
+		return true
+	case ListSessionsParamsSortName:
+		return true
+	case ListSessionsParamsSortUpdatedAt:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListSessionsParamsDirection.
+const (
+	ListSessionsParamsDirectionAsc  ListSessionsParamsDirection = "asc"
+	ListSessionsParamsDirectionDesc ListSessionsParamsDirection = "desc"
+)
+
+// Valid indicates whether the value is a known member of the ListSessionsParamsDirection enum.
+func (e ListSessionsParamsDirection) Valid() bool {
+	switch e {
+	case ListSessionsParamsDirectionAsc:
+		return true
+	case ListSessionsParamsDirectionDesc:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListTranslatorsParamsSort.
+const (
+	CreatedAt ListTranslatorsParamsSort = "created_at"
+	Id        ListTranslatorsParamsSort = "id"
+	Username  ListTranslatorsParamsSort = "username"
+)
+
+// Valid indicates whether the value is a known member of the ListTranslatorsParamsSort enum.
+func (e ListTranslatorsParamsSort) Valid() bool {
+	switch e {
+	case CreatedAt:
+		return true
+	case Id:
+		return true
+	case Username:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListTranslatorsParamsDirection.
+const (
+	Asc  ListTranslatorsParamsDirection = "asc"
+	Desc ListTranslatorsParamsDirection = "desc"
+)
+
+// Valid indicates whether the value is a known member of the ListTranslatorsParamsDirection enum.
+func (e ListTranslatorsParamsDirection) Valid() bool {
+	switch e {
+	case Asc:
+		return true
+	case Desc:
+		return true
+	default:
+		return false
+	}
+}
+
 // ABCOut defines model for ABCOut.
 type ABCOut struct {
 	// Schema A URL to the JSON Schema for this object.
@@ -92,11 +236,17 @@ type ABCOut struct {
 	// LastSeen Last time ABC was seen
 	LastSeen *time.Time `json:"last_seen,omitempty"`
 
+	// MonitorChannelId Channel the ABC monitors for return audio
+	MonitorChannelId *string `json:"monitor_channel_id,omitempty"`
+
 	// Name ABC name
 	Name string `json:"name"`
 
 	// SessionId Assigned session ID
 	SessionId *string `json:"session_id,omitempty"`
+
+	// SessionName Assigned session name (batch-resolved)
+	SessionName *string `json:"session_name,omitempty"`
 }
 
 // AssignTranslatorSessionsRequestBody defines model for AssignTranslatorSessionsRequestBody.
@@ -336,6 +486,12 @@ type ListABCsResponseBody struct {
 	// Schema A URL to the JSON Schema for this object.
 	Schema *string   `json:"$schema,omitempty"`
 	Data   *[]ABCOut `json:"data"`
+
+	// NextCursor Opaque cursor for the next page; empty when exhausted
+	NextCursor *string `json:"next_cursor,omitempty"`
+
+	// Total Total matching rows in scope (honest PostgreSQL count)
+	Total *int64 `json:"total,omitempty"`
 }
 
 // ListChannelsResponseBody defines model for ListChannelsResponseBody.
@@ -357,6 +513,12 @@ type ListSessionsResponseBody struct {
 	// Schema A URL to the JSON Schema for this object.
 	Schema *string       `json:"$schema,omitempty"`
 	Data   *[]SessionOut `json:"data"`
+
+	// NextCursor Opaque cursor for the next page; empty when exhausted
+	NextCursor *string `json:"next_cursor,omitempty"`
+
+	// Total Total matching rows in scope (honest PostgreSQL count)
+	Total *int64 `json:"total,omitempty"`
 }
 
 // ListSourcesResponseBody defines model for ListSourcesResponseBody.
@@ -371,6 +533,12 @@ type ListTranslatorsResponseBody struct {
 	// Schema A URL to the JSON Schema for this object.
 	Schema *string          `json:"$schema,omitempty"`
 	Data   *[]TranslatorOut `json:"data"`
+
+	// NextCursor Opaque cursor for the next page; empty when exhausted
+	NextCursor *string `json:"next_cursor,omitempty"`
+
+	// Total Total matching rows (honest PostgreSQL count)
+	Total *int64 `json:"total,omitempty"`
 }
 
 // ListUsersResponseBody defines model for ListUsersResponseBody.
@@ -579,6 +747,9 @@ type TranslatorOut struct {
 	// Id User ULID
 	Id string `json:"id"`
 
+	// SessionNames Assigned session ID to name map (bounded lookup)
+	SessionNames *map[string]string `json:"session_names,omitempty"`
+
 	// Sessions Assigned session IDs
 	Sessions *[]string `json:"sessions,omitempty"`
 
@@ -590,6 +761,9 @@ type TranslatorOut struct {
 type UpdateABCRequestBody struct {
 	// Schema A URL to the JSON Schema for this object.
 	Schema *string `json:"$schema,omitempty"`
+
+	// MonitorChannelId Channel the ABC monitors for return audio
+	MonitorChannelId *string `json:"monitor_channel_id,omitempty"`
 
 	// Name ABC name
 	Name *string `json:"name,omitempty"`
@@ -671,15 +845,51 @@ type UserOut struct {
 	Username string `json:"username"`
 }
 
+// WebRTCTokenRequestBody defines model for WebRTCTokenRequestBody.
+type WebRTCTokenRequestBody struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+
+	// Listen Optional channel name/id/type selectors to narrow listen capability
+	Listen *[]string `json:"listen,omitempty"`
+
+	// Produce Optional channel name/id/type selectors to narrow produce capability
+	Produce *[]string `json:"produce,omitempty"`
+
+	// Role Requested role (server may override from identity)
+	Role *WebRTCTokenRequestBodyRole `json:"role,omitempty"`
+
+	// SessionId Session to connect to
+	SessionId string `json:"session_id"`
+}
+
+// WebRTCTokenRequestBodyRole Requested role (server may override from identity)
+type WebRTCTokenRequestBodyRole string
+
 // WebRTCTokenResponseBody defines model for WebRTCTokenResponseBody.
 type WebRTCTokenResponseBody struct {
 	// Schema A URL to the JSON Schema for this object.
 	Schema *string `json:"$schema,omitempty"`
 
-	// ExpiresAt Token expiration time
+	// ExpiresAt Ticket expiration time
 	ExpiresAt time.Time `json:"expires_at"`
 
-	// Token Short-lived WebRTC signaling token
+	// ListenChannelIds Channel IDs the ticket may listen to
+	ListenChannelIds *[]string `json:"listen_channel_ids"`
+
+	// OwnerGeneration Fenced owner generation bound into the ticket
+	OwnerGeneration int64 `json:"owner_generation"`
+
+	// ProduceChannelIds Channel IDs the ticket may produce into
+	ProduceChannelIds *[]string `json:"produce_channel_ids"`
+
+	// Role Bound role
+	Role string `json:"role"`
+
+	// SessionId Bound session ID
+	SessionId string `json:"session_id"`
+
+	// Token One-time media admission ticket (JWT or opaque nonce)
 	Token string `json:"token"`
 }
 
@@ -688,9 +898,30 @@ type bearerAuthContextKey string
 
 // ListAbcsParams defines parameters for ListAbcs.
 type ListAbcsParams struct {
+	// Q Search by ABC name
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Sort Sort field (allowlisted)
+	Sort *ListAbcsParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
+
+	// Direction Sort direction
+	Direction *ListAbcsParamsDirection `form:"direction,omitempty" json:"direction,omitempty"`
+
+	// Limit Page size (default 25, max 100)
+	Limit *int64 `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor Opaque pagination cursor
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
 	// Authorization Bearer token
 	Authorization *string `json:"Authorization,omitempty"`
 }
+
+// ListAbcsParamsSort defines parameters for ListAbcs.
+type ListAbcsParamsSort string
+
+// ListAbcsParamsDirection defines parameters for ListAbcs.
+type ListAbcsParamsDirection string
 
 // CreateAbcParams defines parameters for CreateAbc.
 type CreateAbcParams struct {
@@ -730,9 +961,30 @@ type GetRecordingDownloadParams struct {
 
 // ListSessionsParams defines parameters for ListSessions.
 type ListSessionsParams struct {
+	// Q Search by session name
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Sort Sort field (allowlisted)
+	Sort *ListSessionsParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
+
+	// Direction Sort direction
+	Direction *ListSessionsParamsDirection `form:"direction,omitempty" json:"direction,omitempty"`
+
+	// Limit Page size (default 25, max 100)
+	Limit *int64 `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor Opaque pagination cursor
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
 	// Authorization Bearer token
 	Authorization *string `json:"Authorization,omitempty"`
 }
+
+// ListSessionsParamsSort defines parameters for ListSessions.
+type ListSessionsParamsSort string
+
+// ListSessionsParamsDirection defines parameters for ListSessions.
+type ListSessionsParamsDirection string
 
 // CreateSessionParams defines parameters for CreateSession.
 type CreateSessionParams struct {
@@ -820,9 +1072,30 @@ type ListSourcesParams struct {
 
 // ListTranslatorsParams defines parameters for ListTranslators.
 type ListTranslatorsParams struct {
+	// Q Search by username
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Sort Sort field (allowlisted)
+	Sort *ListTranslatorsParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
+
+	// Direction Sort direction
+	Direction *ListTranslatorsParamsDirection `form:"direction,omitempty" json:"direction,omitempty"`
+
+	// Limit Page size (default 25, max 100)
+	Limit *int64 `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor Opaque pagination cursor
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
 	// Authorization Bearer token
 	Authorization *string `json:"Authorization,omitempty"`
 }
+
+// ListTranslatorsParamsSort defines parameters for ListTranslators.
+type ListTranslatorsParamsSort string
+
+// ListTranslatorsParamsDirection defines parameters for ListTranslators.
+type ListTranslatorsParamsDirection string
 
 // CreateTranslatorParams defines parameters for CreateTranslator.
 type CreateTranslatorParams struct {
@@ -913,6 +1186,9 @@ type AssignTranslatorSessionsJSONRequestBody = AssignTranslatorSessionsRequestBo
 
 // CreateUserJSONRequestBody defines body for CreateUser for application/json ContentType.
 type CreateUserJSONRequestBody = CreateUserRequestBody
+
+// GetWebrtcTokenJSONRequestBody defines body for GetWebrtcToken for application/json ContentType.
+type GetWebrtcTokenJSONRequestBody = WebRTCTokenRequestBody
 
 // RequestEditorFn  is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -1117,8 +1393,10 @@ type ClientInterface interface {
 	// DeleteUser request
 	DeleteUser(ctx context.Context, id string, params *DeleteUserParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetWebrtcToken request
-	GetWebrtcToken(ctx context.Context, params *GetWebrtcTokenParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// GetWebrtcTokenWithBody request with any body
+	GetWebrtcTokenWithBody(ctx context.Context, params *GetWebrtcTokenParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	GetWebrtcToken(ctx context.Context, params *GetWebrtcTokenParams, body GetWebrtcTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 func (c *Client) ListAbcs(ctx context.Context, params *ListAbcsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -1697,8 +1975,20 @@ func (c *Client) DeleteUser(ctx context.Context, id string, params *DeleteUserPa
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetWebrtcToken(ctx context.Context, params *GetWebrtcTokenParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetWebrtcTokenRequest(c.Server, params)
+func (c *Client) GetWebrtcTokenWithBody(ctx context.Context, params *GetWebrtcTokenParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetWebrtcTokenRequestWithBody(c.Server, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetWebrtcToken(ctx context.Context, params *GetWebrtcTokenParams, body GetWebrtcTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetWebrtcTokenRequest(c.Server, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -1726,6 +2016,81 @@ func NewListAbcsRequest(server string, params *ListAbcsParams) (*http.Request, e
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Sort != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "sort", *params.Sort, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Direction != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "direction", *params.Direction, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -2201,6 +2566,81 @@ func NewListSessionsRequest(server string, params *ListSessionsParams) (*http.Re
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Sort != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "sort", *params.Sort, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Direction != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "direction", *params.Direction, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -3051,6 +3491,81 @@ func NewListTranslatorsRequest(server string, params *ListTranslatorsParams) (*h
 		return nil, err
 	}
 
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Sort != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "sort", *params.Sort, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Direction != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "direction", *params.Direction, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
@@ -3448,8 +3963,19 @@ func NewDeleteUserRequest(server string, id string, params *DeleteUserParams) (*
 	return req, nil
 }
 
-// NewGetWebrtcTokenRequest generates requests for GetWebrtcToken
-func NewGetWebrtcTokenRequest(server string, params *GetWebrtcTokenParams) (*http.Request, error) {
+// NewGetWebrtcTokenRequest calls the generic GetWebrtcToken builder with application/json body
+func NewGetWebrtcTokenRequest(server string, params *GetWebrtcTokenParams, body GetWebrtcTokenJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewGetWebrtcTokenRequestWithBody(server, params, "application/json", bodyReader)
+}
+
+// NewGetWebrtcTokenRequestWithBody generates requests for GetWebrtcToken with any type of body
+func NewGetWebrtcTokenRequestWithBody(server string, params *GetWebrtcTokenParams, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -3467,10 +3993,12 @@ func NewGetWebrtcTokenRequest(server string, params *GetWebrtcTokenParams) (*htt
 		return nil, err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	if params != nil {
 
@@ -3663,8 +4191,10 @@ type ClientWithResponsesInterface interface {
 	// DeleteUserWithResponse request
 	DeleteUserWithResponse(ctx context.Context, id string, params *DeleteUserParams, reqEditors ...RequestEditorFn) (*DeleteUserResponse, error)
 
-	// GetWebrtcTokenWithResponse request
-	GetWebrtcTokenWithResponse(ctx context.Context, params *GetWebrtcTokenParams, reqEditors ...RequestEditorFn) (*GetWebrtcTokenResponse, error)
+	// GetWebrtcTokenWithBodyWithResponse request with any body
+	GetWebrtcTokenWithBodyWithResponse(ctx context.Context, params *GetWebrtcTokenParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*GetWebrtcTokenResponse, error)
+
+	GetWebrtcTokenWithResponse(ctx context.Context, params *GetWebrtcTokenParams, body GetWebrtcTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*GetWebrtcTokenResponse, error)
 }
 
 type ListAbcsResponse struct {
@@ -5170,9 +5700,17 @@ func (c *ClientWithResponses) DeleteUserWithResponse(ctx context.Context, id str
 	return ParseDeleteUserResponse(rsp)
 }
 
-// GetWebrtcTokenWithResponse request returning *GetWebrtcTokenResponse
-func (c *ClientWithResponses) GetWebrtcTokenWithResponse(ctx context.Context, params *GetWebrtcTokenParams, reqEditors ...RequestEditorFn) (*GetWebrtcTokenResponse, error) {
-	rsp, err := c.GetWebrtcToken(ctx, params, reqEditors...)
+// GetWebrtcTokenWithBodyWithResponse request with arbitrary body returning *GetWebrtcTokenResponse
+func (c *ClientWithResponses) GetWebrtcTokenWithBodyWithResponse(ctx context.Context, params *GetWebrtcTokenParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*GetWebrtcTokenResponse, error) {
+	rsp, err := c.GetWebrtcTokenWithBody(ctx, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetWebrtcTokenResponse(rsp)
+}
+
+func (c *ClientWithResponses) GetWebrtcTokenWithResponse(ctx context.Context, params *GetWebrtcTokenParams, body GetWebrtcTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*GetWebrtcTokenResponse, error) {
+	rsp, err := c.GetWebrtcToken(ctx, params, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
