@@ -299,6 +299,61 @@ END $$`,
 			`CREATE INDEX IF NOT EXISTS media_tickets_expires_at_idx ON media_tickets (expires_at)`,
 		},
 	},
+	{
+		version: 4,
+		name:    "abc_audio_control",
+		statements: []string{
+			`CREATE TABLE abc_audio_settings (
+    abc_id TEXT PRIMARY KEY REFERENCES abcs(id) ON DELETE CASCADE,
+    desired_revision BIGINT NOT NULL DEFAULT 0 CHECK (desired_revision >= 0),
+    desired_output_device_uid TEXT,
+    desired_output_volume_percent SMALLINT CHECK (desired_output_volume_percent BETWEEN 0 AND 100),
+    desired_output_muted BOOLEAN,
+    desired_input_device_uid TEXT,
+    desired_input_gain_percent SMALLINT CHECK (desired_input_gain_percent BETWEEN 0 AND 100),
+    command_id TEXT,
+    reported_revision BIGINT NOT NULL DEFAULT 0 CHECK (reported_revision >= 0),
+    reported_command_id TEXT,
+    reported_output_device_uid TEXT,
+    observed_output_volume_percent SMALLINT CHECK (observed_output_volume_percent BETWEEN 0 AND 100),
+    observed_output_muted BOOLEAN,
+    reported_input_device_uid TEXT,
+    observed_input_gain_percent SMALLINT CHECK (observed_input_gain_percent BETWEEN 0 AND 100),
+    output_volume_state TEXT NOT NULL DEFAULT 'unknown'
+      CHECK (output_volume_state IN ('unknown','pending','applied','unsupported','error','device_mismatch')),
+    output_mute_state TEXT NOT NULL DEFAULT 'unknown'
+      CHECK (output_mute_state IN ('unknown','pending','applied','unsupported','error','device_mismatch')),
+    input_gain_state TEXT NOT NULL DEFAULT 'unknown'
+      CHECK (input_gain_state IN ('unknown','pending','applied','unsupported','error','device_mismatch')),
+    error_code TEXT NOT NULL DEFAULT '',
+    error_detail TEXT NOT NULL DEFAULT '',
+    capabilities JSONB NOT NULL DEFAULT '{}'::jsonb,
+    reported_at TIMESTAMPTZ,
+    desired_updated_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK ((desired_revision = 0) = (desired_output_device_uid IS NULL)),
+    CHECK ((desired_revision = 0) = (desired_input_device_uid IS NULL)),
+    CHECK ((desired_revision = 0) = (desired_output_volume_percent IS NULL)),
+    CHECK ((desired_revision = 0) = (desired_output_muted IS NULL)),
+    CHECK ((desired_revision = 0) = (desired_input_gain_percent IS NULL))
+)`,
+			`CREATE TABLE abc_audio_audit_events (
+    id TEXT PRIMARY KEY,
+    abc_id TEXT NOT NULL REFERENCES abcs(id) ON DELETE CASCADE,
+    request_id TEXT NOT NULL,
+    actor_user_id TEXT NOT NULL,
+    actor_role TEXT NOT NULL,
+    desired_revision BIGINT NOT NULL,
+    previous_desired JSONB NOT NULL,
+    new_desired JSONB NOT NULL,
+    outcome TEXT NOT NULL CHECK (outcome IN ('accepted','no_op')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (abc_id, request_id)
+)`,
+			`CREATE INDEX abc_audio_audit_events_abc_created_idx
+    ON abc_audio_audit_events (abc_id, created_at DESC)`,
+		},
+	},
 }
 
 func generateToken() string {
