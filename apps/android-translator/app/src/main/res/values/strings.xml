@@ -1,4 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">CrossTalk Translator</string>
+
+    <!-- Foreground service notification (Phase 4) -->
+    <string name="notification_channel_name">Live translation</string>
+    <string name="notification_channel_description">Ongoing translator audio session</string>
+    <string name="notification_default_title">CrossTalk Translator</string>
+    <string name="notification_unknown_channel">Unknown channel</string>
+    <string name="notification_body">Listening: %1$s • Speaking to: %2$s • %3$s</string>
+    <string name="notification_action_mute">Mute</string>
+    <string name="notification_action_unmute">Unmute</string>
+    <string name="notification_action_stop">Stop</string>
 </resources>
