@@ -2,14 +2,17 @@ package com.crosstalk.translator.app
 
 import android.content.Context
 import com.crosstalk.translator.BuildConfig
+import com.crosstalk.translator.auth.AuthRepository
+import com.crosstalk.translator.auth.CredentialVault
 import com.crosstalk.translator.contract.CrossTalkApi
+import com.crosstalk.translator.contract.GeneratedApiAdapter
 import com.crosstalk.translator.network.ApiClientFactory
+import com.crosstalk.translator.network.TlsPolicy
 import com.crosstalk.translator.util.SystemClock
 import okhttp3.OkHttpClient
 
 /**
  * Manual constructor-injection graph for the single-module app.
- * Later phases wire auth, RTC, and service gateways here.
  */
 class AppContainer(
     context: Context,
@@ -18,32 +21,41 @@ class AppContainer(
 
     val clock = SystemClock()
 
+    val apiBaseUrl: String = BuildConfig.API_BASE_URL
+    val allowCleartext: Boolean = BuildConfig.ALLOW_CLEARTEXT
+    val deploymentIdentity: String = apiBaseUrl
+
+    init {
+        TlsPolicy.assertSafeBaseUrl(apiBaseUrl, allowCleartext = allowCleartext)
+    }
+
     val okHttpClient: OkHttpClient by lazy {
         ApiClientFactory.create(
-            allowCleartext = BuildConfig.ALLOW_CLEARTEXT,
+            allowCleartext = allowCleartext,
         )
     }
 
-    /**
-     * REST surface. Phase 2 binds the generated OpenAPI adapter.
-     * Phase 1 exposes a failing placeholder so callers do not silently no-op.
-     */
-    val api: CrossTalkApi by lazy {
-        object : CrossTalkApi {
-            private fun notImplemented(): Nothing =
-                error("CrossTalkApi adapter is not wired until Phase 2")
-
-            override suspend fun login(username: String, password: String) = notImplemented()
-            override suspend fun refresh(refreshToken: String) = notImplemented()
-            override suspend fun logout(refreshToken: String) = notImplemented()
-            override suspend fun listSessions() = notImplemented()
-            override suspend fun getSession(sessionId: String) = notImplemented()
-            override suspend fun listChannels(sessionId: String) = notImplemented()
-            override suspend fun mintMediaTicket(sessionId: String, role: String) = notImplemented()
-        }
+    private val generatedApi: GeneratedApiAdapter by lazy {
+        GeneratedApiAdapter(
+            baseUrl = apiBaseUrl,
+            client = okHttpClient,
+        )
     }
 
-    val apiBaseUrl: String = BuildConfig.API_BASE_URL
+    val api: CrossTalkApi
+        get() = generatedApi
+
+    val credentialVault: CredentialVault by lazy {
+        CredentialVault.create(appContext)
+    }
+
+    val authRepository: AuthRepository by lazy {
+        AuthRepository(
+            api = generatedApi,
+            vault = credentialVault,
+            accessTokenSink = { token -> generatedApi.setAccessToken(token) },
+        )
+    }
 
     fun applicationContext(): Context = appContext
 }
