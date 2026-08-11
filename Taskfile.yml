@@ -203,3 +203,36 @@ tasks:
       ANDROID_SDK_ROOT: '{{.ANDROID_SDK_ROOT | default "/opt/android-sdk"}}'
     cmds:
       - bash scripts/check-openapi-generated.sh
+
+  test:android:unit:
+    desc: Android translator unit tests + lint (JDK 17)
+    dir: apps/android-translator
+    env:
+      JAVA_HOME: '{{.JAVA_HOME | default "/usr/lib/jvm/java-17-openjdk"}}'
+      ANDROID_HOME: '{{.ANDROID_HOME | default "/opt/android-sdk"}}'
+      ANDROID_SDK_ROOT: '{{.ANDROID_SDK_ROOT | default "/opt/android-sdk"}}'
+    cmds:
+      - |
+        if [ ! -f local.properties ]; then
+          printf 'sdk.dir=%s\n' "${ANDROID_HOME}" > local.properties
+        fi
+      - ./gradlew --no-daemon :app:testDebugUnitTest :app:lintDebug
+
+  test:android:connected:
+    desc: Android translator connectedDebugAndroidTest (requires device/emulator)
+    dir: apps/android-translator
+    env:
+      JAVA_HOME: '{{.JAVA_HOME | default "/usr/lib/jvm/java-17-openjdk"}}'
+      ANDROID_HOME: '{{.ANDROID_HOME | default "/opt/android-sdk"}}'
+      ANDROID_SDK_ROOT: '{{.ANDROID_SDK_ROOT | default "/opt/android-sdk"}}'
+    cmds:
+      - |
+        if [ ! -f local.properties ]; then
+          printf 'sdk.dir=%s\n' "${ANDROID_HOME}" > local.properties
+        fi
+      - ./gradlew --no-daemon :app:connectedDebugAndroidTest
+
+  test:android:golden:
+    desc: Physical/emulator Android golden harness (see test/android/run-device-golden.sh)
+    cmds:
+      - bash test/android/run-device-golden.sh

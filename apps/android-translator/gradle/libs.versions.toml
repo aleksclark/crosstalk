@@ -21,6 +21,7 @@ robolectric = "4.14.1"
 androidxTestCore = "1.6.1"
 androidxTestRunner = "1.6.2"
 androidxTestRules = "1.6.1"
+androidxTestExtJunit = "1.2.1"
 espresso = "3.6.1"
 uiautomator = "2.3.0"
 
@@ -53,6 +54,7 @@ robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "
 androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "androidxTestRunner" }
 androidx-test-core = { group = "androidx.test", name = "core", version.ref = "androidxTestCore" }
 androidx-test-rules = { group = "androidx.test", name = "rules", version.ref = "androidxTestRules" }
+androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestExtJunit" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espresso" }
 androidx-uiautomator = { group = "androidx.test.uiautomator", name = "uiautomator", version.ref = "uiautomator" }
 

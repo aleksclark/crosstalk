@@ -71,6 +71,29 @@ android {
         unitTests {
             isIncludeAndroidResources = true
         }
+        // connectedDebugAndroidTest is the primary instrumented path when a
+        // device/emulator is attached. Managed devices below are optional and
+        // only resolve when the matching system images are installed.
+        animationsDisabled = true
+        managedDevices {
+            devices {
+                maybeCreate<com.android.build.api.dsl.ManagedVirtualDevice>("pixel2Api33").apply {
+                    device = "Pixel 2"
+                    apiLevel = 33
+                    systemImageSource = "aosp-atd"
+                }
+                maybeCreate<com.android.build.api.dsl.ManagedVirtualDevice>("pixel2Api34").apply {
+                    device = "Pixel 2"
+                    apiLevel = 34
+                    systemImageSource = "aosp-atd"
+                }
+                maybeCreate<com.android.build.api.dsl.ManagedVirtualDevice>("pixel2Api35").apply {
+                    device = "Pixel 2"
+                    apiLevel = 35
+                    systemImageSource = "aosp-atd"
+                }
+            }
+        }
     }
 
     sourceSets {
@@ -208,7 +231,11 @@ dependencies {
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.core)
     androidTestImplementation(libs.androidx.test.rules)
+    androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.uiautomator)
     androidTestImplementation(libs.compose.ui.test.junit4)
+    androidTestImplementation(libs.okhttp)
+    androidTestImplementation(libs.kotlinx.coroutines.android)
+    androidTestImplementation(libs.kotlinx.coroutines.test)
 }

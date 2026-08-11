@@ -84,3 +84,55 @@ task api:validate:android
 - Plan listed AndroidX test runner/core as `1.6.2`. Maven metadata shows
   `androidx.test:runner:1.6.2` exists, but **`androidx.test:core` has no 1.6.2**
   (latest 1.6.x is `1.6.1`). Catalog pins: core/rules `1.6.1`, runner `1.6.2`.
+
+## Tests (Phase 6)
+
+### Unit / static
+
+```bash
+./gradlew --no-daemon :app:testDebugUnitTest :app:lintDebug
+./gradlew --no-daemon :app:assembleDebug :app:assembleRelease
+task api:validate:android
+```
+
+### Instrumentation
+
+```bash
+# Lifecycle / Keystore / process-death (no server required)
+./gradlew --no-daemon :app:connectedDebugAndroidTest
+
+# Real assignment + Pion (requires live server + seed credentials)
+./gradlew --no-daemon :app:connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.CROSSTALK_BASE_URL=http://10.0.2.2:8080 \
+  -Pandroid.testInstrumentationRunnerArguments.CROSSTALK_TRANSLATOR_USER=... \
+  -Pandroid.testInstrumentationRunnerArguments.CROSSTALK_TRANSLATOR_PASSWORD=...
+```
+
+Managed devices (optional, needs system images): `pixel2Api33`, `pixel2Api34`,
+`pixel2Api35`. Prefer attached emulator/device via `connectedDebugAndroidTest`
+when images are absent.
+
+### Device golden (physical required for merge)
+
+```bash
+# From monorepo root — never echo passwords
+export CROSSTALK_BASE_URL=http://<host>:8080
+export CROSSTALK_ADMIN_PASSWORD='***'
+bash test/android/run-device-golden.sh
+```
+
+- Physical path: capture label `physical-mic` (real mic + external tones).
+- Emulator path: set `CROSSTALK_ALLOW_EMULATOR=1`; labelled
+  `synthetic-capture-debug-only` and **not** merge proof.
+- Process death uses `am kill` (not `force-stop`).
+
+Evidence docs: [`docs/e2e/README.md`](docs/e2e/README.md),
+[`docs/e2e/PHYSICAL_GOLDEN.md`](docs/e2e/PHYSICAL_GOLDEN.md).
+
+### Task aliases
+
+```bash
+task test:android:unit
+task test:android:connected
+task test:android:golden
+```
