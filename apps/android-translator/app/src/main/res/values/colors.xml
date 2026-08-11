@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Phase 1 shell colors; Editorial Instrument tokens arrive in Phase 5. -->
+    <color name="ct_canvas">#FF0B0F14</color>
+    <color name="ct_accent">#FF3DE0F0</color>
+    <color name="ct_on_accent">#FF0B0F14</color>
+</resources>

@@ -1,0 +1,29 @@
+# OpenAPI Generator config for the CrossTalk Android translator client.
+# Input is the repo-root api/openapi.json (Huma/server is authoritative).
+generatorName: kotlin
+library: jvm-okhttp4
+inputSpec: ../../api/openapi.json
+outputDir: app/build/generated/openapi
+apiPackage: com.crosstalk.translator.generated.api
+modelPackage: com.crosstalk.translator.generated.model
+invokerPackage: com.crosstalk.translator.generated.infrastructure
+packageName: com.crosstalk.translator.generated
+globalProperties:
+  models: ""
+  apis: ""
+  supportingFiles: ""
+  apiTests: "false"
+  modelTests: "false"
+  apiDocs: "false"
+  modelDocs: "false"
+additionalProperties:
+  dateLibrary: java8
+  serializationLibrary: kotlinx_serialization
+  useCoroutines: "true"
+  enumPropertyNaming: UPPERCASE
+  collectionType: list
+  sortParamsByRequiredFlag: "true"
+  sortModelPropertiesByRequiredFlag: "true"
+  omitGradleWrapper: "true"
+  generateGradleWrapper: "false"
+  idea: "false"
