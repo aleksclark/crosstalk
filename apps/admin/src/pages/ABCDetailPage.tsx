@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { getApiClient } from "../lib/api";
+import { ABCAudioControls } from "../components/ABCAudioControls";
 import type { components } from "@crosstalk/api-client";
 
 type ABC = components["schemas"]["ABCOut"];
@@ -11,26 +12,39 @@ export function ABCDetailPage() {
   const { token } = useAuth();
   const [abc, setAbc] = useState<ABC | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [restarting, setRestarting] = useState(false);
 
   useEffect(() => {
     async function fetchABC() {
       if (!token || !id) return;
       const client = getApiClient(token);
+      setLoading(true);
+      setFetchError(null);
       try {
-        const { data } = await client.GET("/api/abcs/{id}", {
+        const { data, error, response } = await client.GET("/api/abcs/{id}", {
           params: { path: { id } },
         });
         if (data) {
           setAbc(data);
+          return;
         }
-      } catch {
-        // handle error
+        const status = response?.status;
+        const detail =
+          (error && typeof error === "object" && "detail" in error
+            ? String((error as { detail?: unknown }).detail ?? "")
+            : "") ||
+          (status ? `Failed to load ABC (${status})` : "Failed to load ABC");
+        setAbc(null);
+        setFetchError(detail);
+      } catch (e) {
+        setAbc(null);
+        setFetchError(e instanceof Error ? e.message : "Failed to load ABC");
       } finally {
         setLoading(false);
       }
     }
-    fetchABC();
+    void fetchABC();
   }, [token, id]);
 
   const handleRestart = async () => {
@@ -58,8 +72,10 @@ export function ABCDetailPage() {
 
   if (!abc) {
     return (
-      <div className="text-center py-12">
-        <p className="text-muted-foreground">ABC not found</p>
+      <div className="text-center py-12 space-y-2">
+        <p className="text-muted-foreground" data-testid="abc-detail-error">
+          {fetchError || "ABC not found"}
+        </p>
         <Link to="/abcs" className="text-primary text-sm mt-2 inline-block">
           ← Back to ABCs
         </Link>
@@ -140,6 +156,10 @@ export function ABCDetailPage() {
           </p>
         </div>
       </div>
+
+      {token && id && (
+        <ABCAudioControls abcId={id} token={token} abcConnected={abc.connected} />
+      )}
     </div>
   );
 }
