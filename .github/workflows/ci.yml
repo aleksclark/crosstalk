@@ -60,10 +60,10 @@ jobs:
         with:
           go-version: "1.25"
 
-      - name: Install libopus (CGO)
+      - name: Install libopus + ffmpeg (CGO / ct-play)
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends pkg-config libopus-dev libopusfile-dev
+          sudo apt-get install -y --no-install-recommends pkg-config libopus-dev libopusfile-dev ffmpeg
 
       - name: Test server
         working-directory: server
@@ -207,10 +207,13 @@ jobs:
         with:
           go-version: "1.25"
 
-      - name: Install libopus (CGO)
+      - name: Install libopus + ffmpeg (CGO / ct-play)
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends pkg-config libopus-dev libopusfile-dev
+          sudo apt-get install -y --no-install-recommends pkg-config libopus-dev libopusfile-dev ffmpeg
+
+      - name: Build ct-play
+        run: cd cli && go build -o ../bin/ct-play ./cmd/ct-play
 
       - name: Run integration tests
         working-directory: server
