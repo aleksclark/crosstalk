@@ -28,6 +28,12 @@ type ABCAudioInputDesiredIn struct {
 	GainPercent int    `json:"gain_percent" minimum:"0" maximum:"100" doc:"Desired input gain percent (0-100)"`
 }
 
+// Keep pattern constants referenced so OpenAPI/docs stay aligned with helpers.
+var (
+	_ = deviceUIDPattern
+	_ = requestIDPattern
+)
+
 // ABCAudioDesiredOut is the durable desired snapshot in responses.
 type ABCAudioDesiredOut struct {
 	Revision            uint64     `json:"revision" doc:"Desired revision (0 = unconfigured)"`

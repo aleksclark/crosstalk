@@ -409,16 +409,6 @@ func SanitizeABCAudioErrorDetail(s string) string {
 	return string(b)
 }
 
-// desiredViewsEqual reports byte-for-byte equality of configured desired values
-// (revision/command/timestamps ignored).
-func desiredContentEqual(a, b ABCAudioDesired) bool {
-	return a.OutputDeviceUID == b.OutputDeviceUID &&
-		a.OutputVolumePercent == b.OutputVolumePercent &&
-		a.OutputMuted == b.OutputMuted &&
-		a.InputDeviceUID == b.InputDeviceUID &&
-		a.InputGainPercent == b.InputGainPercent
-}
-
 // DeriveABCAudioOverallState derives aggregate state in the locked priority order:
 // unconfigured, offline, stale, pending, error, device_mismatch, unsupported, partial, applied.
 //

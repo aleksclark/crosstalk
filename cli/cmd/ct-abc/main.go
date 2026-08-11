@@ -309,13 +309,14 @@ func (c *ABCClient) connectOnce(ctx context.Context) error {
 		}),
 	}
 	if c.connFactory != nil {
+		connMu.Lock()
 		conn = c.connFactory(c.cfg.ServerURL, c.cfg.Token, connOpts...)
+		connMu.Unlock()
 	} else {
+		connMu.Lock()
 		conn = pion.NewConnection(c.cfg.ServerURL, c.cfg.Token, connOpts...)
+		connMu.Unlock()
 	}
-	connMu.Lock()
-	// conn already assigned
-	connMu.Unlock()
 
 	// Connect (WebSocket + WebRTC).
 	connectCtx, connectCancel := context.WithTimeout(ctx, 30*time.Second)

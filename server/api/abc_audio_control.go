@@ -447,10 +447,10 @@ func safeErrCode(err error) string {
 		return ""
 	}
 	// Never log full error strings that might contain board stderr/config.
-	switch {
-	case err == context.DeadlineExceeded:
+	switch err {
+	case context.DeadlineExceeded:
 		return "deadline_exceeded"
-	case err == context.Canceled:
+	case context.Canceled:
 		return "canceled"
 	default:
 		// Use error type / sentinel string only when short.

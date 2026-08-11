@@ -397,7 +397,7 @@ func TestABCAudio_OfflineSameDeviceUpdate(t *testing.T) {
 	path := "/api/abcs/" + abc.ID + "/audio-settings"
 
 	status, body := e.do(t, http.MethodPut, path, e.admin, putBody(ulid.Make().String(), 0, 50, 40, false, testOutUID, testInUID))
-	require.Equal(t, http.StatusAccepted, status)
+	require.Equal(t, http.StatusAccepted, status, "body=%v", body)
 
 	// Clear live capability evidence? Offline edits may target already-bound UIDs
 	// even without fresh inventory matching — simulate by overwriting caps with empty

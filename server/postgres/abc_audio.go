@@ -85,8 +85,7 @@ func (s *ABCAudioStore) SetDesired(ctx context.Context, abcID, actorID, actorRol
 	// Under concurrency the row lock serializes desired/revision updates.
 	m, err := s.selectSettings(ctx, tx, abcID, true)
 	if errors.Is(err, sql.ErrNoRows) {
-		m, err = s.insertEmptySettings(ctx, tx, abcID)
-		if err != nil {
+		if _, err = s.insertEmptySettings(ctx, tx, abcID); err != nil {
 			return nil, err
 		}
 		// Re-lock the inserted row.
@@ -228,8 +227,7 @@ func (s *ABCAudioStore) RecordReport(ctx context.Context, abcID string, report c
 	m, err := s.selectSettings(ctx, tx, abcID, true)
 	if errors.Is(err, sql.ErrNoRows) {
 		// First inventory (or any first report) may create revision-0 row.
-		m, err = s.insertEmptySettings(ctx, tx, abcID)
-		if err != nil {
+		if _, err = s.insertEmptySettings(ctx, tx, abcID); err != nil {
 			return nil, err
 		}
 		m, err = s.selectSettings(ctx, tx, abcID, true)
