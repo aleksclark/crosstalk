@@ -13,17 +13,23 @@ User=app
 Group=audio
 SupplementaryGroups=video spi
 
+# Writable state for managed-audio marker (not desired authority).
+StateDirectory=crosstalk
+
 # Checked helper distinguishes required vs optional failures (see script).
 # Leading '+' runs the helper as root before dropping to User=.
 ExecStartPre=+/usr/local/lib/crosstalk/ct-app-setup.sh
-ExecStart=/usr/local/bin/ct-abc
+ExecStart=/usr/local/bin/ct-abc -state-dir ${STATE_DIRECTORY}
 Environment=CROSSTALK_CONFIG=/etc/app/crosstalk.json
+Environment=CT_ABC_STATE_DIR=/var/lib/crosstalk
 Environment=XDG_RUNTIME_DIR=/run/user/999
 Environment=PIPEWIRE_RUNTIME_DIR=/run/user/999
 Environment=PULSE_RUNTIME_PATH=/run/user/999/pulse
 Environment=USE_DISPLAY=true
 # Optional: set to 1 to fail start when SPI display device is missing.
 # Environment=CT_APP_REQUIRE_SPI=0
+# Harden without breaking ALSA/PipeWire access for User=app.
+NoNewPrivileges=true
 Restart=always
 RestartSec=5
 

@@ -11,12 +11,14 @@ message ControlMessage {
     // Client → Server
     Hello hello = 1;
     SourceStatus source_status = 2;
+    AudioControlReport audio_control_report = 3;
 
     // Server → Client
     Welcome welcome = 10;
     MixUpdate mix_update = 11;
     RestartCommand restart = 12;
     SessionAssignment session_assignment = 13;
+    AudioControlCommand audio_control_command = 14;
 
     // Bidirectional
     LogEntry log_entry = 20;
@@ -83,4 +85,91 @@ message LogEntry {
 // PingPong is used for latency measurement on the control channel.
 message PingPong {
   int64 sent_at = 1;
+}
+
+// AudioControlCommand is an absolute desired USB mixer state (server → client).
+// Field numbers are fixed; do not renumber.
+message AudioControlCommand {
+  string command_id = 1;
+  uint64 desired_revision = 2;
+  AudioOutputDesired output = 3;
+  AudioInputDesired input = 4;
+}
+
+// AudioOutputDesired is the absolute desired playback mixer state.
+message AudioOutputDesired {
+  string device_uid = 1;
+  // Presence distinguishes 0% from unset. Range when set: inclusive 0..100.
+  optional uint32 volume_percent = 2;
+  optional bool muted = 3;
+}
+
+// AudioInputDesired is the absolute desired capture mixer state.
+message AudioInputDesired {
+  string device_uid = 1;
+  // Presence distinguishes 0% from unset. Range when set: inclusive 0..100.
+  optional uint32 gain_percent = 2;
+}
+
+// AudioApplyState is the per-control apply/readback result.
+enum AudioApplyState {
+  AUDIO_APPLY_STATE_UNSPECIFIED = 0;
+  AUDIO_APPLY_STATE_APPLIED = 1;
+  AUDIO_APPLY_STATE_UNSUPPORTED = 2;
+  AUDIO_APPLY_STATE_ERROR = 3;
+  AUDIO_APPLY_STATE_DEVICE_MISMATCH = 4;
+  AUDIO_APPLY_STATE_STALE_REVISION = 5;
+}
+
+// AudioControlReport is inventory and/or apply result (client → server).
+// desired_revision 0 is inventory-only.
+message AudioControlReport {
+  string command_id = 1;
+  uint64 desired_revision = 2;
+  repeated AudioDeviceCapability devices = 3;
+  AudioOutputObserved output = 4;
+  AudioInputObserved input = 5;
+  string error_code = 6;
+  string error_detail = 7;
+}
+
+// AudioDeviceCapability describes one discovered audio endpoint.
+message AudioDeviceCapability {
+  string device_uid = 1;
+  string direction = 2;   // "input", "output", or "both"
+  string backend = 3;     // "alsa", "pipewire", ...
+  string vendor_id = 4;
+  string product_id = 5;
+  string serial = 6;
+  string path = 7;
+  string alsa_card_id = 8;
+  string card_name = 9;
+  string pcm_route = 10;
+  bool supports_volume = 11;
+  bool supports_mute = 12;
+  bool supports_gain = 13;
+  bool supports_agc_disable = 14;
+  // Optional dB/range metadata when known from amixer.
+  optional int32 volume_min_db = 15;
+  optional int32 volume_max_db = 16;
+  optional int32 volume_step_db = 17;
+  optional int32 gain_min_db = 18;
+  optional int32 gain_max_db = 19;
+  optional int32 gain_step_db = 20;
+}
+
+// AudioOutputObserved is the effective playback mixer readback.
+message AudioOutputObserved {
+  string device_uid = 1;
+  optional uint32 volume_percent = 2;
+  optional bool muted = 3;
+  AudioApplyState volume_state = 4;
+  AudioApplyState mute_state = 5;
+}
+
+// AudioInputObserved is the effective capture mixer readback.
+message AudioInputObserved {
+  string device_uid = 1;
+  optional uint32 gain_percent = 2;
+  AudioApplyState gain_state = 3;
 }

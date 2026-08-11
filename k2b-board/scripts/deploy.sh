@@ -20,7 +20,7 @@
 #   ./deploy.sh --rollback 192.168.0.109
 #
 # What this does (deploy):
-#   1. Backs up live binary + unit + config under /root/crosstalk-rollback/$STAMP
+#   1. Backs up live binary + unit + helper + config under /root/crosstalk-rollback/$STAMP
 #   2. Stops the running service
 #   3. Deploys the binary as /usr/local/bin/ct-abc (atomic temp+checksum+rename)
 #   4. Installs ct-app-setup.sh helper + app.service unit
@@ -28,7 +28,7 @@
 #   6. Restarts the service (restores stamp on failure)
 #
 # Rollback:
-#   Restores binary + unit + config from the newest (or named) stamp and restarts.
+#   Restores binary + unit + helper + config from the newest (or named) stamp and restarts.
 set -euo pipefail
 
 MODE="deploy"
@@ -47,6 +47,7 @@ SETUP_HELPER="${SCRIPT_DIR}/deploy/ct-app-setup.sh"
 REMOTE_BIN="/usr/local/bin/ct-abc"
 REMOTE_UNIT="/etc/systemd/system/app.service"
 REMOTE_CFG="/etc/app/crosstalk.json"
+REMOTE_HELPER="/usr/local/lib/crosstalk/ct-app-setup.sh"
 ROLLBACK_ROOT="/root/crosstalk-rollback"
 
 SSH=(ssh -o ConnectTimeout=8 -o BatchMode=yes "root@${BOARD_IP}")
@@ -100,6 +101,10 @@ backup_live() {
       cp -a '${REMOTE_CFG}' \"\$DEST/crosstalk.json\"
       sha256sum '${REMOTE_CFG}' > \"\$DEST/crosstalk.json.sha256\"
     fi
+    if [ -f '${REMOTE_HELPER}' ]; then
+      cp -a '${REMOTE_HELPER}' \"\$DEST/ct-app-setup.sh\"
+      sha256sum '${REMOTE_HELPER}' > \"\$DEST/ct-app-setup.sh.sha256\"
+    fi
     {
       echo \"stamp=\$STAMP\"
       echo \"when=\$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
@@ -138,6 +143,10 @@ restore_from() {
     if [ -f \"\$SRC/crosstalk.json\" ]; then
       mkdir -p /etc/app
       install -m 0600 \"\$SRC/crosstalk.json\" '${REMOTE_CFG}'
+    fi
+    if [ -f \"\$SRC/ct-app-setup.sh\" ]; then
+      mkdir -p /usr/local/lib/crosstalk
+      install -m 0755 \"\$SRC/ct-app-setup.sh\" '${REMOTE_HELPER}'
     fi
     systemctl daemon-reload
     systemctl reset-failed app.service 2>/dev/null || true

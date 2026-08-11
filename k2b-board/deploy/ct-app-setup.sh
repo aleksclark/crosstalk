@@ -7,6 +7,9 @@
 # Required: none by default (board may boot headless / without USB capture).
 # Optional: SPI/display GPIO export, PipeWire card profiles, USB capture gain.
 #
+# When /var/lib/crosstalk/audio-managed exists, skip legacy USB AGC/Mic defaults
+# so remote-managed gain is not overwritten during the reconnect window.
+#
 # Override with CT_APP_REQUIRE_SPI=1 to fail if /dev/spidev0.1 is missing.
 set -uo pipefail
 
@@ -15,6 +18,8 @@ warn() { echo "ct-app-setup: WARNING: $*" >&2; }
 err()  { echo "ct-app-setup: ERROR: $*" >&2; }
 
 REQUIRE_SPI="${CT_APP_REQUIRE_SPI:-0}"
+STATE_DIR="${CT_ABC_STATE_DIR:-/var/lib/crosstalk}"
+MANAGED_MARKER="${STATE_DIR}/audio-managed"
 # Prefer streamlate (uid 999) when present; fall back to app.
 AUDIO_USER="${CT_APP_AUDIO_USER:-}"
 if [[ -z "$AUDIO_USER" ]]; then
@@ -117,17 +122,32 @@ for card in 0 1 2; do
   fi
 done
 
-# USB capture card (C-Media): enable AGC and fixed capture gain (optional).
-USB_CARD="$(awk '/USB-Audio/{print $1; exit}' /proc/asound/cards 2>/dev/null || true)"
-if [[ -n "${USB_CARD:-}" ]]; then
-  if amixer -c "$USB_CARD" sset "Auto Gain Control" on 2>/dev/null \
-     && amixer -c "$USB_CARD" sset Mic 34 cap 2>/dev/null; then
-    log "USB capture card $USB_CARD: AGC on, mic gain fixed"
-  else
-    warn "USB capture card $USB_CARD present but mixer setup failed (optional)"
-  fi
+# USB capture defaults: only when not managed by ct-abc remote audio control.
+if [[ -f "$MANAGED_MARKER" ]]; then
+  log "managed marker present ($MANAGED_MARKER); skip legacy USB AGC/Mic defaults"
 else
-  warn "USB audio card not found for capture setup (optional)"
+  # Resolve stable ALSA card ID (not numeric index) for USB-Audio.
+  USB_CARD_ID=""
+  while IFS= read -r line; do
+    # " 1 [Device         ]: USB-Audio - ..."
+    if [[ "$line" == *"]: USB-Audio"* ]] || [[ "$line" == *"]:USB-Audio"* ]]; then
+      if [[ "$line" =~ \[([A-Za-z0-9_-]+) ]]; then
+        USB_CARD_ID="${BASH_REMATCH[1]}"
+        break
+      fi
+    fi
+  done < /proc/asound/cards 2>/dev/null || true
+
+  if [[ -n "${USB_CARD_ID:-}" ]]; then
+    if amixer -D "hw:CARD=${USB_CARD_ID}" sset "Auto Gain Control" on 2>/dev/null \
+       && amixer -D "hw:CARD=${USB_CARD_ID}" sset Mic 34 cap 2>/dev/null; then
+      log "USB capture card id=${USB_CARD_ID}: AGC on, mic gain fixed (legacy unmanaged)"
+    else
+      warn "USB capture card id=${USB_CARD_ID} present but mixer setup failed (optional)"
+    fi
+  else
+    warn "USB audio card not found for capture setup (optional)"
+  fi
 fi
 
 if [[ $rc -ne 0 ]]; then
