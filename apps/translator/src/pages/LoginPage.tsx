@@ -1,8 +1,12 @@
-import { useState, type FormEvent } from "react";
-import { Logo } from "@crosstalk/theme";
-import { useAuth } from "../hooks/useAuth";
+import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
+import { Button, Field, Logo, Status } from "@crosstalk/theme";
+import { useAuth } from "../hooks/useAuth";
 
+/**
+ * Translator access form — house grammar, preserves crosstalk_translator_auth
+ * storage/refresh/redirect via useAuth.
+ */
 export function LoginPage() {
   const { login, token } = useAuth();
   const navigate = useNavigate();
@@ -11,10 +15,11 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Redirect if already logged in
-  if (token) {
-    navigate("/", { replace: true });
-  }
+  useEffect(() => {
+    if (token) {
+      navigate("/", { replace: true });
+    }
+  }, [token, navigate]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -31,55 +36,99 @@ export function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
-      <div className="w-full max-w-sm space-y-6">
-        <div className="text-center">
-          <Logo className="mx-auto h-28 w-auto" />
-          <p className="text-gray-400 mt-3">Translator Login</p>
-        </div>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <div className="bg-red-900/50 border border-red-700 text-red-300 px-3 py-2 rounded text-sm">
-              {error}
-            </div>
-          )}
-          <div>
-            <label htmlFor="username" className="block text-sm font-medium text-gray-300 mb-1">
-              Username
-            </label>
-            <input
-              id="username"
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              required
-              autoComplete="username"
-              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Enter username"
-            />
-          </div>
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-1">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              autoComplete="current-password"
-              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Enter password"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:opacity-50 text-white font-medium rounded transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+    <div
+      className="min-h-screen flex items-center justify-center px-4"
+      style={{
+        background: "var(--house-bg-canvas)",
+        color: "var(--house-text-primary)",
+        fontFamily: "var(--house-font-product)",
+      }}
+    >
+      <a
+        href="#login-form"
+        className="house-visually-hidden"
+        style={{
+          position: "absolute",
+          left: "var(--house-space-3)",
+          top: "var(--house-space-3)",
+          zIndex: 100,
+          padding: "var(--house-space-2) var(--house-space-3)",
+          background: "var(--house-bg-surface)",
+          border: "1px solid var(--house-rule-strong)",
+          borderRadius: "var(--house-radius-md)",
+        }}
+      >
+        Skip to login form
+      </a>
+
+      <div className="w-full max-w-sm" style={{ display: "flex", flexDirection: "column", gap: "var(--house-space-6)" }}>
+        <div style={{ textAlign: "center" }}>
+          <Logo className="mx-auto h-24 w-auto" />
+          <p
+            className="house-type-eyebrow"
+            style={{
+              marginTop: "var(--house-space-4)",
+              color: "var(--house-text-tertiary)",
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+            }}
           >
+            Translator
+          </p>
+          <h1 className="house-type-title" style={{ margin: "var(--house-space-2) 0 0" }}>
+            Sign in
+          </h1>
+          <p className="house-type-lede" style={{ margin: "var(--house-space-2) 0 0", color: "var(--house-text-secondary)" }}>
+            Access assigned sessions and live audio controls.
+          </p>
+        </div>
+
+        <form
+          id="login-form"
+          onSubmit={(e) => void handleSubmit(e)}
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "var(--house-space-4)",
+            borderTop: "1px solid var(--house-rule-subtle)",
+            paddingTop: "var(--house-space-5)",
+          }}
+          noValidate
+        >
+          {error ? (
+            <div role="alert">
+              <Status tone="danger">{error}</Status>
+            </div>
+          ) : null}
+
+          <Field
+            id="username"
+            label="Username"
+            name="username"
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+            autoComplete="username"
+            autoFocus
+            placeholder="Enter username"
+          />
+
+          <Field
+            id="password"
+            label="Password"
+            name="password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            autoComplete="current-password"
+            placeholder="Enter password"
+          />
+
+          <Button type="submit" variant="primary" loading={loading} disabled={loading} style={{ width: "100%" }}>
             {loading ? "Signing in..." : "Sign In"}
-          </button>
+          </Button>
         </form>
       </div>
     </div>

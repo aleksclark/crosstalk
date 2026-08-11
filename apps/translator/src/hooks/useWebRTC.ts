@@ -37,6 +37,24 @@ export interface UseWebRTCOptions {
   listen?: string;
 }
 
+/** High-level connect phase for truthful Operate UI (no invented auto-reconnect). */
+export type ConnectPhase =
+  | "idle"
+  | "ticket-mint"
+  | "permission"
+  | "signaling"
+  | "connected"
+  | "failed"
+  | "disconnected";
+
+export type ConnectFailureKind =
+  | "ticket-mint"
+  | "permission-denied"
+  | "no-device"
+  | "signaling-failed"
+  | "disconnected"
+  | "unknown";
+
 export interface UseWebRTCReturn {
   connectionState: RTCPeerConnectionState;
   iceState: RTCIceConnectionState;
@@ -50,6 +68,10 @@ export interface UseWebRTCReturn {
   localStream: MediaStream | null;
   remoteStream: MediaStream | null;
   isMuted: boolean;
+  /** Operational phase for the connect workflow UI. */
+  phase: ConnectPhase;
+  /** Last failure classification + message, when phase is failed/disconnected. */
+  lastError: { kind: ConnectFailureKind; message: string } | null;
   connect: () => Promise<void>;
   disconnect: () => void;
   toggleMute: () => void;
@@ -112,6 +134,10 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [isMuted, setIsMuted] = useState(false);
+  const [phase, setPhase] = useState<ConnectPhase>("idle");
+  const [lastError, setLastError] = useState<{ kind: ConnectFailureKind; message: string } | null>(
+    null,
+  );
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -119,9 +145,16 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
   const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const pendingRemoteCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const statsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const intentionalCloseRef = useRef(false);
 
   const addEvent = useCallback((type: string, detail: string) => {
     setEvents((prev) => [...prev, { timestamp: Date.now(), type, detail }]);
+  }, []);
+
+  const fail = useCallback((kind: ConnectFailureKind, message: string) => {
+    setLastError({ kind, message });
+    setPhase(kind === "disconnected" ? "disconnected" : "failed");
+    setConnectionState("failed");
   }, []);
 
   const pollStats = useCallback(async () => {
@@ -158,8 +191,11 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
   }, []);
 
   const connect = useCallback(async () => {
+    intentionalCloseRef.current = false;
+    setLastError(null);
     addEvent("connect", `Starting connection to session ${sessionId}`);
     setConnectionState("connecting");
+    setPhase("ticket-mint");
 
     // Mint one-time media ticket (access JWT is not a WS admit credential).
     addEvent("auth", "Requesting media ticket");
@@ -169,21 +205,40 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       addEvent("error", msg);
-      setConnectionState("failed");
+      fail("ticket-mint", msg);
       throw err;
     }
     addEvent("auth", "Media ticket obtained");
 
     // Get user media
+    setPhase("permission");
     const constraints: MediaStreamConstraints = {
       audio: audioDeviceId ? { deviceId: { exact: audioDeviceId } } : true,
       video: false,
     };
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      addEvent("error", `getUserMedia failed: ${msg}`);
+      const name = err instanceof DOMException ? err.name : "";
+      if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+        fail("permission-denied", "Microphone permission denied. Allow access and reconnect.");
+      } else if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+        fail("no-device", "No microphone found. Connect a device and reconnect.");
+      } else if (name === "OverconstrainedError" || name === "ConstraintNotSatisfiedError") {
+        fail("no-device", "Selected microphone is unavailable. Choose another device and reconnect.");
+      } else {
+        fail("permission-denied", msg);
+      }
+      throw err;
+    }
     setLocalStream(stream);
     addEvent("media", "Local audio stream acquired");
 
     // Create peer connection
+    setPhase("signaling");
     const pc = new RTCPeerConnection({
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
@@ -225,10 +280,44 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
     pc.onconnectionstatechange = () => {
       setConnectionState(pc.connectionState);
       addEvent("connectionState", pc.connectionState);
+      if (pc.connectionState === "connected") {
+        setPhase("connected");
+        setLastError(null);
+      } else if (pc.connectionState === "failed") {
+        if (!intentionalCloseRef.current) {
+          fail("signaling-failed", "Peer connection failed. Reconnect to try again.");
+        }
+      } else if (pc.connectionState === "disconnected") {
+        if (!intentionalCloseRef.current) {
+          setPhase("disconnected");
+          setLastError({
+            kind: "disconnected",
+            message: "Connection dropped. Reconnect when ready — no automatic reconnect.",
+          });
+        }
+      } else if (pc.connectionState === "closed") {
+        if (!intentionalCloseRef.current) {
+          setPhase("disconnected");
+        }
+      }
     };
     pc.oniceconnectionstatechange = () => {
       setIceState(pc.iceConnectionState);
       addEvent("iceConnectionState", pc.iceConnectionState);
+      if (
+        (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") &&
+        !intentionalCloseRef.current
+      ) {
+        if (pc.iceConnectionState === "failed") {
+          fail("signaling-failed", "ICE connection failed. Reconnect to try again.");
+        } else {
+          setPhase("disconnected");
+          setLastError({
+            kind: "disconnected",
+            message: "ICE disconnected. Reconnect when ready — no automatic reconnect.",
+          });
+        }
+      }
     };
     pc.onsignalingstatechange = () => {
       setSignalingState(pc.signalingState);
@@ -342,17 +431,36 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
 
     ws.onerror = (ev) => {
       addEvent("signaling", `WebSocket error: ${String(ev)}`);
+      if (!intentionalCloseRef.current) {
+        fail("signaling-failed", "Signaling WebSocket error. Reconnect to try again.");
+      }
     };
 
     ws.onclose = (ev) => {
       addEvent("signaling", `WebSocket closed: code=${ev.code} reason=${ev.reason}`);
+      if (!intentionalCloseRef.current && pc.connectionState !== "connected") {
+        fail(
+          "signaling-failed",
+          ev.reason
+            ? `Signaling closed (${ev.code}): ${ev.reason}`
+            : `Signaling closed (code ${ev.code}). Reconnect to try again.`,
+        );
+      }
     };
 
     // Create offer
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    setLocalSdp(JSON.stringify(offer, null, 2));
-    addEvent("sdp", "Created and set local offer");
+    let offer: RTCSessionDescriptionInit;
+    try {
+      offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      setLocalSdp(JSON.stringify(offer, null, 2));
+      addEvent("sdp", "Created and set local offer");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      addEvent("error", msg);
+      fail("signaling-failed", msg);
+      throw err;
+    }
 
     // Wait for WS to be open before sending
     const sendOffer = () => {
@@ -367,9 +475,10 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
 
     // Start stats polling
     statsIntervalRef.current = setInterval(pollStats, 1000);
-  }, [sessionId, token, audioDeviceId, produce, listen, addEvent, pollStats]);
+  }, [sessionId, token, audioDeviceId, produce, listen, addEvent, pollStats, fail]);
 
   const disconnect = useCallback(() => {
+    intentionalCloseRef.current = true;
     if (statsIntervalRef.current) {
       clearInterval(statsIntervalRef.current);
       statsIntervalRef.current = null;
@@ -388,6 +497,9 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
     setConnectionState("closed");
     setIceState("closed");
     setDataChannelState("closed");
+    setPhase("idle");
+    setLastError(null);
+    setIsMuted(false);
     addEvent("disconnect", "Connection closed");
   }, [localStream, addEvent]);
 
@@ -425,6 +537,8 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
     localStream,
     remoteStream,
     isMuted,
+    phase,
+    lastError,
     connect,
     disconnect,
     toggleMute,
