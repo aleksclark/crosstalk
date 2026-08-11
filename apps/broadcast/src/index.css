@@ -3,3 +3,114 @@
 
 /* Tailwind v4 color/radius/font mapping lives in packages/theme/theme.css
  * (@theme inline). Do not re-author token values here. */
+
+/* -------------------------------------------------------------------------- */
+/* Broadcast Monitor/Listen instrument                                        */
+/* -------------------------------------------------------------------------- */
+
+/* Keep controls reachable in landscape / short viewports */
+@media (max-height: 520px) {
+  [data-surface="monitor-listen"] {
+    justify-content: flex-start;
+  }
+
+  [data-surface="monitor-listen"] > div {
+    justify-content: flex-start;
+    padding-top: var(--house-space-2);
+    padding-bottom: var(--house-space-2);
+  }
+}
+
+/* Volume range — labeled, keyboard-steppable, ≥44px hit area on mobile */
+.broadcast-volume {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: var(--house-target-mobile);
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  accent-color: var(--house-accent);
+}
+
+.broadcast-volume:focus-visible {
+  outline: var(--house-focus-width) solid var(--house-focus);
+  outline-offset: var(--house-focus-offset);
+}
+
+.broadcast-volume::-webkit-slider-runnable-track {
+  height: 4px;
+  background: var(--house-bg-raised);
+  border-radius: var(--house-radius-pill);
+  border: 1px solid var(--house-rule-subtle);
+}
+
+.broadcast-volume::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: -9px;
+  border-radius: var(--house-radius-pill);
+  background: var(--house-accent);
+  border: 1px solid var(--house-accent-strong);
+}
+
+.broadcast-volume::-moz-range-track {
+  height: 4px;
+  background: var(--house-bg-raised);
+  border-radius: var(--house-radius-pill);
+  border: 1px solid var(--house-rule-subtle);
+}
+
+.broadcast-volume::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--house-radius-pill);
+  background: var(--house-accent);
+  border: 1px solid var(--house-accent-strong);
+}
+
+/* LIVE ping — disabled under reduced motion */
+.broadcast-live-ping {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--house-radius-pill);
+  background: var(--house-status-danger);
+  opacity: 0.65;
+  animation: broadcast-ping 1.4s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+.broadcast-spin {
+  animation: broadcast-spin 0.8s linear infinite;
+}
+
+@keyframes broadcast-ping {
+  75%,
+  100% {
+    transform: scale(2.1);
+    opacity: 0;
+  }
+}
+
+@keyframes broadcast-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .broadcast-live-ping,
+  .broadcast-spin {
+    animation: none !important;
+  }
+
+  .broadcast-live-ping {
+    opacity: 0;
+  }
+}
+
+/* Restrained debug disclosure marker */
+.broadcast-debug > summary::-webkit-details-marker {
+  display: none;
+}
