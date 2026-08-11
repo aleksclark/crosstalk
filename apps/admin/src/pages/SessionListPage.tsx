@@ -187,7 +187,7 @@ export function SessionListPage() {
             name="q"
             value={draftQ}
             onChange={(e) => setDraftQ(e.target.value)}
-            placeholder="Filter by session name"
+            placeholder="Filter by name or description"
           />
         </div>
         <div className="w-full md:w-44">

@@ -205,17 +205,18 @@ export function DashboardPage() {
       <section aria-label="Operate">
         <h2 className="house-type-section mb-3">Operate</h2>
         <div className="flex flex-wrap gap-2 border-t border-border pt-4">
+          {/* Labels intentionally avoid bare nav names so E2E role queries stay unique. */}
           <Link to="/sessions" className={actionLinkClass}>
-            Open sessions
+            Manage live work
           </Link>
           <Link to="/abcs" className={actionLinkClass}>
-            Open ABCs
+            Manage booth connectors
           </Link>
           <Link to="/translators" className={actionLinkClass}>
-            Open translators
+            Manage operator accounts
           </Link>
           <Link to="/debug" className={actionLinkClass}>
-            Open debug peers
+            Inspect peers
           </Link>
         </div>
       </section>
