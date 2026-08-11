@@ -11,4 +11,30 @@
     <string name="notification_action_mute">Mute</string>
     <string name="notification_action_unmute">Unmute</string>
     <string name="notification_action_stop">Stop</string>
+
+    <!-- Product UI (Phase 5) -->
+    <string name="login_welcome">Welcome</string>
+    <string name="login_title">CrossTalk Translator</string>
+    <string name="login_username">Username</string>
+    <string name="login_password">Password</string>
+    <string name="login_submit">Sign in</string>
+    <string name="login_signing_in">Signing in…</string>
+    <string name="sessions_title">Assigned sessions</string>
+    <string name="sessions_empty">No assigned sessions</string>
+    <string name="sessions_refresh">Refresh</string>
+    <string name="sessions_logout">Log out</string>
+    <string name="live_join">Join</string>
+    <string name="live_stop">Stop</string>
+    <string name="live_rejoin">Rejoin</string>
+    <string name="live_mute">Mute</string>
+    <string name="live_unmute">Unmute</string>
+    <string name="live_back">Back</string>
+    <string name="live_listening">Listening: %1$s</string>
+    <string name="live_speaking">Speaking to: %1$s</string>
+    <string name="mic_open_settings">Open Settings</string>
+    <string name="notification_denied_warning">Notification permission denied. Live audio continues, but the drawer notification may be hidden.</string>
+    <string name="a11y_session">Session %1$s</string>
+    <string name="a11y_session_id">Session identifier %1$s</string>
+    <string name="a11y_mic_muted">Microphone muted</string>
+    <string name="a11y_mic_unmuted">Microphone unmuted</string>
 </resources>

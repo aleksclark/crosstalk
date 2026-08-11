@@ -8,15 +8,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -28,10 +25,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.crosstalk.translator.contract.SessionSummary
+import com.crosstalk.translator.ui.components.CtButton
+import com.crosstalk.translator.ui.components.CtButtonVariant
+import com.crosstalk.translator.ui.components.CtRule
+import com.crosstalk.translator.ui.components.CtStatus
+import com.crosstalk.translator.ui.components.CtStatusTone
+import com.crosstalk.translator.ui.theme.CtTheme
 
 @Composable
 fun SessionListRoute(
@@ -66,12 +67,19 @@ fun SessionListScreen(
     onSessionSelected: (SessionSummary) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val colors = CtTheme.colors
+    val type = CtTheme.typography
+    val spacing = CtTheme.spacing
+
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(16.dp)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(horizontal = spacing.gutter)
             .testTag("session_list_screen"),
     ) {
+        Spacer(modifier = Modifier.height(spacing.space4))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -79,60 +87,80 @@ fun SessionListScreen(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
+                    text = "ASSIGNMENTS",
+                    style = type.eyebrow,
+                    color = colors.textTertiary,
+                )
+                Spacer(modifier = Modifier.height(spacing.space1))
+                Text(
                     text = "Assigned sessions",
-                    style = MaterialTheme.typography.titleLarge,
+                    style = type.pageTitle,
+                    color = colors.textPrimary,
                 )
                 if (!state.username.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(spacing.space1))
                     Text(
                         text = state.username,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = type.body,
+                        color = colors.textSecondary,
                         modifier = Modifier.testTag("signed_in_username"),
                     )
                 }
             }
-            TextButton(
+            CtButton(
+                text = "Log out",
                 onClick = onLogout,
-                modifier = Modifier.testTag("logout_button"),
-            ) {
-                Text("Log out")
-            }
+                variant = CtButtonVariant.Ghost,
+                testTag = "logout_button",
+            )
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
-        Button(
+        Spacer(modifier = Modifier.height(spacing.space4))
+        CtButton(
+            text = if (state.isLoading) "Refreshing…" else "Refresh",
             onClick = onRefresh,
+            variant = CtButtonVariant.Secondary,
             enabled = !state.isLoading,
-            modifier = Modifier.testTag("refresh_sessions"),
-        ) {
-            Text("Refresh")
-        }
+            testTag = "refresh_sessions",
+        )
 
         if (state.errorMessage != null) {
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(spacing.space3))
             Text(
                 text = state.errorMessage,
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodyMedium,
+                style = type.body,
+                color = colors.statusDanger,
                 modifier = Modifier.testTag("session_list_error"),
             )
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(spacing.space4))
+        CtRule(strong = true)
+        Spacer(modifier = Modifier.height(spacing.space2))
 
         when {
             state.isLoading && state.sessions.isEmpty() -> {
-                CircularProgressIndicator(
-                    modifier = Modifier
-                        .align(Alignment.CenterHorizontally)
-                        .testTag("session_list_progress"),
+                Spacer(modifier = Modifier.height(spacing.space6))
+                Text(
+                    text = "Loading assignments…",
+                    style = type.body,
+                    color = colors.textSecondary,
+                    modifier = Modifier.testTag("session_list_progress"),
                 )
             }
             state.sessions.isEmpty() -> {
+                Spacer(modifier = Modifier.height(spacing.space6))
                 Text(
                     text = "No assigned sessions",
-                    style = MaterialTheme.typography.bodyLarge,
+                    style = type.section,
+                    color = colors.textPrimary,
                     modifier = Modifier.testTag("session_list_empty"),
+                )
+                Spacer(modifier = Modifier.height(spacing.space2))
+                Text(
+                    text = "When an administrator assigns you to a session, it will appear here.",
+                    style = type.body,
+                    color = colors.textSecondary,
                 )
             }
             else -> {
@@ -146,7 +174,7 @@ fun SessionListScreen(
                             session = session,
                             onClick = { onSessionSelected(session) },
                         )
-                        HorizontalDivider()
+                        CtRule()
                     }
                 }
             }
@@ -160,44 +188,65 @@ private fun SessionRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val colors = CtTheme.colors
+    val type = CtTheme.typography
+    val spacing = CtTheme.spacing
     var expanded by remember(session.id) { mutableStateOf(false) }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(vertical = 12.dp)
+            .padding(vertical = spacing.space3)
             .testTag("session_row_${session.id}")
             .semantics {
                 contentDescription = "Session ${session.name}"
             },
     ) {
-        // Name is always primary; never use truncated ULID as title.
-        Text(
-            text = session.name,
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.testTag("session_name_${session.id}"),
-        )
-        val secondary = listOfNotNull(
-            session.description?.takeIf { it.isNotBlank() },
-            session.status?.takeIf { it.isNotBlank() },
-        ).joinToString(" · ")
-        if (secondary.isNotBlank()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Text(
-                text = secondary,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                text = session.name,
+                style = type.section,
+                color = colors.textPrimary,
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("session_name_${session.id}"),
+            )
+            session.status?.takeIf { it.isNotBlank() }?.let { status ->
+                CtStatus(
+                    text = status,
+                    tone = CtStatusTone.Neutral,
+                )
+            }
+        }
+        val description = session.description?.takeIf { it.isNotBlank() }
+        if (description != null) {
+            Spacer(modifier = Modifier.height(spacing.space1))
+            Text(
+                text = description,
+                style = type.bodyCompact,
+                color = colors.textSecondary,
             )
         }
-        TextButton(
-            onClick = { expanded = !expanded },
-            modifier = Modifier.testTag("session_id_toggle_${session.id}"),
-        ) {
-            Text(if (expanded) "Hide ID" else "Show ID")
-        }
+        Spacer(modifier = Modifier.height(spacing.space1))
+        Text(
+            text = if (expanded) "Hide ID" else "Show ID",
+            style = type.control,
+            color = colors.accent,
+            modifier = Modifier
+                .clickable { expanded = !expanded }
+                .padding(vertical = spacing.space1)
+                .testTag("session_id_toggle_${session.id}"),
+        )
         if (expanded) {
             Text(
                 text = session.id,
-                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                style = type.code,
+                color = colors.textTertiary,
                 modifier = Modifier
                     .testTag("session_id_${session.id}")
                     .semantics {
