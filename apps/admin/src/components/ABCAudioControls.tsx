@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getApiClient } from "../lib/api";
 import type { components } from "@crosstalk/api-client";
+import { Button } from "@crosstalk/theme";
 
 type AudioSettings = components["schemas"]["ABCAudioSettingsOut"];
 type Capability = components["schemas"]["ABCAudioCapabilityOut"];
@@ -487,14 +488,14 @@ export function ABCAudioControls({
   if (loading && !settings) {
     return (
       <section
-        className="bg-card border border-border rounded-lg p-4 space-y-3"
+        className="space-y-3 border border-border bg-[var(--house-surface-raised)] p-4"
         aria-labelledby="abc-audio-controls-heading"
         data-testid="abc-audio-controls"
       >
-        <h2 id="abc-audio-controls-heading" className="text-lg font-semibold">
+        <h2 id="abc-audio-controls-heading" className="house-type-title text-lg">
           Audio controls
         </h2>
-        <p className="text-sm text-muted-foreground">Loading audio settings…</p>
+        <p className="house-type-body text-sm text-muted-foreground">Loading audio settings…</p>
       </section>
     );
   }
@@ -502,15 +503,15 @@ export function ABCAudioControls({
   if (fetchError && !settings) {
     return (
       <section
-        className="bg-card border border-border rounded-lg p-4 space-y-3"
+        className="space-y-3 border border-border bg-[var(--house-surface-raised)] p-4"
         aria-labelledby="abc-audio-controls-heading"
         data-testid="abc-audio-controls"
       >
-        <h2 id="abc-audio-controls-heading" className="text-lg font-semibold">
+        <h2 id="abc-audio-controls-heading" className="house-type-title text-lg">
           Audio controls
         </h2>
         <p
-          className="text-sm text-red-400"
+          className="house-type-body text-sm text-[var(--house-status-danger)]"
           role="alert"
           data-testid="abc-audio-fetch-error"
         >
@@ -518,7 +519,7 @@ export function ABCAudioControls({
         </p>
         <button
           type="button"
-          className="text-sm text-primary hover:underline"
+          className="house-type-body text-sm text-primary hover:underline"
           onClick={() => void fetchSettings()}
         >
           Retry
@@ -560,12 +561,12 @@ export function ABCAudioControls({
 
   return (
     <section
-      className="bg-card border border-border rounded-lg p-4 space-y-4"
+      className="space-y-4 border border-border bg-[var(--house-surface-raised)] p-4"
       aria-labelledby="abc-audio-controls-heading"
       data-testid="abc-audio-controls"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id="abc-audio-controls-heading" className="text-lg font-semibold">
+        <h2 id="abc-audio-controls-heading" className="house-type-title text-lg">
           Audio controls
         </h2>
         <span
@@ -802,15 +803,15 @@ export function ABCAudioControls({
       )}
 
       <div className="flex flex-wrap items-center gap-3">
-        <button
+        <Button
           type="button"
           onClick={() => void handleSave()}
           disabled={!canSave}
-          className="bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-medium hover:opacity-90 disabled:opacity-50"
+          loading={saving}
           data-testid="abc-audio-save"
         >
           {saving ? "Saving…" : "Save audio settings"}
-        </button>
+        </Button>
         {!hasUids && (
           <p className="text-xs text-muted-foreground" data-testid="abc-audio-uid-hint">
             Save disabled until device capability supplies UIDs

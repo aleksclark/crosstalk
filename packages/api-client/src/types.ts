@@ -581,6 +581,8 @@ export interface components {
             name: string;
             /** @description Assigned session ID */
             session_id?: string;
+            /** @description Assigned session name (batch-resolved) */
+            session_name?: string;
         };
         AssignTranslatorSessionsRequestBody: {
             /**
@@ -847,6 +849,13 @@ export interface components {
              */
             readonly $schema?: string;
             data: components["schemas"]["ABCOut"][] | null;
+            /** @description Opaque cursor for the next page; empty when exhausted */
+            next_cursor?: string;
+            /**
+             * Format: int64
+             * @description Total matching rows in scope (honest PostgreSQL count)
+             */
+            total?: number;
         };
         ListChannelsResponseBody: {
             /**
@@ -874,6 +883,13 @@ export interface components {
              */
             readonly $schema?: string;
             data: components["schemas"]["SessionOut"][] | null;
+            /** @description Opaque cursor for the next page; empty when exhausted */
+            next_cursor?: string;
+            /**
+             * Format: int64
+             * @description Total matching rows in scope (honest PostgreSQL count)
+             */
+            total?: number;
         };
         ListSourcesResponseBody: {
             /**
@@ -892,6 +908,13 @@ export interface components {
              */
             readonly $schema?: string;
             data: components["schemas"]["TranslatorOut"][] | null;
+            /** @description Opaque cursor for the next page; empty when exhausted */
+            next_cursor?: string;
+            /**
+             * Format: int64
+             * @description Total matching rows (honest PostgreSQL count)
+             */
+            total?: number;
         };
         ListUsersResponseBody: {
             /**
@@ -1124,6 +1147,10 @@ export interface components {
             created_at: string;
             /** @description User ULID */
             id: string;
+            /** @description Assigned session ID to name map (bounded lookup) */
+            session_names?: {
+                [key: string]: string;
+            };
             /** @description Assigned session IDs */
             sessions?: string[] | null;
             /** @description Username */
@@ -1278,7 +1305,18 @@ export type $defs = Record<string, never>;
 export interface operations {
     "list-abcs": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Search by ABC name */
+                q?: string;
+                /** @description Sort field (allowlisted) */
+                sort?: "created_at" | "name" | "id";
+                /** @description Sort direction */
+                direction?: "asc" | "desc";
+                /** @description Page size (default 25, max 100) */
+                limit?: number;
+                /** @description Opaque pagination cursor */
+                cursor?: string;
+            };
             header?: {
                 /** @description Bearer token */
                 Authorization?: string;
@@ -1696,7 +1734,18 @@ export interface operations {
     };
     "list-sessions": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Search by session name */
+                q?: string;
+                /** @description Sort field (allowlisted) */
+                sort?: "created_at" | "updated_at" | "name" | "id";
+                /** @description Sort direction */
+                direction?: "asc" | "desc";
+                /** @description Page size (default 25, max 100) */
+                limit?: number;
+                /** @description Opaque pagination cursor */
+                cursor?: string;
+            };
             header?: {
                 /** @description Bearer token */
                 Authorization?: string;
@@ -2275,7 +2324,18 @@ export interface operations {
     };
     "list-translators": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Search by username */
+                q?: string;
+                /** @description Sort field (allowlisted) */
+                sort?: "created_at" | "username" | "id";
+                /** @description Sort direction */
+                direction?: "asc" | "desc";
+                /** @description Page size (default 25, max 100) */
+                limit?: number;
+                /** @description Opaque pagination cursor */
+                cursor?: string;
+            };
             header?: {
                 /** @description Bearer token */
                 Authorization?: string;

@@ -64,11 +64,18 @@ type SessionOut struct {
 
 type ListSessionsRequest struct {
 	Authorization string `header:"Authorization" doc:"Bearer token"`
+	Q             string `query:"q" doc:"Search by session name"`
+	Sort          string `query:"sort" enum:"created_at,updated_at,name,id" doc:"Sort field (allowlisted)"`
+	Direction     string `query:"direction" enum:"asc,desc" doc:"Sort direction"`
+	Limit         int    `query:"limit" minimum:"1" maximum:"100" doc:"Page size (default 25, max 100)"`
+	Cursor        string `query:"cursor" doc:"Opaque pagination cursor"`
 }
 
 type ListSessionsResponse struct {
 	Body struct {
-		Data []SessionOut `json:"data"`
+		Data       []SessionOut `json:"data"`
+		NextCursor string       `json:"next_cursor,omitempty" doc:"Opaque cursor for the next page; empty when exhausted"`
+		Total      *int64       `json:"total,omitempty" doc:"Total matching rows in scope (honest PostgreSQL count)"`
 	}
 }
 
@@ -274,6 +281,7 @@ type ABCOut struct {
 	ID               string     `json:"id" doc:"ABC ULID"`
 	Name             string     `json:"name" doc:"ABC name"`
 	SessionID        *string    `json:"session_id,omitempty" doc:"Assigned session ID"`
+	SessionName      string     `json:"session_name,omitempty" doc:"Assigned session name (batch-resolved)"`
 	MonitorChannelID *string    `json:"monitor_channel_id,omitempty" doc:"Channel the ABC monitors for return audio"`
 	Connected        bool       `json:"connected" doc:"Whether ABC is currently connected"`
 	LastSeen         *time.Time `json:"last_seen,omitempty" doc:"Last time ABC was seen"`
@@ -282,11 +290,18 @@ type ABCOut struct {
 
 type ListABCsRequest struct {
 	Authorization string `header:"Authorization" doc:"Bearer token"`
+	Q             string `query:"q" doc:"Search by ABC name"`
+	Sort          string `query:"sort" enum:"created_at,name,id" doc:"Sort field (allowlisted)"`
+	Direction     string `query:"direction" enum:"asc,desc" doc:"Sort direction"`
+	Limit         int    `query:"limit" minimum:"1" maximum:"100" doc:"Page size (default 25, max 100)"`
+	Cursor        string `query:"cursor" doc:"Opaque pagination cursor"`
 }
 
 type ListABCsResponse struct {
 	Body struct {
-		Data []ABCOut `json:"data"`
+		Data       []ABCOut `json:"data"`
+		NextCursor string   `json:"next_cursor,omitempty" doc:"Opaque cursor for the next page; empty when exhausted"`
+		Total      *int64   `json:"total,omitempty" doc:"Total matching rows in scope (honest PostgreSQL count)"`
 	}
 }
 
@@ -353,19 +368,27 @@ type RestartABCResponse struct {
 // --- Translators ---
 
 type TranslatorOut struct {
-	ID        string    `json:"id" doc:"User ULID"`
-	Username  string    `json:"username" doc:"Username"`
-	Sessions  []string  `json:"sessions,omitempty" doc:"Assigned session IDs"`
-	CreatedAt time.Time `json:"created_at" doc:"Creation time"`
+	ID           string            `json:"id" doc:"User ULID"`
+	Username     string            `json:"username" doc:"Username"`
+	Sessions     []string          `json:"sessions,omitempty" doc:"Assigned session IDs"`
+	SessionNames map[string]string `json:"session_names,omitempty" doc:"Assigned session ID to name map (bounded lookup)"`
+	CreatedAt    time.Time         `json:"created_at" doc:"Creation time"`
 }
 
 type ListTranslatorsRequest struct {
 	Authorization string `header:"Authorization" doc:"Bearer token"`
+	Q             string `query:"q" doc:"Search by username"`
+	Sort          string `query:"sort" enum:"created_at,username,id" doc:"Sort field (allowlisted)"`
+	Direction     string `query:"direction" enum:"asc,desc" doc:"Sort direction"`
+	Limit         int    `query:"limit" minimum:"1" maximum:"100" doc:"Page size (default 25, max 100)"`
+	Cursor        string `query:"cursor" doc:"Opaque pagination cursor"`
 }
 
 type ListTranslatorsResponse struct {
 	Body struct {
-		Data []TranslatorOut `json:"data"`
+		Data       []TranslatorOut `json:"data"`
+		NextCursor string          `json:"next_cursor,omitempty" doc:"Opaque cursor for the next page; empty when exhausted"`
+		Total      *int64          `json:"total,omitempty" doc:"Total matching rows (honest PostgreSQL count)"`
 	}
 }
 

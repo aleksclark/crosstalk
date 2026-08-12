@@ -35,6 +35,18 @@ func (m *mockABCService) List(_ context.Context) ([]crosstalk.ABC, error) {
 	return result, nil
 }
 
+func (m *mockABCService) ListPage(_ context.Context, _ crosstalk.ListQuery) (crosstalk.ABCPage, error) {
+	list, err := m.List(context.Background())
+	if err != nil {
+		return crosstalk.ABCPage{}, err
+	}
+	items := make([]crosstalk.ABCListItem, 0, len(list))
+	for _, a := range list {
+		items = append(items, crosstalk.ABCListItem{ABC: a})
+	}
+	return crosstalk.ABCPage{Items: items}, nil
+}
+
 func (m *mockABCService) Get(_ context.Context, id string) (*crosstalk.ABC, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -91,6 +103,10 @@ func newMockSessionService() *mockSessionService {
 
 func (m *mockSessionService) List(_ context.Context) ([]crosstalk.Session, error) {
 	return nil, nil
+}
+
+func (m *mockSessionService) ListPage(_ context.Context, _ crosstalk.ListQuery) (crosstalk.SessionPage, error) {
+	return crosstalk.SessionPage{Items: []crosstalk.Session{}}, nil
 }
 
 func (m *mockSessionService) Get(_ context.Context, id string) (*crosstalk.Session, error) {

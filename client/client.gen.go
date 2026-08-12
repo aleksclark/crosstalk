@@ -228,6 +228,126 @@ func (e WebRTCTokenRequestBodyRole) Valid() bool {
 	}
 }
 
+// Defines values for ListAbcsParamsSort.
+const (
+	ListAbcsParamsSortCreatedAt ListAbcsParamsSort = "created_at"
+	ListAbcsParamsSortId        ListAbcsParamsSort = "id"
+	ListAbcsParamsSortName      ListAbcsParamsSort = "name"
+)
+
+// Valid indicates whether the value is a known member of the ListAbcsParamsSort enum.
+func (e ListAbcsParamsSort) Valid() bool {
+	switch e {
+	case ListAbcsParamsSortCreatedAt:
+		return true
+	case ListAbcsParamsSortId:
+		return true
+	case ListAbcsParamsSortName:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListAbcsParamsDirection.
+const (
+	ListAbcsParamsDirectionAsc  ListAbcsParamsDirection = "asc"
+	ListAbcsParamsDirectionDesc ListAbcsParamsDirection = "desc"
+)
+
+// Valid indicates whether the value is a known member of the ListAbcsParamsDirection enum.
+func (e ListAbcsParamsDirection) Valid() bool {
+	switch e {
+	case ListAbcsParamsDirectionAsc:
+		return true
+	case ListAbcsParamsDirectionDesc:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListSessionsParamsSort.
+const (
+	ListSessionsParamsSortCreatedAt ListSessionsParamsSort = "created_at"
+	ListSessionsParamsSortId        ListSessionsParamsSort = "id"
+	ListSessionsParamsSortName      ListSessionsParamsSort = "name"
+	ListSessionsParamsSortUpdatedAt ListSessionsParamsSort = "updated_at"
+)
+
+// Valid indicates whether the value is a known member of the ListSessionsParamsSort enum.
+func (e ListSessionsParamsSort) Valid() bool {
+	switch e {
+	case ListSessionsParamsSortCreatedAt:
+		return true
+	case ListSessionsParamsSortId:
+		return true
+	case ListSessionsParamsSortName:
+		return true
+	case ListSessionsParamsSortUpdatedAt:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListSessionsParamsDirection.
+const (
+	ListSessionsParamsDirectionAsc  ListSessionsParamsDirection = "asc"
+	ListSessionsParamsDirectionDesc ListSessionsParamsDirection = "desc"
+)
+
+// Valid indicates whether the value is a known member of the ListSessionsParamsDirection enum.
+func (e ListSessionsParamsDirection) Valid() bool {
+	switch e {
+	case ListSessionsParamsDirectionAsc:
+		return true
+	case ListSessionsParamsDirectionDesc:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListTranslatorsParamsSort.
+const (
+	CreatedAt ListTranslatorsParamsSort = "created_at"
+	Id        ListTranslatorsParamsSort = "id"
+	Username  ListTranslatorsParamsSort = "username"
+)
+
+// Valid indicates whether the value is a known member of the ListTranslatorsParamsSort enum.
+func (e ListTranslatorsParamsSort) Valid() bool {
+	switch e {
+	case CreatedAt:
+		return true
+	case Id:
+		return true
+	case Username:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListTranslatorsParamsDirection.
+const (
+	Asc  ListTranslatorsParamsDirection = "asc"
+	Desc ListTranslatorsParamsDirection = "desc"
+)
+
+// Valid indicates whether the value is a known member of the ListTranslatorsParamsDirection enum.
+func (e ListTranslatorsParamsDirection) Valid() bool {
+	switch e {
+	case Asc:
+		return true
+	case Desc:
+		return true
+	default:
+		return false
+	}
+}
+
 // ABCAudioCapabilityOut defines model for ABCAudioCapabilityOut.
 type ABCAudioCapabilityOut struct {
 	AlsaCardId *string `json:"alsa_card_id,omitempty"`
@@ -389,6 +509,9 @@ type ABCOut struct {
 
 	// SessionId Assigned session ID
 	SessionId *string `json:"session_id,omitempty"`
+
+	// SessionName Assigned session name (batch-resolved)
+	SessionName *string `json:"session_name,omitempty"`
 }
 
 // AssignTranslatorSessionsRequestBody defines model for AssignTranslatorSessionsRequestBody.
@@ -628,6 +751,12 @@ type ListABCsResponseBody struct {
 	// Schema A URL to the JSON Schema for this object.
 	Schema *string   `json:"$schema,omitempty"`
 	Data   *[]ABCOut `json:"data"`
+
+	// NextCursor Opaque cursor for the next page; empty when exhausted
+	NextCursor *string `json:"next_cursor,omitempty"`
+
+	// Total Total matching rows in scope (honest PostgreSQL count)
+	Total *int64 `json:"total,omitempty"`
 }
 
 // ListChannelsResponseBody defines model for ListChannelsResponseBody.
@@ -649,6 +778,12 @@ type ListSessionsResponseBody struct {
 	// Schema A URL to the JSON Schema for this object.
 	Schema *string       `json:"$schema,omitempty"`
 	Data   *[]SessionOut `json:"data"`
+
+	// NextCursor Opaque cursor for the next page; empty when exhausted
+	NextCursor *string `json:"next_cursor,omitempty"`
+
+	// Total Total matching rows in scope (honest PostgreSQL count)
+	Total *int64 `json:"total,omitempty"`
 }
 
 // ListSourcesResponseBody defines model for ListSourcesResponseBody.
@@ -663,6 +798,12 @@ type ListTranslatorsResponseBody struct {
 	// Schema A URL to the JSON Schema for this object.
 	Schema *string          `json:"$schema,omitempty"`
 	Data   *[]TranslatorOut `json:"data"`
+
+	// NextCursor Opaque cursor for the next page; empty when exhausted
+	NextCursor *string `json:"next_cursor,omitempty"`
+
+	// Total Total matching rows (honest PostgreSQL count)
+	Total *int64 `json:"total,omitempty"`
 }
 
 // ListUsersResponseBody defines model for ListUsersResponseBody.
@@ -885,6 +1026,9 @@ type TranslatorOut struct {
 	// Id User ULID
 	Id string `json:"id"`
 
+	// SessionNames Assigned session ID to name map (bounded lookup)
+	SessionNames *map[string]string `json:"session_names,omitempty"`
+
 	// Sessions Assigned session IDs
 	Sessions *[]string `json:"sessions,omitempty"`
 
@@ -1033,9 +1177,30 @@ type bearerAuthContextKey string
 
 // ListAbcsParams defines parameters for ListAbcs.
 type ListAbcsParams struct {
+	// Q Search by ABC name
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Sort Sort field (allowlisted)
+	Sort *ListAbcsParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
+
+	// Direction Sort direction
+	Direction *ListAbcsParamsDirection `form:"direction,omitempty" json:"direction,omitempty"`
+
+	// Limit Page size (default 25, max 100)
+	Limit *int64 `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor Opaque pagination cursor
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
 	// Authorization Bearer token
 	Authorization *string `json:"Authorization,omitempty"`
 }
+
+// ListAbcsParamsSort defines parameters for ListAbcs.
+type ListAbcsParamsSort string
+
+// ListAbcsParamsDirection defines parameters for ListAbcs.
+type ListAbcsParamsDirection string
 
 // CreateAbcParams defines parameters for CreateAbc.
 type CreateAbcParams struct {
@@ -1087,9 +1252,30 @@ type GetRecordingDownloadParams struct {
 
 // ListSessionsParams defines parameters for ListSessions.
 type ListSessionsParams struct {
+	// Q Search by session name
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Sort Sort field (allowlisted)
+	Sort *ListSessionsParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
+
+	// Direction Sort direction
+	Direction *ListSessionsParamsDirection `form:"direction,omitempty" json:"direction,omitempty"`
+
+	// Limit Page size (default 25, max 100)
+	Limit *int64 `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor Opaque pagination cursor
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
 	// Authorization Bearer token
 	Authorization *string `json:"Authorization,omitempty"`
 }
+
+// ListSessionsParamsSort defines parameters for ListSessions.
+type ListSessionsParamsSort string
+
+// ListSessionsParamsDirection defines parameters for ListSessions.
+type ListSessionsParamsDirection string
 
 // CreateSessionParams defines parameters for CreateSession.
 type CreateSessionParams struct {
@@ -1177,9 +1363,30 @@ type ListSourcesParams struct {
 
 // ListTranslatorsParams defines parameters for ListTranslators.
 type ListTranslatorsParams struct {
+	// Q Search by username
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Sort Sort field (allowlisted)
+	Sort *ListTranslatorsParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
+
+	// Direction Sort direction
+	Direction *ListTranslatorsParamsDirection `form:"direction,omitempty" json:"direction,omitempty"`
+
+	// Limit Page size (default 25, max 100)
+	Limit *int64 `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor Opaque pagination cursor
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
 	// Authorization Bearer token
 	Authorization *string `json:"Authorization,omitempty"`
 }
+
+// ListTranslatorsParamsSort defines parameters for ListTranslators.
+type ListTranslatorsParamsSort string
+
+// ListTranslatorsParamsDirection defines parameters for ListTranslators.
+type ListTranslatorsParamsDirection string
 
 // CreateTranslatorParams defines parameters for CreateTranslator.
 type CreateTranslatorParams struct {
@@ -2149,6 +2356,81 @@ func NewListAbcsRequest(server string, params *ListAbcsParams) (*http.Request, e
 		return nil, err
 	}
 
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Sort != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "sort", *params.Sort, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Direction != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "direction", *params.Direction, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
@@ -2733,6 +3015,81 @@ func NewListSessionsRequest(server string, params *ListSessionsParams) (*http.Re
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Sort != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "sort", *params.Sort, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Direction != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "direction", *params.Direction, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -3581,6 +3938,81 @@ func NewListTranslatorsRequest(server string, params *ListTranslatorsParams) (*h
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Sort != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "sort", *params.Sort, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Direction != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "direction", *params.Direction, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)

@@ -1,4 +1,5 @@
 import { Component, useEffect, useState, type ReactNode } from "react";
+import { Button } from "@crosstalk/theme";
 import { onApiError, emitApiError } from "../lib/errorBus";
 
 interface Toast {
@@ -9,7 +10,7 @@ interface Toast {
 let nextId = 1;
 
 // Toaster listens on the error bus and renders dismissible toasts. Toasts stay
-// until the user clicks the 'x'.
+// until the user clicks dismiss.
 export function Toaster() {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
@@ -26,20 +27,21 @@ export function Toaster() {
   if (toasts.length === 0) return null;
 
   return (
-    <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 max-w-sm">
+    <div className="fixed bottom-4 right-4 z-[100] flex max-w-sm flex-col gap-2">
       {toasts.map((toast) => (
         <div
           key={toast.id}
           role="alert"
-          className="flex items-start gap-3 bg-destructive text-destructive-foreground border border-destructive rounded-lg px-4 py-3 shadow-lg"
+          className="flex items-start gap-3 border border-[var(--house-status-danger)] bg-[var(--house-status-danger-bg)] px-4 py-3 text-[var(--house-status-danger)]"
         >
-          <span className="flex-1 text-sm break-words">{toast.message}</span>
+          <span className="flex-1 break-words text-sm">{toast.message}</span>
           <button
+            type="button"
             onClick={() => dismiss(toast.id)}
             aria-label="Dismiss"
-            className="text-destructive-foreground/80 hover:text-destructive-foreground font-bold leading-none"
+            className="font-bold leading-none opacity-80 hover:opacity-100"
           >
-            ✕
+            ×
           </button>
         </div>
       ))}
@@ -70,14 +72,14 @@ export class ErrorBoundary extends Component<
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex flex-col items-center justify-center h-screen gap-4 text-center px-4">
-          <h1 className="text-xl font-bold">Something went wrong</h1>
-          <button
+        <div className="flex h-screen flex-col items-center justify-center gap-4 px-4 text-center">
+          <h1 className="house-type-title">Something went wrong</h1>
+          <Button
+            variant="primary"
             onClick={() => this.setState({ hasError: false })}
-            className="bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-medium hover:opacity-90"
           >
             Try again
-          </button>
+          </Button>
           <Toaster />
         </div>
       );

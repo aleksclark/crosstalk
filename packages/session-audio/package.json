@@ -17,7 +17,8 @@
   },
   "dependencies": {
     "@crosstalk/api-client": "workspace:*",
-    "@crosstalk/theme": "workspace:*"
+    "@crosstalk/theme": "workspace:*",
+    "qrcode.react": "^4.2.0"
   },
   "devDependencies": {
     "@types/react": "^19.2.14",

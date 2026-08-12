@@ -1,5 +1,11 @@
-import { useEffect, useRef, useState } from "react";
-import { VUMeter, useAudioLevel } from "@crosstalk/theme";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  IconButton,
+  Status,
+  VUMeter,
+  useAudioLevel,
+  type StatusTone,
+} from "@crosstalk/theme";
 import { useChannelMonitor } from "./useChannelMonitor";
 
 export interface ChannelMonitorProps {
@@ -9,6 +15,8 @@ export interface ChannelMonitorProps {
   channelName: string;
   // Base origin for the signaling WebSocket. Defaults to window.location.origin.
   baseUrl?: string;
+  className?: string;
+  style?: CSSProperties;
 }
 
 interface MonitorPreferences {
@@ -39,6 +47,28 @@ function savePreferences(key: string, preferences: MonitorPreferences) {
   }
 }
 
+function monitorStatus(state: RTCPeerConnectionState | "idle"): {
+  tone: StatusTone;
+  label: string;
+} {
+  switch (state) {
+    case "connected":
+      return { tone: "ok", label: "Monitoring" };
+    case "connecting":
+    case "new":
+      return { tone: "info", label: "Connecting" };
+    case "disconnected":
+      return { tone: "warning", label: "Disconnected" };
+    case "failed":
+      return { tone: "danger", label: "Failed" };
+    case "closed":
+      return { tone: "neutral", label: "Closed" };
+    case "idle":
+    default:
+      return { tone: "neutral", label: "Idle" };
+  }
+}
+
 // ChannelMonitor opens an always-on, receive-only monitor for a single channel
 // and renders a per-channel listening control: a mute toggle, a volume slider,
 // and a VU meter.
@@ -48,11 +78,16 @@ function savePreferences(key: string, preferences: MonitorPreferences) {
 // muted or silenced channel still shows incoming level. Mute is implemented by
 // muting the <audio> element (not pausing), so decoding continues and the meter
 // keeps working.
+//
+// Local preferences default to muted and use storage keys:
+//   crosstalk.monitor.v1.<sessionId>.<channelName>
 export function ChannelMonitor({
   sessionId,
   token,
   channelName,
   baseUrl,
+  className,
+  style,
 }: ChannelMonitorProps) {
   const { stream, state } = useChannelMonitor({
     sessionId,
@@ -105,18 +140,41 @@ export function ChannelMonitor({
     if (audioRef.current) audioRef.current.muted = muted;
   }, [muted]);
 
-  const connected = state === "connected";
-
   const resumePlayback = () => {
     const el = audioRef.current;
     if (!el) return;
     void el.play().then(() => setPlaybackBlocked(false)).catch(() => setPlaybackBlocked(true));
   };
 
+  const { tone, label } = monitorStatus(state);
+  const volumePct = Math.round(volume * 100);
+
   return (
-    <div className="flex items-center gap-3">
-      <audio ref={audioRef} autoPlay className="hidden" />
-      <button
+    <div
+      className={className}
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        alignItems: "center",
+        gap: "var(--house-space-3)",
+        ...style,
+      }}
+    >
+      <audio ref={audioRef} autoPlay className="house-visually-hidden" />
+
+      <IconButton
+        icon={playbackBlocked ? "play" : muted ? "mute" : "volume"}
+        label={
+          playbackBlocked
+            ? `Start monitor audio for ${channelName}`
+            : muted
+              ? `Unmute monitor for ${channelName}`
+              : `Mute monitor for ${channelName}`
+        }
+        variant={
+          playbackBlocked ? "primary" : muted ? "destructive" : "secondary"
+        }
+        aria-pressed={playbackBlocked ? undefined : muted}
         onClick={() => {
           if (playbackBlocked) {
             resumePlayback();
@@ -128,52 +186,60 @@ export function ChannelMonitor({
             return next;
           });
         }}
-        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded text-xs font-bold transition-colors ${
-          playbackBlocked
-            ? "border border-yellow-500/50 bg-yellow-500/20 text-yellow-200"
-            : muted
-              ? "border border-destructive/50 bg-destructive/20 text-destructive-foreground"
-              : "border border-primary/50 bg-primary/20 text-primary-foreground"
-        }`}
-        title={playbackBlocked ? "Start monitor audio" : muted ? "Unmute monitor" : "Mute monitor"}
-        aria-pressed={muted}
-      >
-        {playbackBlocked ? "▶" : muted ? "M" : "A"}
-      </button>
-
-      <input
-        type="range"
-        min={0}
-        max={100}
-        step={1}
-        value={Math.round(volume * 100)}
-        onChange={(e) => {
-          const next = Number(e.target.value) / 100;
-          setVolume(next);
-          savePreferences(storageKey, { muted, volume: next });
-        }}
-        className="h-1 w-24 shrink-0 cursor-pointer accent-primary"
-        title="Monitor volume"
-        aria-label="Monitor volume"
       />
 
-      <div className="min-w-0 flex-1">
-        <VUMeter level={level} showValue={false} />
-        {playbackBlocked && (
-          <span className="text-[10px] text-yellow-300">Click ▶ to hear this channel</span>
-        )}
+      <label
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--house-space-2)",
+          minWidth: "8rem",
+          flex: "0 1 12rem",
+        }}
+      >
+        <span className="house-visually-hidden">
+          Monitor volume for {channelName}
+        </span>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          step={1}
+          value={volumePct}
+          onChange={(e) => {
+            const next = Number(e.target.value) / 100;
+            setVolume(next);
+            savePreferences(storageKey, { muted, volume: next });
+          }}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={volumePct}
+          aria-valuetext={`${volumePct} percent`}
+          style={{
+            width: "100%",
+            minHeight: "var(--house-control-height)",
+            accentColor: "var(--house-accent)",
+            cursor: "pointer",
+          }}
+        />
+      </label>
+
+      <div style={{ minWidth: 0, flex: "1 1 8rem" }}>
+        <VUMeter level={level} showValue={false} label={undefined} />
+        {playbackBlocked ? (
+          <p
+            style={{
+              margin: "var(--house-space-1) 0 0",
+              font: "400 var(--house-type-metadata) / var(--house-leading-metadata) var(--house-font-technical)",
+              color: "var(--house-status-warning)",
+            }}
+          >
+            Browser blocked playback. Press play to hear {channelName}.
+          </p>
+        ) : null}
       </div>
 
-      <span
-        className="w-2 shrink-0"
-        title={connected ? "Monitoring" : `Monitor: ${state}`}
-      >
-        <span
-          className={`block h-2 w-2 rounded-full ${
-            connected ? "bg-green-500" : "bg-muted-foreground"
-          }`}
-        />
-      </span>
+      <Status tone={tone}>{label}</Status>
     </div>
   );
 }

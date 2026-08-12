@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Icon } from "@crosstalk/theme";
 import { cn } from "../lib/utils";
 
 interface DebugEvent {
@@ -27,68 +28,73 @@ export function DebugPanel({
     ? events.filter(
         (e) =>
           e.type.toLowerCase().includes(filter.toLowerCase()) ||
-          e.message.toLowerCase().includes(filter.toLowerCase())
+          e.message.toLowerCase().includes(filter.toLowerCase()),
       )
     : events;
 
   return (
-    <div className={cn("bg-card border border-border rounded-lg", className)}>
-      {/* Header */}
-      <div
-        className="flex items-center justify-between px-4 py-2 border-b border-border cursor-pointer"
+    <div className={cn("border border-border bg-[var(--house-bg-raised)]", className)}>
+      <button
+        type="button"
+        className="flex w-full items-center justify-between gap-2 border-b border-border px-3 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-[var(--house-focus)]"
         onClick={() => setCollapsed(!collapsed)}
+        aria-expanded={!collapsed}
       >
-        <div className="flex items-center gap-2">
-          <span className="text-xs">{collapsed ? "▶" : "▼"}</span>
-          <h3 className="text-sm font-semibold">{title}</h3>
-          <span className="text-xs text-muted-foreground">
-            ({events.length} events)
+        <div className="flex min-w-0 items-center gap-2">
+          <Icon
+            name={collapsed ? "chevron-right" : "chevron-down"}
+            size="compact"
+            aria-hidden
+          />
+          <h3 className="house-type-label truncate">{title}</h3>
+          <span className="house-type-meta text-muted-foreground">
+            ({events.length})
           </span>
         </div>
-      </div>
+      </button>
 
-      {!collapsed && (
+      {!collapsed ? (
         <>
-          {/* Filter */}
-          <div className="px-4 py-2 border-b border-border">
+          <div className="border-b border-border px-3 py-2">
+            <label className="house-visually-hidden" htmlFor="debug-event-filter">
+              Filter events
+            </label>
             <input
+              id="debug-event-filter"
               type="text"
               placeholder="Filter events..."
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
-              className="w-full bg-muted text-foreground text-xs px-2 py-1 rounded border border-border focus:outline-none focus:ring-1 focus:ring-primary"
+              className="w-full rounded-[var(--house-radius-md)] border border-border bg-[var(--house-bg-sunken)] px-2 py-1 text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-[var(--house-focus)]"
             />
           </div>
 
-          {/* Event list */}
-          <div className="max-h-64 overflow-y-auto font-mono text-xs">
+          <div className="max-h-64 overflow-y-auto house-type-code">
             {filteredEvents.map((event) => (
               <div
                 key={event.id}
-                className="px-4 py-1.5 border-b border-border/50 hover:bg-accent/50"
+                className="border-b border-border/50 px-3 py-1.5 last:border-b-0 hover:bg-[var(--house-bg-surface)]"
               >
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="text-muted-foreground">
                     {new Date(event.timestamp).toLocaleTimeString()}
                   </span>
-                  <span className="text-primary font-semibold">
-                    [{event.type}]
-                  </span>
+                  <span className="font-semibold text-primary">[{event.type}]</span>
                   <span className="text-foreground">{event.message}</span>
                 </div>
-                {event.data != null && (
-                  <pre className="text-muted-foreground mt-1 pl-4 text-[10px] overflow-hidden text-ellipsis">
+                {event.data != null ? (
+                  <pre className="mt-1 overflow-hidden text-ellipsis pl-2 text-[10px] text-muted-foreground">
                     {String(JSON.stringify(event.data, null, 2)).slice(0, 200)}
                   </pre>
-                )}
+                ) : null}
               </div>
             ))}
-            {filteredEvents.length === 0 && (
-              <p className="px-4 py-2 text-muted-foreground">No events</p>
-            )}
+            {filteredEvents.length === 0 ? (
+              <p className="px-3 py-2 text-muted-foreground">No events</p>
+            ) : null}
           </div>
         </>
-      )}
+      ) : null}
     </div>
   );
 }
