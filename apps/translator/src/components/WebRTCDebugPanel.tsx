@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Icon, Status } from "@crosstalk/theme";
 import type { WebRTCEvent, WebRTCStats, ICECandidate } from "../hooks/useWebRTC";
 
 interface WebRTCDebugPanelProps {
@@ -13,8 +14,11 @@ interface WebRTCDebugPanelProps {
   stats: WebRTCStats;
 }
 
+/**
+ * Native disclosure inspector for WebRTC diagnostics.
+ * Mono for SDP/stats/events; local event reversal is a bounded diagnostic log.
+ */
 export function WebRTCDebugPanel(props: WebRTCDebugPanelProps) {
-  const [expanded, setExpanded] = useState(false);
   const {
     connectionState,
     iceState,
@@ -28,120 +32,172 @@ export function WebRTCDebugPanel(props: WebRTCDebugPanelProps) {
   } = props;
 
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-gray-750 transition-colors"
+    <details
+      data-testid="webrtc-debug"
+      style={{
+        borderTop: "1px solid var(--house-rule-subtle)",
+        borderBottom: "1px solid var(--house-rule-subtle)",
+      }}
+    >
+      <summary
+        className="house-type-section"
+        style={{
+          cursor: "pointer",
+          listStyle: "none",
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--house-space-2)",
+          minHeight: "var(--house-control-height)",
+          padding: "var(--house-space-3) 0",
+          color: "var(--house-text-secondary)",
+          fontWeight: 600,
+        }}
       >
-        <span className="font-medium text-gray-300">🔧 WebRTC Debug Panel</span>
-        <span className="text-gray-500 text-sm">{expanded ? "▼" : "▶"}</span>
-      </button>
+        <Icon name="debug" size="compact" />
+        Connection inspector
+        <span className="house-type-meta" style={{ marginLeft: "auto", color: "var(--house-text-tertiary)" }}>
+          {connectionState} · ICE {iceState}
+        </span>
+      </summary>
 
-      {expanded && (
-        <div className="border-t border-gray-700 p-4 space-y-4 text-sm">
-          {/* States */}
-          <section>
-            <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Connection States</h3>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <StateChip label="Connection" value={connectionState} />
-              <StateChip label="ICE" value={iceState} />
-              <StateChip label="Signaling" value={signalingState} />
-              <StateChip label="Data Channel" value={dataChannelState} />
-            </div>
-          </section>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "var(--house-space-5)",
+          paddingBottom: "var(--house-space-5)",
+        }}
+      >
+        <section>
+          <h3 className="house-type-eyebrow" style={{ margin: "0 0 var(--house-space-2)", color: "var(--house-text-tertiary)" }}>
+            States
+          </h3>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+              gap: "var(--house-space-2)",
+            }}
+          >
+            <MetaRow label="Connection" value={connectionState} />
+            <MetaRow label="ICE" value={iceState} />
+            <MetaRow label="Signaling" value={signalingState} />
+            <MetaRow label="Data channel" value={dataChannelState} />
+          </div>
+        </section>
 
-          {/* Stats */}
-          <section>
-            <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Packet Stats</h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-gray-300">
-              <StatItem label="Pkts Recv" value={stats.packetsReceived} />
-              <StatItem label="Pkts Sent" value={stats.packetsSent} />
-              <StatItem label="Pkts Lost" value={stats.packetsLost} />
-              <StatItem label="Bytes Recv" value={formatBytes(stats.bytesReceived)} />
-              <StatItem label="Bytes Sent" value={formatBytes(stats.bytesSent)} />
-              <StatItem label="Jitter" value={`${(stats.jitter * 1000).toFixed(1)}ms`} />
-              <StatItem label="RTT" value={`${(stats.roundTripTime * 1000).toFixed(1)}ms`} />
-            </div>
-          </section>
+        <section>
+          <h3 className="house-type-eyebrow" style={{ margin: "0 0 var(--house-space-2)", color: "var(--house-text-tertiary)" }}>
+            Packet stats
+          </h3>
+          <div
+            className="house-type-code"
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+              gap: "var(--house-space-2)",
+              color: "var(--house-text-secondary)",
+            }}
+          >
+            <MetaRow label="Pkts recv" value={String(stats.packetsReceived)} mono />
+            <MetaRow label="Pkts sent" value={String(stats.packetsSent)} mono />
+            <MetaRow label="Pkts lost" value={String(stats.packetsLost)} mono />
+            <MetaRow label="Bytes recv" value={formatBytes(stats.bytesReceived)} mono />
+            <MetaRow label="Bytes sent" value={formatBytes(stats.bytesSent)} mono />
+            <MetaRow label="Jitter" value={`${(stats.jitter * 1000).toFixed(1)}ms`} mono />
+            <MetaRow label="RTT" value={`${(stats.roundTripTime * 1000).toFixed(1)}ms`} mono />
+          </div>
+        </section>
 
-          {/* ICE Candidates */}
-          <section>
-            <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">
-              ICE Candidates ({candidates.length})
-            </h3>
-            <div className="max-h-32 overflow-y-auto space-y-1">
-              {candidates.map((c, i) => (
-                <div key={i} className="text-xs text-gray-400 font-mono truncate">
-                  <span
-                    className={
-                      c.direction === "local" ? "text-blue-400" : "text-purple-400"
-                    }
-                  >
-                    {c.direction}
-                  </span>{" "}
-                  [{c.type}] {c.component}: {c.candidate.slice(0, 70)}
+        <section>
+          <h3 className="house-type-eyebrow" style={{ margin: "0 0 var(--house-space-2)", color: "var(--house-text-tertiary)" }}>
+            ICE candidates ({candidates.length})
+          </h3>
+          <div
+            className="house-type-code"
+            style={{
+              maxHeight: 128,
+              overflow: "auto",
+              display: "flex",
+              flexDirection: "column",
+              gap: 2,
+              color: "var(--house-text-tertiary)",
+            }}
+          >
+            {candidates.map((c, i) => (
+              <div key={i} style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                <span style={{ color: c.direction === "local" ? "var(--house-accent)" : "var(--house-text-secondary)" }}>
+                  {c.direction}
+                </span>{" "}
+                [{c.type}] {c.component}: {c.candidate.slice(0, 70)}
+              </div>
+            ))}
+            {candidates.length === 0 ? <p style={{ margin: 0 }}>No candidates yet</p> : null}
+          </div>
+        </section>
+
+        <section>
+          <h3 className="house-type-eyebrow" style={{ margin: "0 0 var(--house-space-2)", color: "var(--house-text-tertiary)" }}>
+            SDP
+          </h3>
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--house-space-3)" }}>
+            <SdpBlock label="Local SDP" sdp={localSdp} />
+            <SdpBlock label="Remote SDP" sdp={remoteSdp} />
+          </div>
+        </section>
+
+        <section>
+          <h3 className="house-type-eyebrow" style={{ margin: "0 0 var(--house-space-2)", color: "var(--house-text-tertiary)" }}>
+            Event log ({events.length})
+          </h3>
+          <div
+            className="house-type-code"
+            style={{
+              maxHeight: 192,
+              overflow: "auto",
+              display: "flex",
+              flexDirection: "column",
+              gap: 2,
+            }}
+          >
+            {events
+              .slice()
+              .reverse()
+              .map((ev, i) => (
+                <div key={i} style={{ display: "flex", gap: "var(--house-space-2)", minWidth: 0 }}>
+                  <span style={{ color: "var(--house-text-tertiary)", flexShrink: 0 }}>
+                    {new Date(ev.timestamp).toLocaleTimeString()}
+                  </span>
+                  <span style={{ flexShrink: 0, color: severityColor(ev.type, ev.detail) }}>[{ev.type}]</span>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--house-text-secondary)" }}>
+                    {ev.detail}
+                  </span>
                 </div>
               ))}
-              {candidates.length === 0 && (
-                <p className="text-gray-600 text-xs">No candidates yet</p>
-              )}
-            </div>
-          </section>
+            {events.length === 0 ? (
+              <p style={{ margin: 0, color: "var(--house-text-tertiary)" }}>No events yet</p>
+            ) : null}
+          </div>
+        </section>
 
-          {/* SDP */}
-          <section>
-            <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">SDP Summary</h3>
-            <div className="space-y-2">
-              <SdpBlock label="Local SDP" sdp={localSdp} />
-              <SdpBlock label="Remote SDP" sdp={remoteSdp} />
-            </div>
-          </section>
-
-          {/* Event Log */}
-          <section>
-            <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">
-              Event Log ({events.length})
-            </h3>
-            <div className="max-h-48 overflow-y-auto space-y-0.5 font-mono">
-              {events
-                .slice()
-                .reverse()
-                .map((ev, i) => (
-                  <div key={i} className="text-xs flex gap-2">
-                    <span className="text-gray-600 shrink-0">
-                      {new Date(ev.timestamp).toLocaleTimeString()}
-                    </span>
-                    <span className={`shrink-0 ${severityColor(ev.type, ev.detail)}`}>
-                      [{ev.type}]
-                    </span>
-                    <span className="truncate text-gray-400">{ev.detail}</span>
-                  </div>
-                ))}
-              {events.length === 0 && (
-                <p className="text-gray-600 text-xs">No events yet</p>
-              )}
-            </div>
-          </section>
-        </div>
-      )}
-    </div>
+        <Status tone="info">Local diagnostic log only — not a server resource collection.</Status>
+      </div>
+    </details>
   );
 }
 
-function StateChip({ label, value }: { label: string; value: string }) {
+function MetaRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div className="bg-gray-900 rounded px-2 py-1">
-      <span className="text-gray-500 text-xs">{label}: </span>
-      <span className="text-gray-200 text-xs font-mono">{value}</span>
-    </div>
-  );
-}
-
-function StatItem({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div>
-      <span className="text-gray-500 text-xs">{label}: </span>
-      <span className="text-gray-200 text-xs font-mono">{value}</span>
+    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      <span className="house-type-meta" style={{ color: "var(--house-text-tertiary)" }}>
+        {label}
+      </span>
+      <span
+        className={mono ? "house-type-code" : "house-type-body"}
+        style={{ color: "var(--house-text-primary)" }}
+      >
+        {value}
+      </span>
     </div>
   );
 }
@@ -152,26 +208,55 @@ function SdpBlock({ label, sdp }: { label: string; sdp: string | null }) {
   if (!sdp) {
     return (
       <div>
-        <span className="text-gray-500 text-xs">{label}: </span>
-        <span className="text-gray-600 text-xs">Not set</span>
+        <span className="house-type-meta" style={{ color: "var(--house-text-tertiary)" }}>
+          {label}:{" "}
+        </span>
+        <span className="house-type-meta" style={{ color: "var(--house-text-tertiary)" }}>
+          Not set
+        </span>
       </div>
     );
   }
 
-  const summary = sdp.slice(0, 100) + (sdp.length > 100 ? "..." : "");
+  const summary = sdp.slice(0, 100) + (sdp.length > 100 ? "…" : "");
 
   return (
     <div>
-      <div className="flex items-center gap-2">
-        <span className="text-gray-500 text-xs">{label}</span>
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--house-space-2)" }}>
+        <span className="house-type-meta" style={{ color: "var(--house-text-tertiary)" }}>
+          {label}
+        </span>
         <button
+          type="button"
           onClick={() => setShowFull(!showFull)}
-          className="text-blue-500 text-xs hover:underline"
+          className="house-type-meta"
+          style={{
+            background: "none",
+            border: "none",
+            color: "var(--house-accent)",
+            cursor: "pointer",
+            padding: 0,
+            font: "inherit",
+          }}
         >
           {showFull ? "collapse" : "expand"}
         </button>
       </div>
-      <pre className="text-xs text-gray-400 bg-gray-900 rounded p-1 mt-1 overflow-x-auto max-h-40">
+      <pre
+        className="house-type-code"
+        style={{
+          margin: "var(--house-space-1) 0 0",
+          padding: "var(--house-space-2)",
+          background: "var(--house-bg-sunken)",
+          border: "1px solid var(--house-rule-subtle)",
+          borderRadius: "var(--house-radius-md)",
+          overflow: "auto",
+          maxHeight: 160,
+          color: "var(--house-text-secondary)",
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-all",
+        }}
+      >
         {showFull ? sdp : summary}
       </pre>
     </div>
@@ -184,16 +269,11 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
-// severityColor maps an event type/detail to a Tailwind text color so the log
-// is color-coded: red for errors/failures, green for success, yellow for
-// warnings/transient states, blue otherwise.
 function severityColor(type: string, detail: string): string {
   const s = `${type} ${detail}`.toLowerCase();
-  if (s.includes("error") || s.includes("fail")) return "text-red-400";
-  if (s.includes("closed") || s.includes("disconnect")) return "text-red-300";
-  if (s.includes("connected") || s.includes("open") || s.includes("complete"))
-    return "text-green-400";
-  if (s.includes("connecting") || s.includes("checking") || s.includes("mute"))
-    return "text-yellow-400";
-  return "text-blue-400";
+  if (s.includes("error") || s.includes("fail")) return "var(--house-status-danger)";
+  if (s.includes("closed") || s.includes("disconnect")) return "var(--house-status-danger)";
+  if (s.includes("connected") || s.includes("open") || s.includes("complete")) return "var(--house-status-ok)";
+  if (s.includes("connecting") || s.includes("checking") || s.includes("mute")) return "var(--house-status-warning)";
+  return "var(--house-status-info)";
 }

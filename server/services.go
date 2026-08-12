@@ -5,6 +5,9 @@ import "context"
 // SessionService manages sessions.
 type SessionService interface {
 	List(ctx context.Context) ([]Session, error)
+	// ListPage returns a bounded, sorted, optionally filtered page of sessions.
+	// Assignment scope (RestrictToIDs) is applied before pagination.
+	ListPage(ctx context.Context, q ListQuery) (SessionPage, error)
 	Get(ctx context.Context, id string) (*Session, error)
 	Create(ctx context.Context, s *Session) error
 	Update(ctx context.Context, s *Session) error
@@ -45,6 +48,9 @@ type MixService interface {
 // ABCService manages Audio Broadcast Clients.
 type ABCService interface {
 	List(ctx context.Context) ([]ABC, error)
+	// ListPage returns a bounded page of ABCs with batch-resolved session names.
+	// RestrictToIDs scopes by assigned session_id before pagination.
+	ListPage(ctx context.Context, q ListQuery) (ABCPage, error)
 	Get(ctx context.Context, id string) (*ABC, error)
 	Create(ctx context.Context, abc *ABC) error
 	Update(ctx context.Context, abc *ABC) error
@@ -61,6 +67,9 @@ type UserService interface {
 	Update(ctx context.Context, u *User) error
 	Delete(ctx context.Context, id string) error
 	ListByRole(ctx context.Context, role string) ([]User, error)
+	// ListTranslatorsPage returns a bounded page of translator accounts with
+	// assigned session IDs and names resolved in one bounded lookup.
+	ListTranslatorsPage(ctx context.Context, q ListQuery) (TranslatorPage, error)
 	AssignSessions(ctx context.Context, translatorID string, sessionIDs []string) error
 	GetAssignedSessions(ctx context.Context, translatorID string) ([]string, error)
 }
@@ -92,4 +101,31 @@ type MediaTicketService interface {
 	Consume(ctx context.Context, nonce string, ownerGeneration uint64) (*MediaTicket, error)
 	// GetByNonceHash looks up a ticket by hash without consuming it.
 	GetByNonceHash(ctx context.Context, nonceHash string) (*MediaTicket, error)
+}
+
+// ABCAudioService manages durable desired/observed ABC USB audio control state.
+// SetDesired and RecordReport own transactions, revision ordering, idempotency,
+// and audit writes; handlers must not reimplement those rules.
+type ABCAudioService interface {
+	// Get returns durable audio status for an existing ABC. When no settings
+	// row exists yet, it returns an unconfigured status without creating a row.
+	// Returns ErrABCAudioABCNotFound when the ABC itself is missing.
+	Get(ctx context.Context, abcID string) (*ABCAudioStatus, error)
+
+	// SetDesired absolutely replaces desired state when expectedRevision matches.
+	// Duplicate (abcID, requestID) returns the originally accepted status.
+	// Byte-equal desired is a successful no-op (no revision bump).
+	// Conflicting expectedRevision returns ErrABCAudioRevisionConflict.
+	SetDesired(ctx context.Context, abcID, actorID, actorRole, requestID string,
+		expectedRevision uint64, desired ABCAudioDesired) (*ABCAudioStatus, error)
+
+	// RecordReport persists a validated board observation. Stale reports whose
+	// desired revision is lower than the persisted reported revision are ignored
+	// (status returned unchanged; no error). Inventory-only revision 0 may create
+	// a settings row and update capabilities without overwriting desired state.
+	RecordReport(ctx context.Context, abcID string, report ABCAudioObservation) (*ABCAudioStatus, error)
+
+	// ListAudit returns recent audit events for an ABC (newest first). limit<=0
+	// uses a sensible default. Optional helper for operators/tests.
+	ListAudit(ctx context.Context, abcID string, limit int) ([]ABCAudioAuditEvent, error)
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -55,17 +56,36 @@ func (s *Server) handleListSessions(ctx context.Context, input *ListSessionsRequ
 		return nil, err
 	}
 
-	sessions, err := s.services.Sessions.List(ctx)
+	q := crosstalk.ListQuery{
+		Q:         input.Q,
+		Sort:      input.Sort,
+		Direction: crosstalk.ListDirection(input.Direction),
+		Limit:     input.Limit,
+		Cursor:    input.Cursor,
+	}
+	if claims.Role == "translator" {
+		assigned, err := s.assignedSessionIDs(ctx, claims.Subject)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to resolve assignments")
+		}
+		q.RestrictToIDs = &assigned
+	}
+
+	page, err := s.services.Sessions.ListPage(ctx, q)
 	if err != nil {
+		if errors.Is(err, crosstalk.ErrInvalidListQuery) {
+			return nil, huma.Error400BadRequest(err.Error())
+		}
 		return nil, huma.Error500InternalServerError("failed to list sessions")
 	}
-	sessions = s.filterSessionsForClaims(ctx, claims, sessions)
 
 	resp := &ListSessionsResponse{}
-	resp.Body.Data = make([]SessionOut, len(sessions))
-	for i, sess := range sessions {
+	resp.Body.Data = make([]SessionOut, len(page.Items))
+	for i, sess := range page.Items {
 		resp.Body.Data[i] = sessionToOutForClaims(sess, claims)
 	}
+	resp.Body.NextCursor = page.NextCursor
+	resp.Body.Total = page.Total
 	return resp, nil
 }
 
@@ -419,17 +439,39 @@ func (s *Server) handleListABCs(ctx context.Context, input *ListABCsRequest) (*L
 		return nil, err
 	}
 
-	abcs, err := s.services.ABCs.List(ctx)
+	q := crosstalk.ListQuery{
+		Q:         input.Q,
+		Sort:      input.Sort,
+		Direction: crosstalk.ListDirection(input.Direction),
+		Limit:     input.Limit,
+		Cursor:    input.Cursor,
+	}
+	if claims.Role == "translator" {
+		assigned, err := s.assignedSessionIDs(ctx, claims.Subject)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to resolve assignments")
+		}
+		// Scope by session_id before pagination; empty set → empty page.
+		q.RestrictToIDs = &assigned
+	}
+
+	page, err := s.services.ABCs.ListPage(ctx, q)
 	if err != nil {
+		if errors.Is(err, crosstalk.ErrInvalidListQuery) {
+			return nil, huma.Error400BadRequest(err.Error())
+		}
 		return nil, huma.Error500InternalServerError("failed to list ABCs")
 	}
-	abcs = s.filterABCsForClaims(ctx, claims, abcs)
 
 	resp := &ListABCsResponse{}
-	resp.Body.Data = make([]ABCOut, len(abcs))
-	for i, abc := range abcs {
-		resp.Body.Data[i] = abcToOut(abc)
+	resp.Body.Data = make([]ABCOut, len(page.Items))
+	for i, item := range page.Items {
+		out := abcToOut(item.ABC)
+		out.SessionName = item.SessionName
+		resp.Body.Data[i] = out
 	}
+	resp.Body.NextCursor = page.NextCursor
+	resp.Body.Total = page.Total
 	return resp, nil
 }
 
@@ -635,22 +677,34 @@ func (s *Server) handleListTranslators(ctx context.Context, input *ListTranslato
 		return nil, err
 	}
 
-	users, err := s.services.Users.ListByRole(ctx, "translator")
+	q := crosstalk.ListQuery{
+		Q:         input.Q,
+		Sort:      input.Sort,
+		Direction: crosstalk.ListDirection(input.Direction),
+		Limit:     input.Limit,
+		Cursor:    input.Cursor,
+	}
+	page, err := s.services.Users.ListTranslatorsPage(ctx, q)
 	if err != nil {
+		if errors.Is(err, crosstalk.ErrInvalidListQuery) {
+			return nil, huma.Error400BadRequest(err.Error())
+		}
 		return nil, huma.Error500InternalServerError("failed to list translators")
 	}
 
 	resp := &ListTranslatorsResponse{}
-	resp.Body.Data = make([]TranslatorOut, len(users))
-	for i, u := range users {
-		sessions, _ := s.services.Users.GetAssignedSessions(ctx, u.ID)
+	resp.Body.Data = make([]TranslatorOut, len(page.Items))
+	for i, item := range page.Items {
 		resp.Body.Data[i] = TranslatorOut{
-			ID:        u.ID,
-			Username:  u.Username,
-			Sessions:  sessions,
-			CreatedAt: u.CreatedAt,
+			ID:           item.ID,
+			Username:     item.Username,
+			Sessions:     item.SessionIDs,
+			SessionNames: item.SessionNames,
+			CreatedAt:    item.CreatedAt,
 		}
 	}
+	resp.Body.NextCursor = page.NextCursor
+	resp.Body.Total = page.Total
 	return resp, nil
 }
 

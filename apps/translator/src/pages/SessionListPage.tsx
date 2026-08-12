@@ -1,80 +1,197 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "../hooks/useAuth";
 import { createApiClient, type components } from "@crosstalk/api-client";
-import { Logo } from "@crosstalk/theme";
+import { Button, DataState, Icon, PageHeader } from "@crosstalk/theme";
+import { useAuth } from "../hooks/useAuth";
+import { OperateShell } from "../components/OperateShell";
 
 type Session = components["schemas"]["SessionOut"];
+
+type ListState =
+  | { kind: "loading" }
+  | { kind: "ready"; sessions: Session[]; total?: number }
+  | { kind: "empty" }
+  | { kind: "error"; message: string }
+  | { kind: "denied"; message: string };
+
+const PAGE_LIMIT = 25;
 
 export function SessionListPage() {
   const { getToken, logout, user } = useAuth();
   const navigate = useNavigate();
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [state, setState] = useState<ListState>({ kind: "loading" });
+  const [reloadKey, setReloadKey] = useState(0);
 
-  useEffect(() => {
-    const fetchSessions = async () => {
-      const token = getToken();
-      if (!token) return;
+  const load = useCallback(async (signal?: AbortSignal) => {
+    const token = getToken();
+    if (!token) return;
+    setState({ kind: "loading" });
+    try {
       const client = createApiClient({ baseUrl: window.location.origin, token });
-      const { data, error: apiError } = await client.GET("/api/sessions");
-      if (apiError) {
-        setError("Failed to load sessions");
-      } else if (data) {
-        setSessions(data.data ?? []);
+      const { data, error, response } = await client.GET("/api/sessions", {
+        params: {
+          query: {
+            sort: "name",
+            direction: "asc",
+            limit: PAGE_LIMIT,
+          },
+        },
+        signal,
+      });
+
+      if (signal?.aborted) return;
+
+      if (error || !response.ok) {
+        const status = error?.status ?? response.status;
+        const detail = error?.detail ?? error?.title ?? "Failed to load sessions";
+        if (status === 401 || status === 403) {
+          setState({ kind: "denied", message: detail });
+          return;
+        }
+        setState({ kind: "error", message: detail });
+        return;
       }
-      setLoading(false);
-    };
-    fetchSessions();
+
+      const sessions = data?.data ?? [];
+      if (sessions.length === 0) {
+        setState({ kind: "empty" });
+        return;
+      }
+      setState({
+        kind: "ready",
+        sessions,
+        total: data?.total,
+      });
+    } catch (err) {
+      if (signal?.aborted) return;
+      const message = err instanceof Error ? err.message : "Network error loading sessions";
+      setState({ kind: "error", message });
+    }
   }, [getToken]);
 
+  useEffect(() => {
+    const ac = new AbortController();
+    void load(ac.signal);
+    return () => ac.abort();
+  }, [load, reloadKey]);
+
+  const handleLogout = () => {
+    logout();
+    navigate("/login", { replace: true });
+  };
+
+  const retry = () => setReloadKey((k) => k + 1);
+
+  const scopeLabel =
+    state.kind === "ready"
+      ? state.total != null
+        ? `Assigned sessions · ${state.total}`
+        : `Assigned sessions · ${state.sessions.length}`
+      : "Assigned sessions";
+
   return (
-    <div className="min-h-screen p-4 max-w-2xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-4">
-          <Logo className="h-16 w-auto" />
-          <div>
-            <h1 className="text-xl font-bold text-white">Sessions</h1>
-            {user && <p className="text-sm text-gray-400">Logged in as {user.username}</p>}
-          </div>
-        </div>
-        <button
-          onClick={logout}
-          className="px-3 py-1 text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 rounded border border-gray-700 transition-colors"
+    <OperateShell username={user?.username} scope={scopeLabel} onLogout={handleLogout}>
+      <PageHeader
+        eyebrow="Operate"
+        title="Sessions"
+        lede="Open a session to connect your microphone and monitor channels."
+      />
+
+      {state.kind === "loading" ? (
+        <DataState kind="loading" title="Loading assigned sessions" description="Fetching sessions in your scope." />
+      ) : null}
+
+      {state.kind === "empty" ? (
+        <DataState
+          kind="empty"
+          title="No sessions assigned"
+          description="An administrator must assign you to a session before you can connect."
+          action={
+            <Button variant="secondary" icon="refresh" onClick={retry}>
+              Retry
+            </Button>
+          }
+        />
+      ) : null}
+
+      {state.kind === "error" ? (
+        <DataState
+          kind="error"
+          title="Could not load sessions"
+          description={state.message}
+          action={
+            <Button variant="primary" icon="refresh" onClick={retry}>
+              Retry
+            </Button>
+          }
+        />
+      ) : null}
+
+      {state.kind === "denied" ? (
+        <DataState
+          kind="denied"
+          title="Access denied"
+          description={state.message}
+          action={
+            <Button variant="secondary" onClick={handleLogout}>
+              Sign out
+            </Button>
+          }
+        />
+      ) : null}
+
+      {state.kind === "ready" ? (
+        <ul
+          role="list"
+          data-testid="session-list"
+          style={{
+            listStyle: "none",
+            margin: 0,
+            padding: 0,
+            borderTop: "1px solid var(--house-rule-subtle)",
+          }}
         >
-          Logout
-        </button>
-      </div>
-
-      {loading && <p className="text-gray-400">Loading sessions...</p>}
-      {error && <p className="text-red-400">{error}</p>}
-
-      {!loading && sessions.length === 0 && (
-        <p className="text-gray-500">No sessions assigned.</p>
-      )}
-
-      <div className="space-y-3">
-        {sessions.map((session) => (
-          <button
-            key={session.id}
-            onClick={() => navigate(`/sessions/${session.id}/connect`)}
-            className="w-full text-left p-4 bg-gray-800 border border-gray-700 rounded-lg hover:border-blue-500 transition-colors"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-2 h-2 rounded-full bg-blue-500" />
-                <span className="font-medium text-white">{session.name}</span>
-              </div>
-              {session.description && (
-                <div className="text-sm text-gray-400">
-                  {session.description}
+          {state.sessions.map((session) => (
+            <li key={session.id} style={{ borderBottom: "1px solid var(--house-rule-subtle)" }}>
+              <button
+                type="button"
+                onClick={() => navigate(`/sessions/${session.id}/connect`)}
+                className="w-full text-left"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "var(--house-space-3)",
+                  minHeight: "var(--house-row-height, 48px)",
+                  padding: "var(--house-space-3) 0",
+                  background: "transparent",
+                  border: "none",
+                  color: "inherit",
+                  cursor: "pointer",
+                  font: "inherit",
+                }}
+                data-testid={`session-row-${session.id}`}
+              >
+                <div className="min-w-0" style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <span className="house-type-section" style={{ fontWeight: 600 }}>
+                    {session.name}
+                  </span>
+                  {session.description ? (
+                    <span className="house-type-meta" style={{ color: "var(--house-text-tertiary)" }}>
+                      {session.description}
+                    </span>
+                  ) : (
+                    <span className="house-type-meta" style={{ color: "var(--house-text-tertiary)" }}>
+                      ID {session.id.slice(0, 8)}…
+                    </span>
+                  )}
                 </div>
-              )}
-            </div>
-          </button>
-        ))}
-      </div>
-    </div>
+                <Icon name="chevron-right" size="default" aria-hidden />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </OperateShell>
   );
 }

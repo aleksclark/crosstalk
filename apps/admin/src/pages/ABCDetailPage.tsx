@@ -1,48 +1,88 @@
 import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
+import {
+  Button,
+  CopyableId,
+  DataState,
+  PageHeader,
+  Status,
+} from "@crosstalk/theme";
+import type { components } from "@crosstalk/api-client";
 import { useAuth } from "../hooks/useAuth";
 import { getApiClient } from "../lib/api";
-import type { components } from "@crosstalk/api-client";
+import { ABCAudioControls } from "../components/ABCAudioControls";
 
 type ABC = components["schemas"]["ABCOut"];
 
+/**
+ * House-design ABC detail with master K2B ABC audio controls mounted.
+ * Preserves SPA chrome/tokens and abortable load; keeps audio control API surface.
+ */
 export function ABCDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { token } = useAuth();
   const [abc, setAbc] = useState<ABC | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [restarting, setRestarting] = useState(false);
+  const [restartMessage, setRestartMessage] = useState<string | null>(null);
+  const [restartError, setRestartError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function fetchABC() {
-      if (!token || !id) return;
-      const client = getApiClient(token);
+    if (!token || !id) return;
+    const controller = new AbortController();
+    setLoading(true);
+    setLoadError(null);
+    const client = getApiClient(token);
+    void (async () => {
       try {
-        const { data } = await client.GET("/api/abcs/{id}", {
+        const { data, error, response } = await client.GET("/api/abcs/{id}", {
           params: { path: { id } },
+          signal: controller.signal,
         });
+        if (controller.signal.aborted) return;
         if (data) {
           setAbc(data);
+          return;
         }
-      } catch {
-        // handle error
+        const status = response?.status;
+        const detail =
+          (error && typeof error === "object" && "detail" in error
+            ? String((error as { detail?: unknown }).detail ?? "")
+            : "") ||
+          (status ? `Failed to load ABC (${status})` : "Failed to load ABC");
+        setAbc(null);
+        setLoadError(detail || "ABC not found");
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        setLoadError(err instanceof Error ? err.message : "Failed to load ABC");
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
-    }
-    fetchABC();
+    })();
+    return () => controller.abort();
   }, [token, id]);
 
   const handleRestart = async () => {
-    if (!token || !id) return;
+    if (!token || !id || !abc) return;
     setRestarting(true);
+    setRestartError(null);
+    setRestartMessage(null);
     const client = getApiClient(token);
     try {
-      await client.POST("/api/abcs/{id}/restart", {
+      const { error } = await client.POST("/api/abcs/{id}/restart", {
         params: { path: { id } },
       });
-    } catch {
-      // handle error
+      if (error) {
+        setRestartError(error.detail || "Restart request failed");
+        return;
+      }
+      // Server may only queue a command; do not claim the device rebooted.
+      setRestartMessage(
+        `Restart command sent for “${abc.name}”. Connection state will update when the client reports in.`,
+      );
+    } catch (err) {
+      setRestartError(err instanceof Error ? err.message : "Restart request failed");
     } finally {
       setRestarting(false);
     }
@@ -50,96 +90,109 @@ export function ABCDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">Loading ABC...</p>
-      </div>
+      <DataState
+        kind="loading"
+        title="Loading ABC"
+        description="Fetching connector details."
+      />
     );
   }
 
   if (!abc) {
     return (
-      <div className="text-center py-12">
-        <p className="text-muted-foreground">ABC not found</p>
-        <Link to="/abcs" className="text-primary text-sm mt-2 inline-block">
-          ← Back to ABCs
-        </Link>
-      </div>
+      <DataState
+        kind="error"
+        title="ABC unavailable"
+        description={loadError ?? "ABC not found"}
+        action={
+          <Link
+            to="/abcs"
+            className="text-sm text-primary hover:underline"
+            data-testid="abc-detail-error"
+          >
+            ← Back to ABCs
+          </Link>
+        }
+      />
     );
   }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <Link
-              to="/abcs"
-              className="text-muted-foreground hover:text-foreground text-sm"
+      <PageHeader
+        eyebrow="ABCs"
+        title={abc.name}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Status tone={abc.connected ? "ok" : "neutral"}>
+              {abc.connected ? "online" : "offline"}
+            </Status>
+            <Button
+              variant="secondary"
+              loading={restarting}
+              disabled={restarting}
+              onClick={() => void handleRestart()}
             >
-              ABCs /
-            </Link>
-            <h1 className="text-2xl font-bold">{abc.name}</h1>
+              {restarting ? "Sending..." : "Restart"}
+            </Button>
           </div>
-          <p className="text-muted-foreground text-sm mt-1">ID: {abc.id}</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <span
-            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium ${
-              abc.connected
-                ? "bg-green-500/20 text-green-400"
-                : "bg-gray-500/20 text-gray-400"
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-current" />
-            {abc.connected ? "online" : "offline"}
-          </span>
-          <button
-            onClick={handleRestart}
-            disabled={restarting}
-            className="bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-medium hover:opacity-90 disabled:opacity-50"
-          >
-            {restarting ? "Restarting..." : "Restart"}
-          </button>
-        </div>
-      </div>
-
-      {/* Info cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-card border border-border rounded-lg p-4">
-          <h3 className="text-sm font-medium text-muted-foreground">
-            Assigned Session
-          </h3>
-          {abc.session_id ? (
-            <Link
-              to={`/sessions/${abc.session_id}`}
-              className="text-primary text-sm mt-2 inline-block hover:underline"
-            >
-              {abc.session_id.slice(0, 8)}...
+        }
+        meta={
+          <>
+            <span className="inline-flex items-center gap-2">
+              ID <CopyableId value={abc.id} />
+            </span>
+            <Link to="/abcs" className="text-primary hover:underline">
+              All ABCs
             </Link>
-          ) : (
-            <p className="text-sm mt-2 text-muted-foreground">Unassigned</p>
-          )}
+          </>
+        }
+      />
+
+      {restartMessage ? (
+        <p role="status" className="house-type-body text-[var(--house-status-ok)]">
+          {restartMessage}
+        </p>
+      ) : null}
+      {restartError ? (
+        <p role="alert" className="house-type-body text-[var(--house-status-danger)]">
+          {restartError}
+        </p>
+      ) : null}
+
+      <dl className="divide-y divide-border border-y border-border">
+        <div className="grid grid-cols-1 gap-1 py-3 sm:grid-cols-[10rem_1fr] sm:gap-6">
+          <dt className="house-type-label text-muted-foreground">Assigned session</dt>
+          <dd className="text-sm">
+            {abc.session_id ? (
+              <Link
+                to={`/sessions/${abc.session_id}`}
+                className="text-primary hover:underline"
+              >
+                {abc.session_name || abc.session_id}
+              </Link>
+            ) : (
+              <span className="text-muted-foreground">Unassigned</span>
+            )}
+          </dd>
         </div>
-        <div className="bg-card border border-border rounded-lg p-4">
-          <h3 className="text-sm font-medium text-muted-foreground">
-            Last Seen
-          </h3>
-          <p className="text-sm mt-2">
-            {abc.last_seen
-              ? new Date(abc.last_seen).toLocaleString()
-              : "Never"}
-          </p>
+        <div className="grid grid-cols-1 gap-1 py-3 sm:grid-cols-[10rem_1fr] sm:gap-6">
+          <dt className="house-type-label text-muted-foreground">Last seen</dt>
+          <dd className="house-type-meta text-muted-foreground">
+            {abc.last_seen ? new Date(abc.last_seen).toLocaleString() : "Never"}
+          </dd>
         </div>
-        <div className="bg-card border border-border rounded-lg p-4">
-          <h3 className="text-sm font-medium text-muted-foreground">
-            Registered
-          </h3>
-          <p className="text-sm mt-2">
+        <div className="grid grid-cols-1 gap-1 py-3 sm:grid-cols-[10rem_1fr] sm:gap-6">
+          <dt className="house-type-label text-muted-foreground">Registered</dt>
+          <dd className="house-type-meta text-muted-foreground">
             {new Date(abc.created_at).toLocaleString()}
-          </p>
+          </dd>
         </div>
-      </div>
+      </dl>
+
+      {token && id ? (
+        <ABCAudioControls abcId={id} token={token} abcConnected={abc.connected} />
+      ) : null}
     </div>
   );
 }

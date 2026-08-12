@@ -1,131 +1,225 @@
-import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { DataState, PageHeader, Status } from "@crosstalk/theme";
 import { useAuth } from "../hooks/useAuth";
 import { getApiClient } from "../lib/api";
+import { useEffect, useState } from "react";
 
 interface DashboardStats {
-  activeSessions: number;
-  totalABCs: number;
-  onlineABCs: number;
-  totalTranslators: number;
+  sessionsTotal: number | null;
+  sessionsPageCount: number;
+  abcsTotal: number | null;
+  abcsOnlineOnPage: number;
+  abcsPageCount: number;
+  translatorsTotal: number | null;
+  translatorsPageCount: number;
+  fetchedAt: Date | null;
 }
+
+type LoadState = "loading" | "ready" | "error";
 
 export function DashboardPage() {
   const { token } = useAuth();
   const [stats, setStats] = useState<DashboardStats>({
-    activeSessions: 0,
-    totalABCs: 0,
-    onlineABCs: 0,
-    totalTranslators: 0,
+    sessionsTotal: null,
+    sessionsPageCount: 0,
+    abcsTotal: null,
+    abcsOnlineOnPage: 0,
+    abcsPageCount: 0,
+    translatorsTotal: null,
+    translatorsPageCount: 0,
+    fetchedAt: null,
   });
-  const [loading, setLoading] = useState(true);
+  const [loadState, setLoadState] = useState<LoadState>("loading");
+  const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+
     async function fetchStats() {
       if (!token) return;
+      setLoadState("loading");
+      setError(null);
       const client = getApiClient(token);
 
       try {
         const [sessionsRes, abcsRes, translatorsRes] = await Promise.all([
-          client.GET("/api/sessions"),
-          client.GET("/api/abcs"),
-          client.GET("/api/translators"),
+          client.GET("/api/sessions", {
+            params: { query: { limit: 100 } },
+            signal: controller.signal,
+          }),
+          client.GET("/api/abcs", {
+            params: { query: { limit: 100 } },
+            signal: controller.signal,
+          }),
+          client.GET("/api/translators", {
+            params: { query: { limit: 100 } },
+            signal: controller.signal,
+          }),
         ]);
+
+        if (cancelled) return;
+
+        const sessionErr = sessionsRes.error;
+        const abcErr = abcsRes.error;
+        const translatorErr = translatorsRes.error;
+        if (sessionErr || abcErr || translatorErr) {
+          setError(
+            sessionErr?.detail ||
+              abcErr?.detail ||
+              translatorErr?.detail ||
+              "Failed to load dashboard measurements",
+          );
+          setLoadState("error");
+          return;
+        }
 
         const sessions = sessionsRes.data?.data ?? [];
         const abcs = abcsRes.data?.data ?? [];
         const translators = translatorsRes.data?.data ?? [];
 
         setStats({
-          activeSessions: sessions.length,
-          totalABCs: abcs.length,
-          onlineABCs: abcs.filter((a) => a.connected).length,
-          totalTranslators: translators.length,
+          sessionsTotal: sessionsRes.data?.total ?? null,
+          sessionsPageCount: sessions.length,
+          abcsTotal: abcsRes.data?.total ?? null,
+          abcsOnlineOnPage: abcs.filter((a) => a.connected).length,
+          abcsPageCount: abcs.length,
+          translatorsTotal: translatorsRes.data?.total ?? null,
+          translatorsPageCount: translators.length,
+          fetchedAt: new Date(),
         });
-      } catch {
-        // Silently handle errors for now
-      } finally {
-        setLoading(false);
+        setLoadState("ready");
+      } catch (err) {
+        if (cancelled || controller.signal.aborted) return;
+        setError(err instanceof Error ? err.message : "Failed to load dashboard");
+        setLoadState("error");
       }
     }
 
-    fetchStats();
-  }, [token]);
+    void fetchStats();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [token, reloadKey]);
 
-  const cards = [
-    {
-      label: "Sessions",
-      value: stats.activeSessions,
-      icon: "🎙️",
-      color: "text-green-400",
-    },
-    {
-      label: "ABCs Online",
-      value: `${stats.onlineABCs}/${stats.totalABCs}`,
-      icon: "🔌",
-      color: "text-blue-400",
-    },
-    {
-      label: "Translators",
-      value: stats.totalTranslators,
-      icon: "🌐",
-      color: "text-purple-400",
-    },
-    {
-      label: "System Health",
-      value: "OK",
-      icon: "💚",
-      color: "text-green-400",
-    },
-  ];
-
-  if (loading) {
+  if (loadState === "loading") {
     return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">Loading dashboard...</p>
-      </div>
+      <DataState
+        kind="loading"
+        title="Loading dashboard"
+        description="Reading session, ABC, and translator collections from the server."
+      />
     );
   }
 
+  if (loadState === "error") {
+    return (
+      <DataState
+        kind="error"
+        title="Dashboard measurements unavailable"
+        description={error ?? "The collection endpoints did not return data."}
+        action={
+          <button
+            type="button"
+            onClick={() => setReloadKey((k) => k + 1)}
+            className="inline-flex min-h-[var(--house-control-height)] items-center border border-[var(--house-rule-strong)] px-4 text-sm font-medium text-[var(--house-text-secondary)]"
+          >
+            Retry
+          </button>
+        }
+      />
+    );
+  }
+
+  const sessionCount = stats.sessionsTotal ?? stats.sessionsPageCount;
+  const abcCount = stats.abcsTotal ?? stats.abcsPageCount;
+  const translatorCount = stats.translatorsTotal ?? stats.translatorsPageCount;
+  const onlineLabel =
+    stats.abcsTotal != null && stats.abcsPageCount < stats.abcsTotal
+      ? `${stats.abcsOnlineOnPage} online in this page of ${stats.abcsPageCount} (total ${stats.abcsTotal})`
+      : `${stats.abcsOnlineOnPage} of ${abcCount} ABCs report connected`;
+
+  const statusSentence = `Collection snapshot: ${sessionCount} session${sessionCount === 1 ? "" : "s"}, ${onlineLabel}, ${translatorCount} translator account${translatorCount === 1 ? "" : "s"}. No separate health, uptime, or signaling probe is exposed by the API.`;
+
+  const actionLinkClass =
+    "inline-flex min-h-[var(--house-control-height)] items-center border border-[var(--house-rule-strong)] px-4 text-sm font-medium text-[var(--house-text-secondary)] hover:bg-[var(--house-bg-raised)]";
+
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Dashboard</h1>
+      <PageHeader
+        eyebrow="Monitor"
+        title="Dashboard"
+        lede="Live counts from the admin collection endpoints. Claims are limited to what those responses contain."
+        meta={
+          stats.fetchedAt ? (
+            <span>Last refreshed {stats.fetchedAt.toLocaleString()}</span>
+          ) : null
+        }
+      />
 
-      {/* Stats grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {cards.map((card) => (
-          <div
-            key={card.label}
-            className="bg-card border border-border rounded-lg p-4"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-2xl">{card.icon}</span>
-              <span className={`text-2xl font-bold ${card.color}`}>
-                {card.value}
-              </span>
-            </div>
-            <p className="text-sm text-muted-foreground mt-2">{card.label}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Quick actions */}
-      <div className="bg-card border border-border rounded-lg p-4">
-        <h2 className="text-lg font-semibold mb-3">System Status</h2>
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-green-500" />
-            <span className="text-sm">Server connected</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-green-500" />
-            <span className="text-sm">WebRTC signaling active</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-green-500" />
-            <span className="text-sm">Database healthy</span>
-          </div>
+      <section
+        aria-label="Operational status"
+        className="border-y border-border py-4"
+      >
+        <p className="house-type-lede text-foreground">{statusSentence}</p>
+        <div className="mt-3">
+          <Status tone="info">Collection snapshot only</Status>
         </div>
-      </div>
+      </section>
+
+      <section aria-label="Measurements">
+        <h2 className="house-type-section mb-3">Measurements</h2>
+        <dl className="divide-y divide-border border-y border-border">
+          <div className="grid grid-cols-1 gap-1 py-3 sm:grid-cols-[minmax(10rem,14rem)_1fr] sm:items-baseline sm:gap-6">
+            <dt className="house-type-label text-muted-foreground">Sessions</dt>
+            <dd className="house-type-data text-foreground">
+              {sessionCount}
+              <span className="ml-2 house-type-meta text-muted-foreground">
+                total from list endpoint
+              </span>
+            </dd>
+          </div>
+          <div className="grid grid-cols-1 gap-1 py-3 sm:grid-cols-[minmax(10rem,14rem)_1fr] sm:items-baseline sm:gap-6">
+            <dt className="house-type-label text-muted-foreground">ABCs connected</dt>
+            <dd className="house-type-data text-foreground">
+              {stats.abcsOnlineOnPage}
+              <span className="ml-2 house-type-meta text-muted-foreground">
+                of {abcCount} listed
+              </span>
+            </dd>
+          </div>
+          <div className="grid grid-cols-1 gap-1 py-3 sm:grid-cols-[minmax(10rem,14rem)_1fr] sm:items-baseline sm:gap-6">
+            <dt className="house-type-label text-muted-foreground">Translators</dt>
+            <dd className="house-type-data text-foreground">
+              {translatorCount}
+              <span className="ml-2 house-type-meta text-muted-foreground">
+                accounts in scope
+              </span>
+            </dd>
+          </div>
+        </dl>
+      </section>
+
+      <section aria-label="Operate">
+        <h2 className="house-type-section mb-3">Operate</h2>
+        <div className="flex flex-wrap gap-2 border-t border-border pt-4">
+          {/* Labels intentionally avoid bare nav names so E2E role queries stay unique. */}
+          <Link to="/sessions" className={actionLinkClass}>
+            Manage live work
+          </Link>
+          <Link to="/abcs" className={actionLinkClass}>
+            Manage booth connectors
+          </Link>
+          <Link to="/translators" className={actionLinkClass}>
+            Manage operator accounts
+          </Link>
+          <Link to="/debug" className={actionLinkClass}>
+            Inspect peers
+          </Link>
+        </div>
+      </section>
     </div>
   );
 }

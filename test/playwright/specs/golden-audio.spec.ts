@@ -80,12 +80,14 @@ test.describe("Golden Audio — SPA-driven end-to-end", () => {
     const adminToken = await adminLoginUI(page);
 
     const sessionName = `E2E Service ${Date.now()}`;
-    await page.getByRole("link", { name: /sessions/i }).click();
+    await page.getByRole("navigation").getByRole("link", { name: "Sessions", exact: true }).click();
     await expect(page).toHaveURL(/\/admin\/sessions/);
     await page.getByRole("button", { name: /new session/i }).click();
-    await page.getByPlaceholder(/session name/i).fill(sessionName);
+    await page.getByRole("textbox", { name: /session name/i }).fill(sessionName);
     await page.getByRole("button", { name: /^create$/i }).click();
-    await expect(page.getByText(sessionName)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("link", { name: sessionName, exact: true }).first()).toBeVisible({
+      timeout: 15_000,
+    });
 
     // Resolve the session id + create its channels (no admin UI for channels).
     const sessionsBody = await apiFetch(request, adminToken, "get", "/api/sessions");

@@ -360,6 +360,28 @@ jobs:
             echo "NOTICE: /dev/kvm missing — instrumented emulator job will skip cleanly (not a silent green for physical)."
           fi
 
+      # Without world-writable /dev/kvm, acceleration is denied and API 35
+      # google_apis images hang forever on sys.boot_completed (seen as 600s timeout).
+      - name: Enable KVM device access
+        if: steps.kvm.outputs.available == 'true'
+        run: |
+          set -euo pipefail
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+          # Prove the runner user can open KVM (not merely that the node exists).
+          python3 - <<'PY'
+          import os, stat
+          st = os.stat("/dev/kvm")
+          mode = st.st_mode
+          print(f"mode={oct(mode)} uid={st.st_uid} gid={st.st_gid}")
+          fd = os.open("/dev/kvm", os.O_RDWR)
+          os.close(fd)
+          print("kvm_open_ok")
+          PY
+
       - name: Install emulator packages
         if: steps.kvm.outputs.available == 'true'
         run: |
@@ -378,7 +400,14 @@ jobs:
           api-level: 35
           target: google_apis
           arch: x86_64
-          profile: pixel_2
+          profile: pixel_6
+          cores: 2
+          ram-size: 4096
+          heap-size: 512
+          disk-size: 4096M
+          force-avd-creation: true
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back none -camera-front none
           working-directory: apps/android-translator
           script: ./gradlew --no-daemon :app:connectedDebugAndroidTest
 

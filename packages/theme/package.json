@@ -12,10 +12,13 @@
     "./preset": {
       "types": "./tailwind-preset.d.ts",
       "import": "./tailwind-preset.js"
-    }
+    },
+    "./fonts/*": "./fonts/*"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check:house": "node ./scripts/check-house-conformance.mjs",
+    "test": "node ./scripts/check-house-conformance.mjs"
   },
   "peerDependencies": {
     "react": ">=18"

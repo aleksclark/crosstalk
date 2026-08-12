@@ -1,15 +1,24 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useId, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { Logo } from "@crosstalk/theme";
+import { Button, Logo } from "@crosstalk/theme";
 import { useAuth } from "../hooks/useAuth";
 
 export function LoginPage() {
-  const { login } = useAuth();
+  const { login, isAuthenticated, isAdmin } = useAuth();
   const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const usernameId = useId();
+  const passwordId = useId();
+  const errorId = useId();
+
+  useEffect(() => {
+    if (isAuthenticated && isAdmin) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [isAuthenticated, isAdmin, navigate]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -21,70 +30,99 @@ export function LoginPage() {
       navigate("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
+      requestAnimationFrame(() => {
+        document.getElementById(usernameId)?.focus();
+      });
     } finally {
       setLoading(false);
     }
   };
 
+  const fieldClass =
+    "w-full min-h-[var(--house-control-height)] rounded-[var(--house-radius-md)] border border-[var(--house-rule-strong)] bg-[var(--house-bg-sunken)] px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-[var(--house-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-55";
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <div className="w-full max-w-sm">
-        <div className="bg-card border border-border rounded-lg p-8 shadow-lg">
-          {/* Header */}
-          <div className="text-center mb-6">
-            <Logo className="mx-auto h-24 w-auto" />
-            <p className="text-muted-foreground text-sm mt-3">
-              Admin Panel Login
+        <section
+          aria-labelledby="admin-login-title"
+          className="border border-border bg-[var(--house-bg-surface)] p-6 md:p-8"
+        >
+          <div className="mb-6">
+            <Logo className="h-16 w-auto" />
+            <p className="house-type-eyebrow mt-4">Access</p>
+            <h1 id="admin-login-title" className="house-type-title mt-1">
+              Admin sign in
+            </h1>
+            <p className="house-type-lede mt-2 text-muted-foreground">
+              Authenticate with an admin account to operate sessions, ABCs, and
+              translators.
             </p>
           </div>
 
-          {/* Error */}
-          {error && (
-            <div className="bg-destructive/10 border border-destructive/30 text-destructive-foreground rounded-md px-3 py-2 text-sm mb-4">
+          {error ? (
+            <div
+              id={errorId}
+              role="alert"
+              className="mb-4 border border-[var(--house-status-danger)] bg-[var(--house-status-danger-bg)] px-3 py-2 text-sm text-[var(--house-status-danger)]"
+            >
               {error}
             </div>
-          )}
+          ) : null}
 
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">
+          <form
+            onSubmit={handleSubmit}
+            className="space-y-4"
+            aria-describedby={error ? errorId : undefined}
+          >
+            <div className="flex flex-col gap-1">
+              <label htmlFor={usernameId} className="house-type-label text-muted-foreground">
                 Username
               </label>
               <input
+                id={usernameId}
+                name="username"
                 type="text"
+                autoComplete="username"
+                autoFocus
+                required
+                disabled={loading}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full bg-muted border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                 placeholder="admin"
-                required
-                autoFocus
+                className={fieldClass}
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-1">
+            <div className="flex flex-col gap-1">
+              <label htmlFor={passwordId} className="house-type-label text-muted-foreground">
                 Password
               </label>
               <input
+                id={passwordId}
+                name="password"
                 type="password"
+                autoComplete="current-password"
+                required
+                disabled={loading}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-muted border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                 placeholder="••••••••"
-                required
+                className={fieldClass}
               />
             </div>
 
-            <button
+            <Button
               type="submit"
+              variant="primary"
+              loading={loading}
               disabled={loading}
-              className="w-full bg-primary text-primary-foreground rounded-md px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+              style={{ width: "100%" }}
             >
               {loading ? "Signing in..." : "Sign In"}
-            </button>
+            </Button>
           </form>
-        </div>
+        </section>
       </div>
     </div>
   );

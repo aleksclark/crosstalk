@@ -10,6 +10,10 @@ import (
 	crosstalkv2 "github.com/aleksclark/crosstalk/server/proto/v2"
 )
 
+// MaxControlMessageBytes is the hard cap for inbound control data-channel
+// frames before unmarshal / application callbacks run.
+const MaxControlMessageBytes = 16 * 1024
+
 // ControlHandler processes protobuf messages on the control data channel.
 // It handles the v2 protocol (Hello/Welcome/PingPong/etc.) and emits debug events.
 type ControlHandler struct {
@@ -21,8 +25,9 @@ type ControlHandler struct {
 	AssignedSessionID string
 
 	// Callbacks for application-level processing.
-	OnHello        func(peer *PeerConn, hello *crosstalkv2.Hello)
-	OnSourceStatus func(peer *PeerConn, status *crosstalkv2.SourceStatus)
+	OnHello              func(peer *PeerConn, hello *crosstalkv2.Hello)
+	OnSourceStatus       func(peer *PeerConn, status *crosstalkv2.SourceStatus)
+	OnAudioControlReport func(peer *PeerConn, report *crosstalkv2.AudioControlReport)
 }
 
 // Install registers the message handler on the peer's control data channel.
@@ -46,6 +51,15 @@ func (h *ControlHandler) Install() {
 
 // dispatch unmarshals and routes protobuf messages.
 func (h *ControlHandler) dispatch(data []byte) {
+	if len(data) > MaxControlMessageBytes {
+		slog.Warn("webrtc: control message rejected: oversized",
+			"peer", h.Peer.ID,
+			"bytes", len(data),
+			"max", MaxControlMessageBytes,
+		)
+		return
+	}
+
 	var cm crosstalkv2.ControlMessage
 	if err := proto.Unmarshal(data, &cm); err != nil {
 		slog.Error("webrtc: control unmarshal failed", "peer", h.Peer.ID, "err", err)
@@ -57,12 +71,31 @@ func (h *ControlHandler) dispatch(data []byte) {
 		h.handleHello(payload.Hello)
 	case *crosstalkv2.ControlMessage_SourceStatus:
 		h.handleSourceStatus(payload.SourceStatus)
+	case *crosstalkv2.ControlMessage_AudioControlReport:
+		h.handleAudioControlReport(payload.AudioControlReport)
 	case *crosstalkv2.ControlMessage_Ping:
 		h.handlePing(payload.Ping)
 	case *crosstalkv2.ControlMessage_LogEntry:
 		h.handleLogEntry(payload.LogEntry)
 	default:
 		slog.Warn("webrtc: unhandled control message type", "peer", h.Peer.ID)
+	}
+}
+
+// handleAudioControlReport forwards a board audio inventory/apply report.
+func (h *ControlHandler) handleAudioControlReport(report *crosstalkv2.AudioControlReport) {
+	if report == nil {
+		return
+	}
+	slog.Debug("webrtc: received AudioControlReport",
+		"peer", h.Peer.ID,
+		"desired_revision", report.GetDesiredRevision(),
+		"command_id", report.GetCommandId(),
+		"devices", len(report.GetDevices()),
+		"error_code", report.GetErrorCode(),
+	)
+	if h.OnAudioControlReport != nil {
+		h.OnAudioControlReport(h.Peer, report)
 	}
 }
 

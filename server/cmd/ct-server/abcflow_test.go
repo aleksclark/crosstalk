@@ -175,8 +175,13 @@ func assertABCPeerClosed(t *testing.T, ac *abcClient) {
 type abcClient struct {
 	pc        *pionwebrtc.PeerConnection
 	ws        *websocket.Conn
+	dc        *pionwebrtc.DataChannel
 	sendTrack *pionwebrtc.TrackLocalStaticRTP
 	connected chan struct{}
+
+	mu       sync.Mutex
+	commands []*crosstalkv2.AudioControlCommand
+	cmdWait  chan *crosstalkv2.AudioControlCommand
 }
 
 func newABCClient(t *testing.T, env *testEnv, token string) (*abcClient, *crosstalkv2.Welcome) {
@@ -198,10 +203,17 @@ func newABCClient(t *testing.T, env *testEnv, token string) (*abcClient, *crosst
 	require.NoError(t, err)
 
 	// The ABC (offerer) creates the control channel; the server adopts it.
+	// Ordered+reliable (default) matches production ct-abc control channel.
 	dc, err := pc.CreateDataChannel("control", nil)
 	require.NoError(t, err)
 
-	ac := &abcClient{pc: pc, sendTrack: track, connected: make(chan struct{})}
+	ac := &abcClient{
+		pc:        pc,
+		dc:        dc,
+		sendTrack: track,
+		connected: make(chan struct{}),
+		cmdWait:   make(chan *crosstalkv2.AudioControlCommand, 8),
+	}
 	welcomeCh := make(chan *crosstalkv2.Welcome, 1)
 
 	dc.OnOpen(func() {
@@ -220,6 +232,17 @@ func newABCClient(t *testing.T, env *testEnv, token string) (*abcClient, *crosst
 		if w := cm.GetWelcome(); w != nil {
 			select {
 			case welcomeCh <- w:
+			default:
+			}
+		}
+		if cmd := cm.GetAudioControlCommand(); cmd != nil {
+			// Clone via re-marshal so callers can keep the pointer safely.
+			cloned := proto.Clone(cmd).(*crosstalkv2.AudioControlCommand)
+			ac.mu.Lock()
+			ac.commands = append(ac.commands, cloned)
+			ac.mu.Unlock()
+			select {
+			case ac.cmdWait <- cloned:
 			default:
 			}
 		}
@@ -330,6 +353,49 @@ func newABCClient(t *testing.T, env *testEnv, token string) (*abcClient, *crosst
 		_ = pc.Close()
 	})
 	return ac, welcome
+}
+
+// waitAudioCommand waits for the next AudioControlCommand from the server.
+func (ac *abcClient) waitAudioCommand(t *testing.T, timeout time.Duration) *crosstalkv2.AudioControlCommand {
+	t.Helper()
+	select {
+	case cmd := <-ac.cmdWait:
+		return cmd
+	case <-time.After(timeout):
+		t.Fatalf("abc: timed out waiting for AudioControlCommand")
+		return nil
+	}
+}
+
+// sendControl sends a raw control protobuf message on the reliable DC.
+func (ac *abcClient) sendControl(t *testing.T, msg *crosstalkv2.ControlMessage) {
+	t.Helper()
+	require.NotNil(t, ac.dc)
+	data, err := proto.Marshal(msg)
+	require.NoError(t, err)
+	// Data channel may still be opening under load; retry briefly.
+	deadline := time.Now().Add(5 * time.Second)
+	var last error
+	for time.Now().Before(deadline) {
+		if ac.dc.ReadyState() == pionwebrtc.DataChannelStateOpen {
+			last = ac.dc.Send(data)
+			if last == nil {
+				return
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	require.NoError(t, last, "send control message")
+}
+
+// sendAudioReport sends an AudioControlReport on the control channel.
+func (ac *abcClient) sendAudioReport(t *testing.T, report *crosstalkv2.AudioControlReport) {
+	t.Helper()
+	ac.sendControl(t, &crosstalkv2.ControlMessage{
+		Payload: &crosstalkv2.ControlMessage_AudioControlReport{
+			AudioControlReport: report,
+		},
+	})
 }
 
 // stream emits a continuous sine tone as real Opus RTP packets at 20ms cadence.
