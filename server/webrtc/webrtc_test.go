@@ -3,6 +3,7 @@ package webrtc
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -46,6 +47,28 @@ func createOfferWithICE(t *testing.T) (*webrtc.PeerConnection, webrtc.SessionDes
 	require.NoError(t, err)
 
 	return clientPC, offer
+}
+
+// readSignalAnswer reads the next outbound signaling frame that must be an SDP
+// answer. After the signalOut hold/flush fix, the first post-offer frame is
+// always the answer; candidates may follow. A leading ICE candidate fails the
+// test so the CI flake class (master run 31598997460) cannot silently return.
+func readSignalAnswer(t *testing.T, ctx context.Context, ws *websocket.Conn) SignalMessage {
+	t.Helper()
+	readCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	_, respData, err := ws.Read(readCtx)
+	require.NoError(t, err)
+	var resp SignalMessage
+	require.NoError(t, json.Unmarshal(respData, &resp))
+	if resp.Type == "candidate" || resp.Type == "ice" {
+		require.Failf(t, "signaling order",
+			"expected answer before ICE candidates, got type=%q seq=%d", resp.Type, resp.Seq)
+	}
+	require.Equal(t, "answer", resp.Type, "expected SDP answer, got %q", resp.Type)
+	require.NotEmpty(t, resp.SDP)
+	require.NotZero(t, resp.Seq, "response should have sequence number")
+	return resp
 }
 
 func TestPeerManager_CreateAndList(t *testing.T) {
@@ -333,15 +356,8 @@ func TestSignalingHandler_FullExchange(t *testing.T) {
 	err = ws.Write(ctx, websocket.MessageText, data)
 	require.NoError(t, err)
 
-	// Read answer.
-	_, respData, err := ws.Read(ctx)
-	require.NoError(t, err)
-
-	var resp SignalMessage
-	require.NoError(t, json.Unmarshal(respData, &resp))
-	assert.Equal(t, "answer", resp.Type)
-	assert.NotEmpty(t, resp.SDP)
-	assert.NotZero(t, resp.Seq)
+	// Read answer (must precede any trickle ICE on the wire).
+	resp := readSignalAnswer(t, ctx, ws)
 
 	// Apply answer to client.
 	err = clientPC.SetRemoteDescription(webrtc.SessionDescription{
@@ -406,10 +422,7 @@ func TestSignalingHandler_ICETrickle(t *testing.T) {
 	data, _ := json.Marshal(msg)
 	require.NoError(t, ws.Write(ctx, websocket.MessageText, data))
 
-	_, respData, err := ws.Read(ctx)
-	require.NoError(t, err)
-	var resp SignalMessage
-	require.NoError(t, json.Unmarshal(respData, &resp))
+	resp := readSignalAnswer(t, ctx, ws)
 	_ = clientPC.SetRemoteDescription(webrtc.SessionDescription{Type: webrtc.SDPTypeAnswer, SDP: resp.SDP})
 
 	// Send a fake ICE candidate.
@@ -722,12 +735,9 @@ func TestSignalingHandler_MessageSequencing(t *testing.T) {
 	data, _ := json.Marshal(msg)
 	require.NoError(t, ws.Write(ctx, websocket.MessageText, data))
 
-	// Read answer - should have a sequence number.
-	_, respData, err := ws.Read(ctx)
-	require.NoError(t, err)
-
-	var resp SignalMessage
-	require.NoError(t, json.Unmarshal(respData, &resp))
+	// Answer must be the first outbound frame (regression for CI flake where a
+	// local ICE candidate raced ahead of the SDP answer on the WebSocket).
+	resp := readSignalAnswer(t, ctx, ws)
 	assert.Equal(t, "answer", resp.Type)
 	assert.NotZero(t, resp.Seq, "response should have sequence number")
 
@@ -749,4 +759,54 @@ func TestSignalingHandler_MessageSequencing(t *testing.T) {
 		}
 	}
 	assert.True(t, hasSignalingEvent, "expected signaling_message events")
+}
+
+// TestSignalingHandler_AnswerPrecedesICE hammers the offer→answer path to
+// prove local ICE never races ahead of the SDP answer on the wire (the flake
+// class that failed master Unit Tests run 31598997460).
+func TestSignalingHandler_AnswerPrecedesICE(t *testing.T) {
+	const rounds = 40
+	for i := 0; i < rounds; i++ {
+		i := i
+		t.Run(fmt.Sprintf("round-%02d", i), func(t *testing.T) {
+			t.Parallel()
+			pm := NewPeerManagerWithAPI(testAPI())
+			handler := &SignalingHandler{
+				PeerManager:   pm,
+				ServerVersion: "test-1.0",
+			}
+			srv := httptest.NewServer(handler)
+			t.Cleanup(srv.Close)
+
+			wsURL := "ws" + strings.TrimPrefix(srv.URL, "http")
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			t.Cleanup(cancel)
+
+			ws, _, err := websocket.Dial(ctx, wsURL, nil)
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = ws.Close(websocket.StatusNormalClosure, "") })
+
+			clientPC, err := testAPI().NewPeerConnection(webrtc.Configuration{})
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = clientPC.Close() })
+
+			_, err = clientPC.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio, webrtc.RTPTransceiverInit{
+				Direction: webrtc.RTPTransceiverDirectionSendrecv,
+			})
+			require.NoError(t, err)
+
+			offer, err := clientPC.CreateOffer(nil)
+			require.NoError(t, err)
+			require.NoError(t, clientPC.SetLocalDescription(offer))
+
+			msg := SignalMessage{Type: "offer", SDP: offer.SDP, Seq: int64(100 + i)}
+			data, err := json.Marshal(msg)
+			require.NoError(t, err)
+			require.NoError(t, ws.Write(ctx, websocket.MessageText, data))
+
+			resp := readSignalAnswer(t, ctx, ws)
+			require.Equal(t, "answer", resp.Type)
+			require.NotEmpty(t, resp.SDP)
+		})
+	}
 }
