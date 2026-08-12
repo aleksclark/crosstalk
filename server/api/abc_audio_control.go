@@ -127,6 +127,18 @@ func (s *Server) handleABCAudioControlReport(abcID string, peer *webrtc.PeerConn
 // non-conclusive, best-effort sends AudioControlCommand on the live control
 // channel. Send failure leaves desired pending and does not roll back.
 func (s *Server) reconcileABCAudio(abcID string) {
+	s.reconcileABCAudioOpts(abcID, false)
+}
+
+// reconcileABCAudioForce always re-pushes durable desired when configured.
+// Used on control-open/Hello so reboot/restart re-applies absolute mixer state
+// even if the last durable report was already "applied" (hardware may have
+// been reset by setup helpers or driver init).
+func (s *Server) reconcileABCAudioForce(abcID string) {
+	s.reconcileABCAudioOpts(abcID, true)
+}
+
+func (s *Server) reconcileABCAudioOpts(abcID string, force bool) {
 	if abcID == "" || s.services.ABCAudio == nil {
 		return
 	}
@@ -146,7 +158,7 @@ func (s *Server) reconcileABCAudio(abcID string) {
 		// Unconfigured: inventory only; never send a command.
 		return
 	}
-	if !abcAudioNeedsCommand(st) {
+	if !force && !abcAudioNeedsCommand(st) {
 		return
 	}
 
@@ -156,6 +168,7 @@ func (s *Server) reconcileABCAudio(abcID string) {
 			"abc", abcID,
 			"desired_revision", st.Desired.Revision,
 			"command_id", st.Desired.CommandID,
+			"force", force,
 		)
 		return
 	}
@@ -177,6 +190,7 @@ func (s *Server) reconcileABCAudio(abcID string) {
 			"desired_revision", st.Desired.Revision,
 			"command_id", st.Desired.CommandID,
 			"report_revision", st.Reported.Revision,
+			"force", force,
 			"error_code", safeErrCode(err),
 		)
 		return
@@ -188,6 +202,7 @@ func (s *Server) reconcileABCAudio(abcID string) {
 		"desired_revision", st.Desired.Revision,
 		"command_id", st.Desired.CommandID,
 		"report_revision", st.Reported.Revision,
+		"force", force,
 		"state", "pending",
 	)
 }

@@ -113,7 +113,9 @@ func amixerHandler(volumePct int, muted bool, gainPct int, agcOn bool, controls 
 				out := fmt.Sprintf("Simple mixer control '%s',0\n  Front Left: Playback %d [%d%%] [%s]\n", ctrl, vol, vol, sw)
 				return []byte(out), nil, nil
 			case "Mic", "Capture":
-				out := fmt.Sprintf("Simple mixer control '%s',0\n  Front Left: Capture %d [%d%%] [on]\n", ctrl, gain, gain)
+				// Real C-Media Mic prints Playback percent before Capture;
+				// parser must not take the Playback leg as gain.
+				out := fmt.Sprintf("Simple mixer control '%s',0\n  Mono: Playback 31 [100%%] [8.00dB] [on] Capture %d [%d%%] [on]\n", ctrl, gain, gain)
 				return []byte(out), nil, nil
 			case "Auto Gain Control":
 				sw := "off"

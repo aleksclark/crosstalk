@@ -142,7 +142,8 @@ restore_from() {
     fi
     if [ -f \"\$SRC/crosstalk.json\" ]; then
       mkdir -p /etc/app
-      install -m 0600 \"\$SRC/crosstalk.json\" '${REMOTE_CFG}'
+      # Match deploy path: app:audio can read config; root-only 0600 breaks User=app.
+      install -o app -g audio -m 0640 \"\$SRC/crosstalk.json\" '${REMOTE_CFG}'
     fi
     if [ -f \"\$SRC/ct-app-setup.sh\" ]; then
       mkdir -p /usr/local/lib/crosstalk

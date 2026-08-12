@@ -110,17 +110,30 @@ else
   warn "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR missing; skip PipeWire profiles"
 fi
 
-# Enable ALSA audiocodec DAC -> LINEOUT mixer path (optional; card index varies).
-for card in 0 1 2; do
-  if amixer -c "$card" scontrols >/dev/null 2>&1; then
-    amixer -c "$card" cset numid=4 on 2>/dev/null || true
-    amixer -c "$card" cset numid=5 on 2>/dev/null || true
-    amixer -c "$card" cset numid=6 on 2>/dev/null || true
-    amixer -c "$card" cset numid=7 on 2>/dev/null || true
-    amixer -c "$card" cset numid=2 31 2>/dev/null || true
-    amixer -c "$card" cset numid=3 on 2>/dev/null || true
+# Enable ALSA audiocodec DAC -> LINEOUT mixer path only.
+# NEVER walk numeric card indices with blind numids: on this board USB
+# "Device" shares low numids (Speaker/Mic) and a blind cset zeroes remote
+# managed volume/gain during every app.service start.
+AUDIOCODEC_CARD=""
+while IFS= read -r line; do
+  # " 1 [audiocodec     ]: audiocodec - ..."
+  if [[ "$line" == *"[audiocodec"* ]] || [[ "$line" == *"]: audiocodec"* ]]; then
+    AUDIOCODEC_CARD="${line%% *}"
+    AUDIOCODEC_CARD="${AUDIOCODEC_CARD#"${AUDIOCODEC_CARD%%[![:space:]]*}"}"
+    break
   fi
-done
+done < /proc/asound/cards 2>/dev/null || true
+if [[ -n "${AUDIOCODEC_CARD}" ]] && amixer -c "$AUDIOCODEC_CARD" scontrols >/dev/null 2>&1; then
+  amixer -c "$AUDIOCODEC_CARD" cset numid=4 on 2>/dev/null || true
+  amixer -c "$AUDIOCODEC_CARD" cset numid=5 on 2>/dev/null || true
+  amixer -c "$AUDIOCODEC_CARD" cset numid=6 on 2>/dev/null || true
+  amixer -c "$AUDIOCODEC_CARD" cset numid=7 on 2>/dev/null || true
+  amixer -c "$AUDIOCODEC_CARD" cset numid=2 31 2>/dev/null || true
+  amixer -c "$AUDIOCODEC_CARD" cset numid=3 on 2>/dev/null || true
+  log "audiocodec LINEOUT path enabled (card ${AUDIOCODEC_CARD})"
+else
+  warn "audiocodec card not found; skip onboard LINEOUT path"
+fi
 
 # USB capture defaults: only when not managed by ct-abc remote audio control.
 if [[ -f "$MANAGED_MARKER" ]]; then

@@ -130,16 +130,16 @@ func (s *Server) mountWebRTC() {
 							s.handleABCAudioControlReport(boundABC, p, report)
 						}
 						ctrl.OnHello = func(*webrtc.PeerConn, *crosstalkv2.Hello) {
-							// Reconcile after Hello so reconnect/reboot converges
-							// even when no inventory report has arrived yet.
-							s.reconcileABCAudio(boundABC)
+							// Force re-push on Hello: last report may already be
+							// "applied" while hardware was reset across restart.
+							s.reconcileABCAudioForce(boundABC)
 						}
 					}
 					ctrl.Install()
-					// Also reconcile immediately after install (control open)
-					// for the offline-PUT-then-connect latency path.
+					// Also force-reconcile immediately after install (control open)
+					// for offline-PUT-then-connect and restart/reboot reapply.
 					if abcID != "" {
-						s.reconcileABCAudio(abcID)
+						s.reconcileABCAudioForce(abcID)
 					}
 				})
 

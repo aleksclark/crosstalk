@@ -21,6 +21,9 @@ var (
 	scontrolsRe = regexp.MustCompile(`Simple mixer control '([^']+)'`)
 	// [42%] or [42%
 	percentRe = regexp.MustCompile(`\[(\d{1,3})%\]`)
+	// C-Media Mic is dual Playback+Capture; Capture percent is the gain.
+	// Example: Mono: Playback 31 [100%] ... Capture 16 [30%] ...
+	capturePercentRe = regexp.MustCompile(`(?i)Capture\s+\d+\s+\[(\d{1,3})%\]`)
 	// [on] / [off] switch state (prefer last relevant)
 	switchRe = regexp.MustCompile(`\[(on|off)\]`)
 )
@@ -223,18 +226,40 @@ func (c *ALSAController) sgetPercent(ctx context.Context, cardID, control string
 	if err != nil {
 		return 0, string(stderr), fmt.Errorf("sget: %w", err)
 	}
-	m := percentRe.FindSubmatch(stdout)
+	n, err := parseAmixerPercent(stdout, control)
+	if err != nil {
+		return 0, string(stdout), err
+	}
+	return n, string(stdout), nil
+}
+
+// parseAmixerPercent extracts the mapped percent from amixer -M sget output.
+// For capture controls (Mic/Capture), prefer the Capture channel percent when
+// the control also exposes a Playback leg (C-Media dual volume).
+func parseAmixerPercent(stdout []byte, control string) (int, error) {
+	ctrl := strings.ToLower(strings.TrimSpace(control))
+	preferCapture := ctrl == "mic" || ctrl == "capture"
+	var m [][]byte
+	if preferCapture {
+		m = capturePercentRe.FindSubmatch(stdout)
+	}
 	if m == nil {
-		return 0, string(stdout), fmt.Errorf("no percent in sget")
+		m = percentRe.FindSubmatch(stdout)
+	}
+	if m == nil {
+		return 0, fmt.Errorf("no percent in sget")
 	}
 	n, err := strconv.Atoi(string(m[1]))
 	if err != nil {
-		return 0, string(stdout), err
+		return 0, err
 	}
 	if n > 100 {
 		n = 100
 	}
-	return n, string(stdout), nil
+	if n < 0 {
+		n = 0
+	}
+	return n, nil
 }
 
 func (c *ALSAController) sgetSwitch(ctx context.Context, cardID, control string) (on bool, err error) {
