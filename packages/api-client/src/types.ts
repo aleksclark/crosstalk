@@ -41,6 +41,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/abcs/{id}/audio-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get durable ABC USB audio desired/reported settings
+         * @description Admin-only. Returns durable desired state, latest reported/capability snapshot, and derived overall state. Does not wait for board acknowledgement.
+         */
+        get: operations["get-abc-audio-settings"];
+        /**
+         * Set durable ABC USB audio desired settings
+         * @description Admin-only absolute desired-state replacement. Returns 202 when a new revision is queued, 200 for duplicate request_id or byte-equal no-op. Never blocks waiting for board acknowledgement. Audit actor is taken from the JWT only.
+         */
+        put: operations["put-abc-audio-settings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/abcs/{id}/restart": {
         parameters: {
             query?: never;
@@ -395,6 +419,141 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ABCAudioCapabilityOut: {
+            alsa_card_id?: string;
+            /** @description Audio backend (e.g. alsa) */
+            backend?: string;
+            card_name?: string;
+            /** @description Canonical device UID */
+            device_uid: string;
+            /** @description input, output, or both */
+            direction?: string;
+            extra?: {
+                [key: string]: unknown;
+            };
+            path?: string;
+            product_id?: string;
+            serial?: string;
+            supports_gain?: boolean;
+            supports_mute?: boolean;
+            supports_volume?: boolean;
+            vendor_id?: string;
+        };
+        ABCAudioDesiredOut: {
+            /** @description Deterministic command id for this revision */
+            command_id?: string;
+            /** @description Desired input device UID */
+            input_device_uid?: string;
+            /**
+             * Format: int64
+             * @description Desired input gain percent
+             */
+            input_gain_percent?: number;
+            /** @description Desired output device UID */
+            output_device_uid?: string;
+            /** @description Desired output mute */
+            output_muted?: boolean;
+            /**
+             * Format: int64
+             * @description Desired output volume percent
+             */
+            output_volume_percent?: number;
+            /**
+             * Format: int64
+             * @description Desired revision (0 = unconfigured)
+             */
+            revision: number;
+            /**
+             * Format: date-time
+             * @description When desired state last changed
+             */
+            updated_at?: string;
+        };
+        ABCAudioInputDesiredIn: {
+            /** @description Canonical USB input device UID */
+            device_uid: string;
+            /**
+             * Format: int64
+             * @description Desired input gain percent (0-100)
+             */
+            gain_percent: number;
+        };
+        ABCAudioOutputDesiredIn: {
+            /** @description Canonical USB output device UID */
+            device_uid: string;
+            /** @description Desired output mute state */
+            muted: boolean;
+            /**
+             * Format: int64
+             * @description Desired output volume percent (0-100)
+             */
+            volume_percent: number;
+        };
+        ABCAudioReportedOut: {
+            capabilities?: components["schemas"]["ABCAudioCapabilityOut"][] | null;
+            /** @description Last reported command id */
+            command_id?: string;
+            error_code?: string;
+            error_detail?: string;
+            input_device_uid?: string;
+            /**
+             * @description Per-control state
+             * @enum {string}
+             */
+            input_gain_state: "unknown" | "pending" | "applied" | "unsupported" | "error" | "device_mismatch";
+            /** Format: int64 */
+            observed_input_gain_percent?: number;
+            observed_output_muted?: boolean;
+            /** Format: int64 */
+            observed_output_volume_percent?: number;
+            output_device_uid?: string;
+            /**
+             * @description Per-control state
+             * @enum {string}
+             */
+            output_mute_state: "unknown" | "pending" | "applied" | "unsupported" | "error" | "device_mismatch";
+            /**
+             * @description Per-control state
+             * @enum {string}
+             */
+            output_volume_state: "unknown" | "pending" | "applied" | "unsupported" | "error" | "device_mismatch";
+            /**
+             * Format: date-time
+             * @description Server receipt time of last report
+             */
+            reported_at?: string;
+            /**
+             * Format: int64
+             * @description Highest conclusive reported desired revision
+             */
+            revision: number;
+        };
+        ABCAudioSettingsOut: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ABCAudioSettingsOut.json
+             */
+            readonly $schema?: string;
+            /** @description ABC id */
+            abc_id: string;
+            /**
+             * Format: int64
+             * @description Revision accepted by this request (GET echoes current desired)
+             */
+            accepted_revision: number;
+            /** @description Whether the ABC is currently connected */
+            connected: boolean;
+            desired: components["schemas"]["ABCAudioDesiredOut"];
+            /**
+             * @description Derived aggregate state
+             * @enum {string}
+             */
+            overall_state: "unconfigured" | "offline" | "stale" | "pending" | "error" | "device_mismatch" | "unsupported" | "partial" | "applied";
+            reported: components["schemas"]["ABCAudioReportedOut"];
+            /** @description Whether reported state is considered stale */
+            stale: boolean;
+        };
         ABCOut: {
             /**
              * Format: uri
@@ -811,6 +970,25 @@ export interface components {
             muted: boolean;
             /** @description Source ID */
             source_id: string;
+        };
+        PutABCAudioSettingsRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/PutABCAudioSettingsRequestBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description Expected current desired revision (0 when unconfigured)
+             */
+            expected_revision: number;
+            /** @description Absolute desired input state */
+            input: components["schemas"]["ABCAudioInputDesiredIn"];
+            /** @description Absolute desired output state */
+            output: components["schemas"]["ABCAudioOutputDesiredIn"];
+            /** @description Client idempotency key (UUID/ULID) */
+            request_id: string;
         };
         RecordingOut: {
             /** @description Channel ID (if channel recording) */
@@ -1271,6 +1449,78 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-abc-audio-settings": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer token */
+                Authorization?: string;
+            };
+            path: {
+                /** @description ABC ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ABCAudioSettingsOut"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "put-abc-audio-settings": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer token */
+                Authorization?: string;
+            };
+            path: {
+                /** @description ABC ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutABCAudioSettingsRequestBody"];
+            };
+        };
+        responses: {
+            /** @description Duplicate request_id or no-op equal desired (no new revision) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description New desired revision queued */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ABCAudioSettingsOut"];
                 };
             };
         };

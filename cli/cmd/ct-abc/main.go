@@ -1,7 +1,8 @@
 // ct-abc is the Audio Booth Connector client binary.
 // It connects to the CrossTalk server via WebSocket signaling, sends a Hello
 // with client_type="abc", handles SessionAssignment and RestartCommand messages,
-// and auto-reconnects with exponential backoff.
+// applies bounded USB mixer AudioControlCommand messages, and auto-reconnects
+// with exponential backoff.
 package main
 
 import (
@@ -11,20 +12,26 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"math/rand"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	crosstalk "github.com/aleksclark/crosstalk/cli"
+	"github.com/aleksclark/crosstalk/cli/audioctl"
 	"github.com/aleksclark/crosstalk/cli/display"
 	"github.com/aleksclark/crosstalk/cli/pipewire"
 	"github.com/aleksclark/crosstalk/cli/pion"
 	"github.com/aleksclark/crosstalk/cli/protov2"
 	"github.com/pion/webrtc/v4"
 )
+
+// managedMarkerName is the atomic marker under StateDirectory after first managed command.
+const managedMarkerName = "audio-managed"
 
 // ABCConfig holds the ABC client configuration.
 type ABCConfig struct {
@@ -76,11 +83,14 @@ func (c *ABCConfig) ToCLIConfig() *crosstalk.Config {
 
 // ABCClient wraps the reconnection logic for the ABC client.
 type ABCClient struct {
-	cfg         *ABCConfig
-	pwSvc       crosstalk.PipeWireService
-	disp        *display.Service
-	connFactory  func(serverURL, token string, opts ...pion.ConnectionOption) pion.ConnectionInterface
-	captureSource func(context.Context, string, *webrtc.TrackLocalStaticRTP) error
+	cfg            *ABCConfig
+	pwSvc          crosstalk.PipeWireService
+	disp           *display.Service
+	audio          audioctl.Controller
+	stateDir       string
+	connFactory    func(serverURL, token string, opts ...pion.ConnectionOption) pion.ConnectionInterface
+	captureSource  func(context.Context, string, *webrtc.TrackLocalStaticRTP) error
+	heartbeatEvery time.Duration
 
 	mu               sync.Mutex
 	connected        bool
@@ -91,10 +101,17 @@ type ABCClient struct {
 // NewABCClient creates a new ABC client.
 func NewABCClient(cfg *ABCConfig, pwSvc crosstalk.PipeWireService) *ABCClient {
 	return &ABCClient{
-		cfg:           cfg,
-		pwSvc:         pwSvc,
-		captureSource: pion.CaptureSource,
+		cfg:            cfg,
+		pwSvc:          pwSvc,
+		captureSource:  pion.CaptureSource,
+		heartbeatEvery: 15 * time.Second,
 	}
+}
+
+// SetAudioController injects the USB mixer controller (tests / main).
+func (c *ABCClient) SetAudioController(ctrl audioctl.Controller, stateDir string) {
+	c.audio = ctrl
+	c.stateDir = stateDir
 }
 
 // Run starts the ABC client with auto-reconnect and exponential backoff.
@@ -177,6 +194,18 @@ func (c *ABCClient) connectOnce(ctx context.Context) error {
 	disconnected := make(chan struct{}, 1)
 	restartCh := make(chan string, 1)
 	sessionAssignCh := make(chan string, 1)
+	audioCmdCh := make(chan *protov2.AudioControlCommand, 4)
+
+	var conn pion.ConnectionInterface
+	var connMu sync.Mutex
+	sendControl := func(data []byte) error {
+		connMu.Lock()
+		defer connMu.Unlock()
+		if conn == nil {
+			return fmt.Errorf("no connection")
+		}
+		return conn.SendControl(data)
+	}
 
 	connOpts := []pion.ConnectionOption{
 		pion.WithOnControlOpen(func() {
@@ -218,6 +247,14 @@ func (c *ABCClient) connectOnce(ctx context.Context) error {
 					select {
 					case sessionAssignCh <- msg.SessionAssignment.SessionID:
 					default:
+					}
+				}
+			case protov2.PayloadAudioControlCommand:
+				if msg.AudioControlCommand != nil {
+					select {
+					case audioCmdCh <- msg.AudioControlCommand:
+					default:
+						slog.Warn("abc: audio control command dropped (busy)")
 					}
 				}
 			}
@@ -271,11 +308,14 @@ func (c *ABCClient) connectOnce(ctx context.Context) error {
 			}()
 		}),
 	}
-	var conn pion.ConnectionInterface
 	if c.connFactory != nil {
+		connMu.Lock()
 		conn = c.connFactory(c.cfg.ServerURL, c.cfg.Token, connOpts...)
+		connMu.Unlock()
 	} else {
+		connMu.Lock()
 		conn = pion.NewConnection(c.cfg.ServerURL, c.cfg.Token, connOpts...)
+		connMu.Unlock()
 	}
 
 	// Connect (WebSocket + WebRTC).
@@ -349,6 +389,21 @@ func (c *ABCClient) connectOnce(ctx context.Context) error {
 
 	slog.Info("abc: connected and ready")
 
+	// Inventory report after Hello/Welcome.
+	if c.audio != nil {
+		c.sendInventoryReport(connectionCtx, sendControl)
+	}
+
+	// Heartbeat/readback every 15s with jitter; cancelled with connectionCtx.
+	if c.audio != nil {
+		go c.audioHeartbeatLoop(connectionCtx, sendControl)
+	}
+
+	// Audio command worker (serialised by controller mutex internally).
+	if c.audio != nil {
+		go c.audioCommandLoop(connectionCtx, audioCmdCh, sendControl)
+	}
+
 	// Main event loop: wait for disconnection or restart command.
 	for {
 		select {
@@ -392,6 +447,244 @@ func (c *ABCClient) connectOnce(ctx context.Context) error {
 	}
 }
 
+func (c *ABCClient) audioHeartbeatLoop(ctx context.Context, send func([]byte) error) {
+	// Initial jitter 0-2s so fleets don't align.
+	jitter := time.Duration(rand.Int63n(int64(2 * time.Second)))
+	timer := time.NewTimer(jitter)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+			c.sendReadbackReport(ctx, send)
+			// 15s ± ~2s jitter
+			next := c.heartbeatEvery
+			if next <= 0 {
+				next = 15 * time.Second
+			}
+			j := time.Duration(rand.Int63n(int64(2*time.Second))) - time.Second
+			next = next + j
+			if next < 5*time.Second {
+				next = 5 * time.Second
+			}
+			timer.Reset(next)
+		}
+	}
+}
+
+func (c *ABCClient) audioCommandLoop(ctx context.Context, ch <-chan *protov2.AudioControlCommand, send func([]byte) error) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case cmd, ok := <-ch:
+			if !ok {
+				return
+			}
+			if cmd == nil {
+				continue
+			}
+			c.handleAudioCommand(ctx, cmd, send)
+		}
+	}
+}
+
+func (c *ABCClient) handleAudioCommand(ctx context.Context, cmd *protov2.AudioControlCommand, send func([]byte) error) {
+	acmd, err := protoCommandToAudioctl(cmd)
+	if err != nil {
+		slog.Warn("abc: invalid audio control command", "error", err)
+		rep := &audioctl.Report{
+			CommandID:       cmd.CommandID,
+			DesiredRevision: cmd.DesiredRevision,
+			ErrorCode:       audioctl.ErrCodeInvalidCommand,
+			ErrorDetail:     err.Error(),
+			Output:          &audioctl.OutputObserved{VolumeState: audioctl.StateError, MuteState: audioctl.StateError},
+			Input:           &audioctl.InputObserved{GainState: audioctl.StateError},
+		}
+		c.sendAudioReport(send, rep)
+		return
+	}
+	rep, err := c.audio.Apply(ctx, acmd)
+	if err != nil {
+		slog.Error("abc: audio apply failed", "error", err)
+		return
+	}
+	// After a valid managed command (revision >= 1 with apply attempt), write marker.
+	// Marker is NOT desired authority — only prevents boot helper overwrite.
+	if cmd.DesiredRevision >= 1 && c.stateDir != "" && rep.ErrorCode != audioctl.ErrCodeInvalidCommand {
+		if err := writeManagedMarker(c.stateDir); err != nil {
+			slog.Warn("abc: failed to write audio-managed marker", "error", err)
+		}
+	}
+	c.sendAudioReport(send, rep)
+}
+
+func (c *ABCClient) sendInventoryReport(ctx context.Context, send func([]byte) error) {
+	rep, err := c.audio.Inventory(ctx)
+	if err != nil {
+		slog.Warn("abc: audio inventory failed", "error", err)
+		return
+	}
+	// Inventory-only: revision 0
+	rep.DesiredRevision = 0
+	rep.CommandID = ""
+	c.sendAudioReport(send, rep)
+}
+
+func (c *ABCClient) sendReadbackReport(ctx context.Context, send func([]byte) error) {
+	rep, err := c.audio.Readback(ctx)
+	if err != nil {
+		slog.Warn("abc: audio readback failed", "error", err)
+		return
+	}
+	// Heartbeat inventory/readback uses revision 0 unless reporting prior apply.
+	if rep.DesiredRevision == 0 {
+		rep.CommandID = ""
+	}
+	c.sendAudioReport(send, rep)
+}
+
+func (c *ABCClient) sendAudioReport(send func([]byte) error, rep *audioctl.Report) {
+	if rep == nil {
+		return
+	}
+	preport := audioctlToProtoReport(rep)
+	data, err := protov2.BuildAudioControlReport(preport)
+	if err != nil {
+		slog.Warn("abc: build audio report failed", "error", err)
+		return
+	}
+	if err := send(data); err != nil {
+		slog.Warn("abc: send audio report failed", "error", err)
+	}
+}
+
+func protoCommandToAudioctl(cmd *protov2.AudioControlCommand) (audioctl.Command, error) {
+	out := audioctl.Command{
+		CommandID:       cmd.CommandID,
+		DesiredRevision: cmd.DesiredRevision,
+	}
+	if cmd.Output != nil {
+		od := &audioctl.OutputDesired{DeviceUID: cmd.Output.DeviceUID}
+		if cmd.Output.VolumePercent != nil {
+			v := int(*cmd.Output.VolumePercent)
+			od.VolumePercent = &v
+		}
+		if cmd.Output.Muted != nil {
+			m := *cmd.Output.Muted
+			od.Muted = &m
+		}
+		out.Output = od
+	}
+	if cmd.Input != nil {
+		id := &audioctl.InputDesired{DeviceUID: cmd.Input.DeviceUID}
+		if cmd.Input.GainPercent != nil {
+			g := int(*cmd.Input.GainPercent)
+			id.GainPercent = &g
+		}
+		out.Input = id
+	}
+	if out.Output == nil && out.Input == nil {
+		return out, fmt.Errorf("empty audio command")
+	}
+	return out, nil
+}
+
+func audioctlToProtoReport(rep *audioctl.Report) protov2.AudioControlReport {
+	pr := protov2.AudioControlReport{
+		CommandID:       rep.CommandID,
+		DesiredRevision: rep.DesiredRevision,
+		ErrorCode:       rep.ErrorCode,
+		ErrorDetail:     rep.ErrorDetail,
+	}
+	for _, d := range rep.Devices {
+		pr.Devices = append(pr.Devices, protov2.AudioDeviceCapability{
+			DeviceUID:          d.DeviceUID,
+			Direction:          d.Direction,
+			Backend:            string(d.Backend),
+			VendorID:           d.VendorID,
+			ProductID:          d.ProductID,
+			Serial:             d.Serial,
+			Path:               d.Path,
+			ALSACardID:         d.ALSACardID,
+			CardName:           d.CardName,
+			PCMRoute:           d.PCMRoute,
+			SupportsVolume:     d.SupportsVolume,
+			SupportsMute:       d.SupportsMute,
+			SupportsGain:       d.SupportsGain,
+			SupportsAGCDisable: d.SupportsAGCDisable,
+		})
+	}
+	if rep.Output != nil {
+		o := &protov2.AudioOutputObserved{
+			DeviceUID:   rep.Output.DeviceUID,
+			VolumeState: applyStateToProto(rep.Output.VolumeState),
+			MuteState:   applyStateToProto(rep.Output.MuteState),
+		}
+		if rep.Output.VolumePercent != nil {
+			v := uint32(*rep.Output.VolumePercent)
+			o.VolumePercent = &v
+		}
+		if rep.Output.Muted != nil {
+			m := *rep.Output.Muted
+			o.Muted = &m
+		}
+		pr.Output = o
+	}
+	if rep.Input != nil {
+		i := &protov2.AudioInputObserved{
+			DeviceUID: rep.Input.DeviceUID,
+			GainState: applyStateToProto(rep.Input.GainState),
+		}
+		if rep.Input.GainPercent != nil {
+			g := uint32(*rep.Input.GainPercent)
+			i.GainPercent = &g
+		}
+		pr.Input = i
+	}
+	return pr
+}
+
+func applyStateToProto(s audioctl.ApplyState) protov2.AudioApplyState {
+	switch s {
+	case audioctl.StateApplied:
+		return protov2.AudioApplyApplied
+	case audioctl.StateUnsupported:
+		return protov2.AudioApplyUnsupported
+	case audioctl.StateError:
+		return protov2.AudioApplyError
+	case audioctl.StateDeviceMismatch:
+		return protov2.AudioApplyDeviceMismatch
+	case audioctl.StateStaleRevision:
+		return protov2.AudioApplyStaleRevision
+	default:
+		return protov2.AudioApplyUnspecified
+	}
+}
+
+// writeManagedMarker atomically writes StateDirectory/audio-managed.
+func writeManagedMarker(stateDir string) error {
+	if stateDir == "" {
+		return fmt.Errorf("empty state dir")
+	}
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		return err
+	}
+	final := filepath.Join(stateDir, managedMarkerName)
+	tmp := final + ".tmp"
+	content := fmt.Sprintf("managed_at=%s\n", time.Now().UTC().Format(time.RFC3339))
+	if err := os.WriteFile(tmp, []byte(content), 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, final)
+}
+
+// ManagedMarkerPath returns the marker path for tests/helpers.
+func ManagedMarkerPath(stateDir string) string {
+	return filepath.Join(stateDir, managedMarkerName)
+}
+
 // CalculateBackoff computes exponential backoff duration.
 func CalculateBackoff(attempt int, initial, max time.Duration, factor float64) time.Duration {
 	backoff := time.Duration(float64(initial) * math.Pow(factor, float64(attempt-1)))
@@ -419,6 +712,7 @@ func parseSlogLevel(level string) slog.Level {
 
 func main() {
 	configPath := flag.String("config", "", "path to config file")
+	stateDirFlag := flag.String("state-dir", "", "writable state directory for managed audio marker")
 	flag.Parse()
 
 	// Determine config path.
@@ -466,10 +760,20 @@ func main() {
 	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})
 	slog.SetDefault(slog.New(handler))
 
+	stateDir := *stateDirFlag
+	if stateDir == "" {
+		stateDir = os.Getenv("CT_ABC_STATE_DIR")
+	}
+	if stateDir == "" {
+		// systemd StateDirectory=crosstalk → /var/lib/crosstalk
+		stateDir = "/var/lib/crosstalk"
+	}
+
 	slog.Info("ct-abc starting",
 		"server_url", cfg.ServerURL,
 		"source_name", cfg.SourceName,
 		"sink_name", cfg.SinkName,
+		"state_dir", stateDir,
 	)
 
 	// Set up PipeWire service.
@@ -481,6 +785,11 @@ func main() {
 
 	// Run the ABC client.
 	client := NewABCClient(cfg, pwSvc)
+	audioCtrl := audioctl.NewController(audioctl.Config{
+		SourceRoute: cfg.SourceName,
+		SinkRoute:   cfg.SinkName,
+	})
+	client.SetAudioController(audioCtrl, stateDir)
 
 	// Set up the SPI status display if enabled.
 	if useDisplay() {

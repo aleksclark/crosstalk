@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/uptrace/bun"
@@ -282,4 +283,50 @@ func (m *recordingModel) toDomain() crosstalk.Recording {
 		EndedAt:   m.EndedAt,
 		SizeBytes: m.SizeBytes,
 	}
+}
+
+// abcAudioSettingsModel maps abc_audio_settings.
+type abcAudioSettingsModel struct {
+	bun.BaseModel `bun:"table:abc_audio_settings,alias:aas"`
+
+	ABCID                       string     `bun:"abc_id,pk"`
+	DesiredRevision             int64      `bun:"desired_revision,notnull"`
+	DesiredOutputDeviceUID      *string    `bun:"desired_output_device_uid"`
+	DesiredOutputVolumePercent  *int16     `bun:"desired_output_volume_percent"`
+	DesiredOutputMuted          *bool      `bun:"desired_output_muted"`
+	DesiredInputDeviceUID       *string    `bun:"desired_input_device_uid"`
+	DesiredInputGainPercent     *int16     `bun:"desired_input_gain_percent"`
+	CommandID                   *string    `bun:"command_id"`
+	ReportedRevision            int64      `bun:"reported_revision,notnull"`
+	ReportedCommandID           *string    `bun:"reported_command_id"`
+	ReportedOutputDeviceUID     *string    `bun:"reported_output_device_uid"`
+	ObservedOutputVolumePercent *int16     `bun:"observed_output_volume_percent"`
+	ObservedOutputMuted         *bool      `bun:"observed_output_muted"`
+	ReportedInputDeviceUID      *string    `bun:"reported_input_device_uid"`
+	ObservedInputGainPercent    *int16     `bun:"observed_input_gain_percent"`
+	OutputVolumeState           string     `bun:"output_volume_state,notnull"`
+	OutputMuteState             string     `bun:"output_mute_state,notnull"`
+	InputGainState              string     `bun:"input_gain_state,notnull"`
+	ErrorCode                   string          `bun:"error_code,notnull"`
+	ErrorDetail                 string          `bun:"error_detail,notnull"`
+	Capabilities                json.RawMessage `bun:"capabilities,type:jsonb,notnull"`
+	ReportedAt                  *time.Time      `bun:"reported_at"`
+	DesiredUpdatedAt            *time.Time      `bun:"desired_updated_at"`
+	UpdatedAt                   time.Time       `bun:"updated_at,notnull"`
+}
+
+// abcAudioAuditModel maps abc_audio_audit_events.
+type abcAudioAuditModel struct {
+	bun.BaseModel `bun:"table:abc_audio_audit_events,alias:aae"`
+
+	ID              string          `bun:"id,pk"`
+	ABCID           string          `bun:"abc_id,notnull"`
+	RequestID       string          `bun:"request_id,notnull"`
+	ActorUserID     string          `bun:"actor_user_id,notnull"`
+	ActorRole       string          `bun:"actor_role,notnull"`
+	DesiredRevision int64           `bun:"desired_revision,notnull"`
+	PreviousDesired json.RawMessage `bun:"previous_desired,type:jsonb,notnull"`
+	NewDesired      json.RawMessage `bun:"new_desired,type:jsonb,notnull"`
+	Outcome         string          `bun:"outcome,notnull"`
+	CreatedAt       time.Time       `bun:"created_at,notnull"`
 }
