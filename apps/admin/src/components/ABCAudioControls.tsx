@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getApiClient } from "../lib/api";
 import type { components } from "@crosstalk/api-client";
-import { Button, Status } from "@crosstalk/theme";
+import { Button } from "@crosstalk/theme";
 
 type AudioSettings = components["schemas"]["ABCAudioSettingsOut"];
 type Capability = components["schemas"]["ABCAudioCapabilityOut"];

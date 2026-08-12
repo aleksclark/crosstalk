@@ -53,7 +53,7 @@ const FORBIDDEN_TOKEN_BASENAMES = new Set([
 
 /** Emoji ranges commonly used as product "icons". */
 const EMOJI_RE =
-  /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{1F1E0}-\u{1F1FF}]/u;
+  /(?:[\u{1F300}-\u{1FAFF}]|[\u{2600}-\u{27BF}]|[\u{1F1E0}-\u{1F1FF}]|\u{FE0F})/u;
 
 const findings = [];
 

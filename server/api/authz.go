@@ -59,35 +59,6 @@ func (s *Server) authorizeChannelAccess(ctx context.Context, claims *auth.Claims
 	return ch, nil
 }
 
-// filterSessionsForClaims returns sessions the caller is allowed to see.
-// Translators only receive assigned sessions (no metadata leak of others).
-func (s *Server) filterSessionsForClaims(ctx context.Context, claims *auth.Claims, sessions []crosstalk.Session) []crosstalk.Session {
-	if claims == nil {
-		return nil
-	}
-	if claims.Role == "admin" {
-		return sessions
-	}
-	if claims.Role != "translator" || s.services.Users == nil {
-		return nil
-	}
-	assigned, err := s.services.Users.GetAssignedSessions(ctx, claims.Subject)
-	if err != nil {
-		return nil
-	}
-	allow := make(map[string]struct{}, len(assigned))
-	for _, id := range assigned {
-		allow[id] = struct{}{}
-	}
-	out := make([]crosstalk.Session, 0, len(assigned))
-	for _, sess := range sessions {
-		if _, ok := allow[sess.ID]; ok {
-			out = append(out, sess)
-		}
-	}
-	return out
-}
-
 // assignedSessionIDs returns the translator's assigned session IDs.
 // Fail-closed: lookup errors surface to the caller.
 func (s *Server) assignedSessionIDs(ctx context.Context, translatorID string) ([]string, error) {
@@ -111,40 +82,6 @@ func sessionToOutForClaims(sess crosstalk.Session, claims *auth.Claims) SessionO
 	out := sessionToOut(sess)
 	if claims == nil || claims.Role != "admin" {
 		out.BroadcastToken = ""
-	}
-	return out
-}
-
-// filterABCsForClaims limits ABC list visibility for translators to ABCs
-// assigned to one of their sessions (plus unassigned boards so they can be
-// selected as monitors only after an admin assigns them — unassigned are
-// hidden to avoid leaking booth inventory). Admins see all.
-func (s *Server) filterABCsForClaims(ctx context.Context, claims *auth.Claims, abcs []crosstalk.ABC) []crosstalk.ABC {
-	if claims == nil {
-		return nil
-	}
-	if claims.Role == "admin" {
-		return abcs
-	}
-	if claims.Role != "translator" || s.services.Users == nil {
-		return nil
-	}
-	assigned, err := s.services.Users.GetAssignedSessions(ctx, claims.Subject)
-	if err != nil {
-		return nil
-	}
-	allow := make(map[string]struct{}, len(assigned))
-	for _, id := range assigned {
-		allow[id] = struct{}{}
-	}
-	out := make([]crosstalk.ABC, 0, len(abcs))
-	for _, abc := range abcs {
-		if abc.SessionID == nil {
-			continue
-		}
-		if _, ok := allow[*abc.SessionID]; ok {
-			out = append(out, abc)
-		}
 	}
 	return out
 }
