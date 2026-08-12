@@ -20,11 +20,12 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Real libwebrtc ↔ Pion mint + signaling smoke.
+ * Real libwebrtc ↔ Pion mint + signaling + RTP counter smoke.
  *
  * Requires CROSSTALK_BASE_URL + translator credentials + assigned session.
  * Uses production [LibWebRtcEngine]. Emulator mic may be silent/synthetic —
- * this test asserts ticket mint + ICE/peer progress, NOT physical spectral proof.
+ * this test asserts ticket mint + ICE connected + **outbound RTP counters advance**.
+ * Inbound energy is covered (with fail-soft) by [RtpAudioEnergyInstrumentedTest].
  * Physical bidirectional 440/880 Hz is [test/android/run-device-golden.sh] only.
  *
  * When env is absent, assumptions skip with a clear reason (not a silent green).
@@ -55,72 +56,135 @@ class RealPionWebRtcInstrumentedTest {
     }
 
     @Test
-    fun mintTicket_andConnectEngine_reachesIceOrConnected() = runBlocking {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val client = RealServerClient(baseUrl!!)
-        val tokens =
-            client.login(
-                AndroidTestEnv.translatorUser()!!,
-                AndroidTestEnv.translatorPassword()!!,
-            )
-        val sessions = client.listSessions(tokens.accessToken)
-        assumeTrue("no assigned sessions", sessions.isNotEmpty())
-        val session =
-            sessions.firstOrNull { it.id == AndroidTestEnv.sessionId() } ?: sessions.first()
+    fun mintTicket_andConnectEngine_reachesIceOrConnected() =
+        runBlocking {
+            val context = InstrumentationRegistry.getInstrumentation().targetContext
+            val client = RealServerClient(baseUrl!!)
+            val tokens =
+                client.login(
+                    AndroidTestEnv.translatorUser()!!,
+                    AndroidTestEnv.translatorPassword()!!,
+                )
+            val sessions = client.listSessions(tokens.accessToken)
+            assumeTrue("no assigned sessions", sessions.isNotEmpty())
+            val session =
+                sessions.firstOrNull { it.id == AndroidTestEnv.sessionId() } ?: sessions.first()
 
-        val ticket = client.mintMediaTicket(tokens.accessToken, session.id)
-        assertTrue("media ticket must be non-blank", ticket.token.isNotBlank())
-        // Ticket must not look like a long-lived access JWT reuse (opaque/nonce-bound).
-        assertTrue(ticket.token != tokens.accessToken)
+            val ticket = client.mintMediaTicket(tokens.accessToken, session.id)
+            assertTrue("media ticket must be non-blank", ticket.token.isNotBlank())
+            // Ticket must not look like a long-lived access JWT reuse (opaque/nonce-bound).
+            assertTrue(ticket.token != tokens.accessToken)
 
-        val container = AppContainer(context)
-        // Point WS at the real server host from CROSSTALK_BASE_URL, not BuildConfig default.
-        val wsBase =
-            when {
-                baseUrl!!.startsWith("https://", true) ->
-                    "wss://" + baseUrl!!.removePrefix("https://").removePrefix("HTTPS://")
-                baseUrl!!.startsWith("http://", true) ->
-                    "ws://" + baseUrl!!.removePrefix("http://").removePrefix("HTTP://")
-                else -> baseUrl!!
+            val container = AppContainer(context)
+            val wsBase = AndroidTestEnv.wsBaseUrlFromHttp(baseUrl!!)
+
+            val engine =
+                LibWebRtcEngine(
+                    appContext = context,
+                    httpClient = container.okHttpClient,
+                )
+            try {
+                engine.connect(
+                    RtcConnectRequest(
+                        wsBaseUrl = wsBase,
+                        sessionId = session.id,
+                        mediaTicket = ticket.token,
+                    ),
+                )
+                val progress =
+                    withTimeout(60_000) {
+                        engine.events
+                            .filterIsInstance<RtcEvent>()
+                            .first { ev ->
+                                when (ev) {
+                                    is RtcEvent.IceConnectionStateChanged ->
+                                        ev.state.equals("connected", true) ||
+                                            ev.state.equals("completed", true) ||
+                                            ev.state.equals("checking", true)
+                                    is RtcEvent.PeerConnectionStateChanged ->
+                                        ev.state.equals("connected", true) ||
+                                            ev.state.equals("connecting", true)
+                                    is RtcEvent.LocalOfferSent -> true
+                                    is RtcEvent.RemoteTrack -> true
+                                    is RtcEvent.Failed -> false
+                                    else -> false
+                                }
+                            }
+                    }
+                // Progress event selected by filter — reaching here means ICE/offer/track advanced.
+                assertTrue("expected RTC progress event, got $progress", true)
+            } finally {
+                runCatching { engine.close(StopReason.UserStop) }
             }
+        }
 
-        val engine =
-            LibWebRtcEngine(
-                appContext = context,
-                httpClient = container.okHttpClient,
-            )
-        try {
-            engine.connect(
-                RtcConnectRequest(
-                    wsBaseUrl = wsBase,
-                    sessionId = session.id,
-                    mediaTicket = ticket.token,
-                ),
-            )
-            val progress =
-                withTimeout(60_000) {
+    @Test
+    fun mintTicket_iceConnected_outboundRtpCountersAdvance() =
+        runBlocking {
+            val sampleSec = AndroidTestEnv.statsSampleSeconds(default = 20L)
+            val context = InstrumentationRegistry.getInstrumentation().targetContext
+            val client = RealServerClient(baseUrl!!)
+            val tokens =
+                client.login(
+                    AndroidTestEnv.translatorUser()!!,
+                    AndroidTestEnv.translatorPassword()!!,
+                )
+            val sessions = client.listSessions(tokens.accessToken)
+            assumeTrue("no assigned sessions", sessions.isNotEmpty())
+            val session =
+                sessions.firstOrNull { it.id == AndroidTestEnv.sessionId() } ?: sessions.first()
+            val ticket = client.mintMediaTicket(tokens.accessToken, session.id)
+            assertTrue(ticket.token.isNotBlank())
+
+            val container = AppContainer(context)
+            val engine =
+                LibWebRtcEngine(
+                    appContext = context,
+                    httpClient = container.okHttpClient,
+                )
+            try {
+                engine.connect(
+                    RtcConnectRequest(
+                        wsBaseUrl = AndroidTestEnv.wsBaseUrlFromHttp(baseUrl!!),
+                        sessionId = session.id,
+                        mediaTicket = ticket.token,
+                    ),
+                )
+                withTimeout(90_000) {
                     engine.events
                         .filterIsInstance<RtcEvent>()
                         .first { ev ->
                             when (ev) {
                                 is RtcEvent.IceConnectionStateChanged ->
                                     ev.state.equals("connected", true) ||
-                                        ev.state.equals("completed", true) ||
-                                        ev.state.equals("checking", true)
+                                        ev.state.equals("completed", true)
                                 is RtcEvent.PeerConnectionStateChanged ->
-                                    ev.state.equals("connected", true) ||
-                                        ev.state.equals("connecting", true)
-                                is RtcEvent.LocalOfferSent -> true
-                                is RtcEvent.RemoteTrack -> true
-                                is RtcEvent.Failed -> false
+                                    ev.state.equals("connected", true)
+                                is RtcEvent.Failed ->
+                                    error("RTC failed: ${ev.message}")
                                 else -> false
                             }
                         }
                 }
-            // Progress event selected by filter — reaching here means ICE/offer/track advanced.
-            assertTrue("expected RTC progress event, got $progress", true)
-        } finally {
-            runCatching { engine.close(StopReason.UserStop) }
+                val window =
+                    RtpStatsSampleHelper.sampleWindow(
+                        engine = engine,
+                        durationMs = sampleSec * 1_000L,
+                    )
+                window.logLine("real_pion_outbound")
+                assertTrue(
+                    RtpStatsSampleHelper.outboundDeltaMessage(window),
+                    window.outboundAdvanced,
+                )
+                // Soft note for inbound — full inbound/energy gate is RtpAudioEnergyInstrumentedTest.
+                if (!(window.inboundAdvanced || window.energyAdvanced)) {
+                    println(
+                        "NOTE: inbound RTP/energy not advancing (floor peer may be absent). " +
+                            "Outbound counters advanced. Label=synthetic-capture-debug-only on emulator.",
+                    )
+                }
+            } finally {
+                runCatching { engine.close(StopReason.UserStop) }
+            }
         }
-    }
 }

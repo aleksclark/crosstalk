@@ -78,6 +78,22 @@ object UiAutomatorHelpers {
     }
 
     /**
+     * Bounded airplane-mode pulse to force network loss + recovery.
+     * Requires shell permission on emulator/debug devices.
+     */
+    fun airplaneModePulse(offSeconds: Long = 5, recoverWaitSeconds: Long = 8) {
+        val d = device()
+        d.executeShellCommand("cmd connectivity airplane-mode enable")
+            ?: d.executeShellCommand("settings put global airplane_mode_on 1")
+        Thread.sleep(offSeconds * 1_000)
+        d.executeShellCommand("cmd connectivity airplane-mode disable")
+            ?: d.executeShellCommand("settings put global airplane_mode_on 0")
+        // Broadcast for older APIs that need the intent.
+        d.executeShellCommand("am broadcast -a android.intent.action.AIRPLANE_MODE --ez state false")
+        Thread.sleep(recoverWaitSeconds * 1_000)
+    }
+
+    /**
      * Soft process death for the target app. Prefer `am kill` over force-stop:
      * force-stop also clears alarms/jobs and is a terminal admin action, not
      * representative of LMK/process death UX.

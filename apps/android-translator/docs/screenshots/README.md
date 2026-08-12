@@ -1,21 +1,38 @@
 # Screenshot capture matrix (Phase 5)
 
-Compose screenshot tooling is not wired in this module. Capture these manually
-(or via future instrumentation) on an API 35 emulator / device and store PNGs
-beside this README using the exact filenames below.
+Compose screenshots are produced by
+`app/src/androidTest/.../ui/ScreenshotInstrumentedTest` using
+`captureToImage` with demo/fake UI state (no live server required).
 
 ## Required captures
 
 | File | Surface | Theme | Viewport | Notes |
 |---|---|---|---|---|
-| `login-dark-phone.png` | Login (Configure) | dark | 390×844 | Welcome (Newsreader), deployment identity mono, fields, Sign in |
-| `assignments-dark-phone.png` | Session list | dark | 390×844 | Name primary, status secondary, ULID collapsed |
-| `live-connected-dark-phone.png` | Live session | dark | 390×844 | Connected sentence, meters, Stop dominant, Mute |
-| `live-reconnecting-dark-phone.png` | Live session | dark | 390×844 | Reconnect banner + polite status |
-| `mic-denied-dark-phone.png` | Live session | dark | 390×844 | Mic denied / Open Settings |
-| `live-connected-light-phone.png` | Live session | light | 390×844 | Geometry parity with dark |
-| `live-connected-dark-tablet.png` | Live session | dark | 834×1112 | Page title 30sp path |
-| `live-connected-dark-font200.png` | Live session | dark | 390×844 @ fontScale 2.0 | No clipping; reflow |
+| `login-dark-phone.png` | Login (Configure) | dark | ~390dp | Welcome (Newsreader), deployment identity mono, fields, Sign in |
+| `assignments-dark-phone.png` | Session list | dark | ~390dp | Name primary, status secondary, ULID collapsed |
+| `live-connected-dark-phone.png` | Live session | dark | ~390dp | Connected sentence, meters, Stop dominant, Mute |
+| `live-reconnecting-dark-phone.png` | Live session | dark | ~390dp | Reconnect banner + polite status |
+| `mic-denied-dark-phone.png` | Live session | dark | ~390dp | Mic denied / Open Settings |
+| `live-connected-light-phone.png` | Live session | light | ~390dp | Geometry parity with dark |
+| `live-connected-dark-tablet.png` | Live session | dark | device | Same surface; tablet width when available |
+| `live-connected-dark-font200.png` | Live session | dark | ~390dp @ fontScale 2.0 | Set `font_scale` before class for true 200% |
+
+Checksums: `CHECKSUMS.sha256` (sha256 of each PNG).
+
+## Capture via instrumentation
+
+```bash
+cd apps/android-translator
+./gradlew :app:connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.crosstalk.translator.ui.ScreenshotInstrumentedTest
+
+# Pull PNGs + checksums (public path survives app-data wipe):
+adb pull /sdcard/Download/crosstalk-screenshots/. docs/screenshots/
+(cd docs/screenshots && sha256sum *.png > CHECKSUMS.sha256)
+```
+
+`test/android/run-device-golden.sh` also pulls screenshots after the connected
+suite and mirrors them into this directory when present.
 
 ## Capture checklist
 

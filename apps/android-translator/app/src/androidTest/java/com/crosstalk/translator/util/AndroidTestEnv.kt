@@ -15,6 +15,10 @@ object AndroidTestEnv {
     const val ARG_TRANSLATOR_PASSWORD = "CROSSTALK_TRANSLATOR_PASSWORD"
     const val ARG_SESSION_ID = "CROSSTALK_SESSION_ID"
     const val ARG_SESSION_NAME = "CROSSTALK_SESSION_NAME"
+    /** Optional sample window for RTP counter tests (seconds). Default 25. */
+    const val ARG_STATS_SAMPLE_SECONDS = "CROSSTALK_STATS_SAMPLE_SECONDS"
+    /** Optional total HOME+SLEEP hold for continuity RTP test (seconds). Default 30. */
+    const val ARG_CONTINUITY_HOLD_SECONDS = "CROSSTALK_CONTINUITY_HOLD_SECONDS"
 
     /** Application id for debug builds (suffix .debug). */
     const val DEBUG_PACKAGE = "com.crosstalk.translator.debug"
@@ -43,7 +47,23 @@ object AndroidTestEnv {
 
     fun sessionName(): String? = instrumentationArg(ARG_SESSION_NAME)
 
+    fun statsSampleSeconds(default: Long = 25L): Long =
+        instrumentationArg(ARG_STATS_SAMPLE_SECONDS)?.toLongOrNull()?.coerceIn(10L, 600L) ?: default
+
+    fun continuityHoldSeconds(default: Long = 30L): Long =
+        instrumentationArg(ARG_CONTINUITY_HOLD_SECONDS)?.toLongOrNull()?.coerceIn(15L, 900L)
+            ?: default
+
     fun ignoreReasonNoServer(): String =
         "Requires $ARG_BASE_URL (and seed credentials) pointing at a live CrossTalk server. " +
             "Run via test/android/run-device-golden.sh or connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.$ARG_BASE_URL=..."
+
+    fun wsBaseUrlFromHttp(baseUrl: String): String =
+        when {
+            baseUrl.startsWith("https://", true) ->
+                "wss://" + baseUrl.removePrefix("https://").removePrefix("HTTPS://")
+            baseUrl.startsWith("http://", true) ->
+                "ws://" + baseUrl.removePrefix("http://").removePrefix("HTTP://")
+            else -> baseUrl
+        }
 }

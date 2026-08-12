@@ -45,7 +45,9 @@ admin only and is documented separately.
 | `CROSSTALK_BASE_URL` | Live server base |
 | `CROSSTALK_ADMIN_PASSWORD` | Seed only |
 | `CROSSTALK_SERIAL` | Optional adb serial |
-| `CROSSTALK_SLEEP_SECONDS` | Default 600 |
+| `CROSSTALK_SLEEP_SECONDS` | Default 600; CI/dev may use 45–90 |
+| `CROSSTALK_POLL_INTERVAL_SECONDS` | Optional; auto 5s when sleep ≤90 |
+| `CROSSTALK_STATS_SAMPLE_SECONDS` | Instrumented RTP sample window (default 25) |
 | `CROSSTALK_ALLOW_EMULATOR=1` | Debug synthetic path only |
 
 ## Instrumentation matrix
@@ -54,14 +56,27 @@ Under `app/src/androidTest/`:
 
 - `AuthKeystoreInstrumentedTest` — real Android Keystore
 - `ForegroundServiceLifecycleInstrumentedTest` — Home / rotation best-effort
-- `ScreenOffContinuityInstrumentedTest` — service remains after sleep sim
+- `ScreenOffContinuityInstrumentedTest` — FGS remains after sleep; with server,
+  production LibWebRtcEngine RTP counters advance across HOME+SLEEP + explicit stop
 - `ProcessDeathRejoinInstrumentedTest` — `am kill`, no auto mic restart
 - `PermissionRevocationInstrumentedTest` — as feasible on emulator
 - `RealServerAssignmentInstrumentedTest` — requires `CROSSTALK_BASE_URL`
-- `RealPionWebRtcInstrumentedTest` — requires `CROSSTALK_BASE_URL` + credentials
+- `RealPionWebRtcInstrumentedTest` — requires server; ICE + **outbound RTP counters**
+- `RtpAudioEnergyInstrumentedTest` — requires server; outbound RTP mandatory;
+  inbound bytes/energy fail-soft with explicit skip when floor peer absent;
+  network toggle mints **fresh** ticket; HOME+SLEEP continuity
+- `ScreenshotInstrumentedTest` — Compose PNG matrix → `docs/screenshots/`
 
 Real-server tests use `assumeTrue` when env is absent so static CI stays honest;
 they **run automatically** when the golden harness injects runner args.
+
+### RTP / audio energy boundary
+
+| Label | What is proven |
+|---|---|
+| Emulator / no floor peer | Outbound `bytesSent`/`packetsSent` advance on production `LibWebRtcEngine` after ICE connected. Inbound may skip with `INBOUND_SKIP…` reason. Capture = `synthetic-capture-debug-only`. |
+| Emulator + floor peer | Also inbound bytes/packets and/or `totalAudioEnergy` advance. Still not physical-mic spectral proof. |
+| Physical + injectors | `run-device-golden.sh` 440/880 Hz spectral proof (`physical-mic`). |
 
 ## Managed devices
 

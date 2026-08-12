@@ -57,10 +57,56 @@ class TranslatorAudioService : Service() {
         }
 
         fun service(): TranslatorAudioService = this@TranslatorAudioService
+
+        /**
+         * Most recent successfully minted media ticket token (opaque).
+         * Used by instrumented golden tests to prove reconnect mints a fresh ticket
+         * (`token != previous`). Never log this value.
+         */
+        fun lastMediaTicketToken(): String? = lastMediaTicketToken.get()
+
+        /** Snapshot of reducer-mapped RTC stats for binder/debug probes. */
+        fun statsSnapshot(): com.crosstalk.translator.rtc.RtcStats? = _state.value.stats
+
+        /**
+         * Single-line, secret-free stats dump for golden harness / logcat polling.
+         * Format is stable for `run-device-golden.sh` parsers.
+         */
+        fun debugStatsLine(): String {
+            val s = _state.value
+            val st = s.stats
+            return buildString {
+                append("ct_stats")
+                append(" phase=").append(s.phase.name)
+                append(" gen=").append(s.generation)
+                append(" live=").append(s.userRequestedLive)
+                if (st != null) {
+                    append(" bytesSent=").append(st.bytesSent)
+                    append(" bytesReceived=").append(st.bytesReceived)
+                    append(" packetsSent=").append(st.packetsSent)
+                    append(" packetsReceived=").append(st.packetsReceived)
+                    append(" packetsLost=").append(st.packetsLost)
+                    append(" totalAudioEnergy=").append(st.totalAudioEnergy)
+                    append(" audioLevel=").append(st.audioLevel)
+                    append(" ice=").append(st.iceConnectionState)
+                    append(" peer=").append(st.peerConnectionState)
+                    append(" ts=").append(st.timestampMs)
+                } else {
+                    append(" stats=null")
+                }
+                val ticket = lastMediaTicketToken.get()
+                if (ticket != null) {
+                    // Fingerprint only — never the full token.
+                    append(" ticketFp=").append(ticketFingerprint(ticket))
+                }
+            }
+        }
     }
 
     private val binder = LocalBinder()
     private val stateListener = AtomicReference<((ServiceState) -> Unit)?>(null)
+    /** Last minted media ticket token for reconnect freshness assertions (never logged raw). */
+    private val lastMediaTicketToken = AtomicReference<String?>(null)
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val orchestrateMutex = Mutex()
@@ -429,6 +475,9 @@ class TranslatorAudioService : Service() {
             MediaTicketValidator.Result.Ok -> Unit
         }
 
+        // Record after validation so reconnect freshness checks only see accepted tickets.
+        lastMediaTicketToken.set(ticket.token)
+
         dispatchFenced(ServiceEvent.Fenced.Signaling, generation)
         val engine = rtcFactory()
         rtcEngine = engine
@@ -699,7 +748,8 @@ class TranslatorAudioService : Service() {
         routeController.clear()
         wakeLease.release()
         if (userStop) {
-            // State already Stopped via reducer.
+            // Clear ticket after explicit stop so a later Join is not compared against a dead peer.
+            lastMediaTicketToken.set(null)
         }
     }
 
@@ -802,5 +852,16 @@ class TranslatorAudioService : Service() {
         const val EXTRA_MUTED = "muted"
 
         private const val WATCHDOG_PERIOD_MS = 15_000L
+
+        /** Stable short fingerprint for log/golden polling (never the raw ticket). */
+        fun ticketFingerprint(token: String): String {
+            var h = 0x811c9dc5.toInt()
+            for (c in token) {
+                h = h xor c.code
+                h *= 0x01000193
+            }
+            val unsigned = h.toLong() and 0xffffffffL
+            return unsigned.toString(16).padStart(8, '0')
+        }
     }
 }

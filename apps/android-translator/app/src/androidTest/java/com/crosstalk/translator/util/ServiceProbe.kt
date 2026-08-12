@@ -165,4 +165,39 @@ object ServiceProbe {
         )
         Thread.sleep(1_000)
     }
+
+    /** Secret-free binder stats line for golden harness / instrumentation logs. */
+    fun debugStatsLine(timeoutSec: Long = 5): String {
+        var line = "ct_stats unavailable"
+        withBoundService(timeoutSec) { binder ->
+            line = binder.debugStatsLine()
+        }
+        return line
+    }
+
+    fun lastMediaTicketToken(timeoutSec: Long = 5): String? {
+        var token: String? = null
+        withBoundService(timeoutSec) { binder ->
+            token = binder.lastMediaTicketToken()
+        }
+        return token
+    }
+
+    fun statsSnapshot(timeoutSec: Long = 5): com.crosstalk.translator.rtc.RtcStats? {
+        var stats: com.crosstalk.translator.rtc.RtcStats? = null
+        withBoundService(timeoutSec) { binder ->
+            stats = binder.statsSnapshot()
+        }
+        return stats
+    }
+
+    /**
+     * Log a stable `CT_GOLDEN_STATS` line so `run-device-golden.sh` can scrape
+     * instrumentation logcat for RTP counters without secrets.
+     */
+    fun logGoldenStats(tag: String = "CT_GOLDEN_STATS") {
+        val line = runCatching { debugStatsLine() }.getOrElse { "ct_stats error=${it.javaClass.simpleName}" }
+        android.util.Log.i(tag, line)
+        println("$tag $line")
+    }
 }
