@@ -57,7 +57,7 @@ class RealPionWebRtcInstrumentedTest {
 
     @Test
     fun mintTicket_andConnectEngine_reachesIceOrConnected() =
-        runBlocking {
+        runBlocking<Unit> {
             val context = InstrumentationRegistry.getInstrumentation().targetContext
             val client = RealServerClient(baseUrl!!)
             val tokens =
@@ -120,7 +120,7 @@ class RealPionWebRtcInstrumentedTest {
 
     @Test
     fun mintTicket_iceConnected_outboundRtpCountersAdvance() =
-        runBlocking {
+        runBlocking<Unit> {
             val sampleSec = AndroidTestEnv.statsSampleSeconds(default = 20L)
             val context = InstrumentationRegistry.getInstrumentation().targetContext
             val client = RealServerClient(baseUrl!!)

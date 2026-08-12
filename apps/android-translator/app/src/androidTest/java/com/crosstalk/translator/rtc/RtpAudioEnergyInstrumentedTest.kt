@@ -66,7 +66,7 @@ class RtpAudioEnergyInstrumentedTest {
 
     @Test
     fun outboundRtpAdvances_andInboundWhenPeerPresent() =
-        runBlocking {
+        runBlocking<Unit> {
             val sampleSec = AndroidTestEnv.statsSampleSeconds(default = 25L)
             val (engine, ticket1) = connectFreshEngine()
             try {
@@ -90,7 +90,8 @@ class RtpAudioEnergyInstrumentedTest {
                             "energy=${window.last.totalAudioEnergy}",
                     )
                 } else {
-                    // Fail-soft: no floor peer / silent feed — document skip, do not fake.
+                    // Fail-soft: no floor peer / silent feed — document residual, do not fake
+                    // and do not skip the whole test (outbound already asserted).
                     val reason =
                         "INBOUND_SKIP: no advancing bytesReceived/packetsReceived/totalAudioEnergy " +
                             "after ${sampleSec}s (floor/feed peer absent or silent). " +
@@ -98,7 +99,6 @@ class RtpAudioEnergyInstrumentedTest {
                             "Label=synthetic-capture-debug-only on emulator."
                     Log.w(RtpStatsSampleHelper.LOG_TAG, reason)
                     println(reason)
-                    assumeTrue(reason, false)
                 }
             } finally {
                 runCatching { engine.close(StopReason.UserStop) }
@@ -109,7 +109,7 @@ class RtpAudioEnergyInstrumentedTest {
 
     @Test
     fun homeAndSleep_rtpCountersContinue_thenExplicitStop() =
-        runBlocking {
+        runBlocking<Unit> {
             val holdSec = AndroidTestEnv.continuityHoldSeconds(default = 30L)
             val (engine, _) = connectFreshEngine()
             try {
@@ -163,7 +163,7 @@ class RtpAudioEnergyInstrumentedTest {
 
     @Test
     fun networkToggle_mintsFreshTicket_andRestoresProgress() =
-        runBlocking {
+        runBlocking<Unit> {
             val context = InstrumentationRegistry.getInstrumentation().targetContext
             val client = RealServerClient(baseUrl!!)
             val tokens =

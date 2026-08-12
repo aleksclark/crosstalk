@@ -48,16 +48,28 @@ class ScreenshotInstrumentedTest {
 
     private val outDir: File by lazy {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        // Prefer a public path so adb pull works after the suite (app data may be
-        // cleared when the instrumentation process ends). Fall back to app external.
-        val publicDir =
-            File("/sdcard/Download/crosstalk-screenshots").also { it.mkdirs() }
-        if (publicDir.exists() && publicDir.canWrite()) {
-            publicDir
-        } else {
-            (context.getExternalFilesDir("screenshots")
-                ?: File(context.cacheDir, "screenshots")).also { it.mkdirs() }
-        }
+        // App-writable first (scoped storage blocks /sdcard/Download without grants).
+        // Host pulls via run-as / adb exec-out, or instrumentation copies when possible.
+        val candidates =
+            listOfNotNull(
+                context.getExternalFilesDir("screenshots"),
+                File(context.cacheDir, "screenshots"),
+                File(context.filesDir, "screenshots"),
+                runCatching {
+                    File("/sdcard/Download/crosstalk-screenshots").also { it.mkdirs() }
+                }.getOrNull(),
+            )
+        val chosen =
+            candidates.firstOrNull { dir ->
+                runCatching {
+                    dir.mkdirs()
+                    val probe = File(dir, ".write_probe")
+                    probe.writeText("ok")
+                    probe.delete()
+                    true
+                }.getOrDefault(false)
+            } ?: error("no writable screenshot directory among $candidates")
+        chosen
     }
 
     @Test

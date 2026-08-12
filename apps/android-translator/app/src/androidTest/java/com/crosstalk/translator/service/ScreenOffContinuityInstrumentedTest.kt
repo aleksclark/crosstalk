@@ -78,7 +78,7 @@ class ScreenOffContinuityInstrumentedTest {
 
     @Test
     fun homeSleep_realEngineRtpAdvances_thenExplicitStop() =
-        runBlocking {
+        runBlocking<Unit> {
             assumeTrue(AndroidTestEnv.ignoreReasonNoServer(), AndroidTestEnv.realServerConfigured())
             assumeTrue(
                 "Requires translator credentials",
