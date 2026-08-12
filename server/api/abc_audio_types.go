@@ -60,7 +60,10 @@ type ABCAudioCapabilityOut struct {
 	SupportsVolume bool           `json:"supports_volume,omitempty"`
 	SupportsMute   bool           `json:"supports_mute,omitempty"`
 	SupportsGain   bool           `json:"supports_gain,omitempty"`
-	Extra          map[string]any `json:"extra,omitempty"`
+	// Extra is a string-keyed diagnostic bag (e.g. pcm_route). Values are
+	// strings so generated clients (Kotlin kotlinx.serialization) can bind
+	// without open Any maps.
+	Extra map[string]string `json:"extra,omitempty"`
 }
 
 // ABCAudioReportedOut is the durable observed snapshot in responses.

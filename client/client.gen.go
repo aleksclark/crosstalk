@@ -360,15 +360,15 @@ type ABCAudioCapabilityOut struct {
 	DeviceUid string `json:"device_uid"`
 
 	// Direction input, output, or both
-	Direction      *string                 `json:"direction,omitempty"`
-	Extra          *map[string]interface{} `json:"extra,omitempty"`
-	Path           *string                 `json:"path,omitempty"`
-	ProductId      *string                 `json:"product_id,omitempty"`
-	Serial         *string                 `json:"serial,omitempty"`
-	SupportsGain   *bool                   `json:"supports_gain,omitempty"`
-	SupportsMute   *bool                   `json:"supports_mute,omitempty"`
-	SupportsVolume *bool                   `json:"supports_volume,omitempty"`
-	VendorId       *string                 `json:"vendor_id,omitempty"`
+	Direction      *string            `json:"direction,omitempty"`
+	Extra          *map[string]string `json:"extra,omitempty"`
+	Path           *string            `json:"path,omitempty"`
+	ProductId      *string            `json:"product_id,omitempty"`
+	Serial         *string            `json:"serial,omitempty"`
+	SupportsGain   *bool              `json:"supports_gain,omitempty"`
+	SupportsMute   *bool              `json:"supports_mute,omitempty"`
+	SupportsVolume *bool              `json:"supports_volume,omitempty"`
+	VendorId       *string            `json:"vendor_id,omitempty"`
 }
 
 // ABCAudioDesiredOut defines model for ABCAudioDesiredOut.
