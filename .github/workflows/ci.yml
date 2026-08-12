@@ -2,9 +2,15 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [master, production-integration]
   pull_request:
-    branches: [master]
+    branches: [master, production-integration]
+  workflow_dispatch:
+    inputs:
+      run_physical_android:
+        description: "Request android-physical-audio on self-hosted runner"
+        type: boolean
+        default: true
 
 jobs:
   lint:
@@ -272,3 +278,202 @@ jobs:
           CT_TEST_DATABASE_ADMIN_URL: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
         run: bash test/run-e2e.sh
 
+  # ── Android translator gates (Lane F) ───────────────────────────────────
+
+  android-static:
+    name: Android Static (lint/unit/assemble)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/android-translator
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install platform / build-tools 35
+        run: |
+          sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
+          yes | sdkmanager --licenses >/dev/null || true
+
+      - name: local.properties
+        run: printf 'sdk.dir=%s\n' "$ANDROID_HOME" > local.properties
+
+      - name: Validate Gradle wrapper
+        run: |
+          test -x ./gradlew
+          grep -q '8.11.1' gradle/wrapper/gradle-wrapper.properties
+
+      - name: OpenAPI generate + drift check
+        run: bash scripts/check-openapi-generated.sh
+
+      - name: Lint + unit tests
+        run: ./gradlew --no-daemon :app:lintDebug :app:testDebugUnitTest
+
+      - name: Assemble debug + release
+        run: ./gradlew --no-daemon :app:assembleDebug :app:assembleRelease
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-static-reports
+          path: |
+            apps/android-translator/app/build/reports/
+            apps/android-translator/app/build/test-results/
+          if-no-files-found: ignore
+
+  android-instrumented-api35:
+    name: Android Instrumented (API 35 emulator)
+    runs-on: ubuntu-latest
+    needs: [android-static]
+    defaults:
+      run:
+        working-directory: apps/android-translator
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Check KVM
+        id: kvm
+        run: |
+          if [[ -e /dev/kvm ]]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "KVM available"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "NOTICE: /dev/kvm missing — instrumented emulator job will skip cleanly (not a silent green for physical)."
+          fi
+
+      # Without world-writable /dev/kvm, acceleration is denied and API 35
+      # google_apis images hang forever on sys.boot_completed (seen as 600s timeout).
+      - name: Enable KVM device access
+        if: steps.kvm.outputs.available == 'true'
+        run: |
+          set -euo pipefail
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+          # Prove the runner user can open KVM (not merely that the node exists).
+          python3 - <<'PY'
+          import os, stat
+          st = os.stat("/dev/kvm")
+          mode = st.st_mode
+          print(f"mode={oct(mode)} uid={st.st_uid} gid={st.st_gid}")
+          fd = os.open("/dev/kvm", os.O_RDWR)
+          os.close(fd)
+          print("kvm_open_ok")
+          PY
+
+      - name: Install emulator packages
+        if: steps.kvm.outputs.available == 'true'
+        run: |
+          sdkmanager --install "platforms;android-35" "build-tools;35.0.0" \
+            "system-images;android-35;google_apis;x86_64" "emulator" "platform-tools"
+          yes | sdkmanager --licenses >/dev/null || true
+
+      - name: local.properties
+        if: steps.kvm.outputs.available == 'true'
+        run: printf 'sdk.dir=%s\n' "$ANDROID_HOME" > local.properties
+
+      - name: Run connected tests on emulator
+        if: steps.kvm.outputs.available == 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 4096
+          heap-size: 512
+          disk-size: 4096M
+          force-avd-creation: true
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back none -camera-front none
+          working-directory: apps/android-translator
+          script: ./gradlew --no-daemon :app:connectedDebugAndroidTest
+
+      - name: Skip notice (no KVM)
+        if: steps.kvm.outputs.available != 'true'
+        run: |
+          {
+            echo "## Android instrumented API 35"
+            echo ""
+            echo "Skipped cleanly: no KVM on runner. Lifecycle instrumented tests require an emulator or device."
+            echo "Physical bidirectional audio remains gated by **android-physical-audio** (fail-closed / pending without runner)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload instrumented reports
+        if: always() && steps.kvm.outputs.available == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-instrumented-reports
+          path: |
+            apps/android-translator/app/build/reports/androidTests/
+            apps/android-translator/app/build/outputs/androidTest-results/
+          if-no-files-found: ignore
+
+  android-physical-audio:
+    name: Android Physical Audio (required evidence)
+    # Self-hosted label set. If no runner is registered, GitHub keeps the check
+    # pending/queued rather than green-skipping — fail-closed for merge gates.
+    # Also invokable via workflow_dispatch.
+    runs-on: [self-hosted, linux, android-audio]
+    needs: [android-static]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preflight physical runner
+        run: |
+          set -euo pipefail
+          echo "Physical Android audio gate — labels: self-hosted, linux, android-audio"
+          command -v adb
+          adb start-server
+          mapfile -t devs < <(adb devices | awk 'NR>1 && $2=="device"{print $1}')
+          if [[ ${#devs[@]} -eq 0 ]]; then
+            echo "::error::No physical Android device attached to self-hosted android-audio runner"
+            echo "PHYSICAL REQUIRED: attach API 35 phone + calibrated 440/880 injectors"
+            exit 1
+          fi
+          echo "device_count=${#devs[@]}"
+          if [[ -z "${CROSSTALK_BASE_URL:-}" ]]; then
+            echo "::error::CROSSTALK_BASE_URL env/secret required on physical runner"
+            exit 1
+          fi
+          if [[ -z "${CROSSTALK_ADMIN_PASSWORD:-}" ]]; then
+            echo "::error::CROSSTALK_ADMIN_PASSWORD required on physical runner (never log value)"
+            exit 1
+          fi
+
+      - name: Run device golden harness
+        env:
+          CROSSTALK_SLEEP_SECONDS: "600"
+          # Never set CROSSTALK_ALLOW_EMULATOR on this job.
+        run: bash test/android/run-device-golden.sh
+
+      - name: Upload redacted evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-physical-evidence
+          path: /tmp/ct-android-golden-*/android-golden-evidence.tgz
+          if-no-files-found: warn

@@ -42,3 +42,10 @@ node_modules/
 
 # Embedded SPA build output (built in deploy/Dockerfile; placeholder index.html tracked)
 server/web/*/assets/
+
+# Android translator (local/build artifacts; module also has its own .gitignore)
+apps/android-translator/local.properties
+apps/android-translator/.gradle/
+apps/android-translator/**/build/
+apps/android-translator/*.apk
+apps/android-translator/*.aab

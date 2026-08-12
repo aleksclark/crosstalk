@@ -273,7 +273,8 @@ type ABCAudioCapability struct {
 	SupportsVolume     bool           `json:"supports_volume,omitempty"`
 	SupportsMute       bool           `json:"supports_mute,omitempty"`
 	SupportsGain       bool           `json:"supports_gain,omitempty"`
-	Extra              map[string]any `json:"extra,omitempty"`
+	// Extra holds optional string diagnostics (e.g. pcm_route).
+	Extra map[string]string `json:"extra,omitempty"`
 }
 
 // ABCAudioObservation is a board-reported inventory and/or apply result.

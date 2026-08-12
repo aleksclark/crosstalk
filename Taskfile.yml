@@ -99,6 +99,23 @@ tasks:
 
   # ── Lint Tasks ─────────────────────────────────────────────────
 
+  generate:proto:v2:
+    desc: Regenerate server/proto/v2/control.pb.go from proto/crosstalk/v2/control.proto
+    cmds:
+      - |
+        set -euo pipefail
+        # Pinned generator matching committed header (protoc-gen-go v1.36.11).
+        go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
+        OUT=$(mktemp -d)
+        PATH="$(go env GOPATH)/bin:$PATH" protoc \
+          --go_out="$OUT" \
+          --go_opt=module=github.com/aleksclark/crosstalk/proto/gen/go \
+          -I. \
+          proto/crosstalk/v2/control.proto
+        cp "$OUT/crosstalk/v2/control.pb.go" server/proto/v2/control.pb.go
+        rm -rf "$OUT"
+        echo "wrote server/proto/v2/control.pb.go"
+
   lint:go:
     desc: Run golangci-lint on server and cli
     cmds:
@@ -129,6 +146,7 @@ tasks:
       - task: api:spec
       - task: api:generate:ts
       - task: api:generate:go
+      - task: api:generate:android
 
   api:generate:ts:
     desc: Generate TypeScript types and client from the OpenAPI spec
@@ -156,11 +174,30 @@ tasks:
       - "{{.OAPI_CODEGEN}} --config oapi-codegen.yaml ../{{.SPEC_FILE}}"
       - go mod tidy
 
+  api:generate:android:
+    desc: Generate Kotlin OkHttp client for the Android translator from the OpenAPI spec
+    dir: apps/android-translator
+    sources:
+      - ../../{{.SPEC_FILE}}
+      - openapi-generator-config.yaml
+      - app/build.gradle.kts
+    env:
+      JAVA_HOME: '{{.JAVA_HOME | default "/usr/lib/jvm/java-17-openjdk"}}'
+      ANDROID_HOME: '{{.ANDROID_HOME | default "/opt/android-sdk"}}'
+      ANDROID_SDK_ROOT: '{{.ANDROID_SDK_ROOT | default "/opt/android-sdk"}}'
+    cmds:
+      - |
+        if [ ! -f local.properties ]; then
+          printf 'sdk.dir=%s\n' "${ANDROID_HOME}" > local.properties
+        fi
+      - ./gradlew --no-daemon openApiGenerate
+
   api:validate:
     desc: Verify generated clients compile
     cmds:
       - task: api:validate:ts
       - task: api:validate:go
+      - task: api:validate:android
 
   api:validate:ts:
     desc: Typecheck the generated TypeScript client
@@ -174,19 +211,45 @@ tasks:
     cmds:
       - go build ./...
 
-  generate:proto:v2:
-    desc: Regenerate server/proto/v2/control.pb.go from proto/crosstalk/v2/control.proto
+  api:validate:android:
+    desc: Regenerate and compile-check the Android OpenAPI client
+    dir: apps/android-translator
+    env:
+      JAVA_HOME: '{{.JAVA_HOME | default "/usr/lib/jvm/java-17-openjdk"}}'
+      ANDROID_HOME: '{{.ANDROID_HOME | default "/opt/android-sdk"}}'
+      ANDROID_SDK_ROOT: '{{.ANDROID_SDK_ROOT | default "/opt/android-sdk"}}'
+    cmds:
+      - bash scripts/check-openapi-generated.sh
+
+  test:android:unit:
+    desc: Android translator unit tests + lint (JDK 17)
+    dir: apps/android-translator
+    env:
+      JAVA_HOME: '{{.JAVA_HOME | default "/usr/lib/jvm/java-17-openjdk"}}'
+      ANDROID_HOME: '{{.ANDROID_HOME | default "/opt/android-sdk"}}'
+      ANDROID_SDK_ROOT: '{{.ANDROID_SDK_ROOT | default "/opt/android-sdk"}}'
     cmds:
       - |
-        set -euo pipefail
-        # Pinned generator matching committed header (protoc-gen-go v1.36.11).
-        go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
-        OUT=$(mktemp -d)
-        PATH="$(go env GOPATH)/bin:$PATH" protoc \
-          --go_out="$OUT" \
-          --go_opt=module=github.com/aleksclark/crosstalk/proto/gen/go \
-          -I. \
-          proto/crosstalk/v2/control.proto
-        cp "$OUT/crosstalk/v2/control.pb.go" server/proto/v2/control.pb.go
-        rm -rf "$OUT"
-        echo "wrote server/proto/v2/control.pb.go"
+        if [ ! -f local.properties ]; then
+          printf 'sdk.dir=%s\n' "${ANDROID_HOME}" > local.properties
+        fi
+      - ./gradlew --no-daemon :app:testDebugUnitTest :app:lintDebug
+
+  test:android:connected:
+    desc: Android translator connectedDebugAndroidTest (requires device/emulator)
+    dir: apps/android-translator
+    env:
+      JAVA_HOME: '{{.JAVA_HOME | default "/usr/lib/jvm/java-17-openjdk"}}'
+      ANDROID_HOME: '{{.ANDROID_HOME | default "/opt/android-sdk"}}'
+      ANDROID_SDK_ROOT: '{{.ANDROID_SDK_ROOT | default "/opt/android-sdk"}}'
+    cmds:
+      - |
+        if [ ! -f local.properties ]; then
+          printf 'sdk.dir=%s\n' "${ANDROID_HOME}" > local.properties
+        fi
+      - ./gradlew --no-daemon :app:connectedDebugAndroidTest
+
+  test:android:golden:
+    desc: Physical/emulator Android golden harness (see test/android/run-device-golden.sh)
+    cmds:
+      - bash test/android/run-device-golden.sh

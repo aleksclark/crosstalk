@@ -414,7 +414,7 @@ func mapAudioControlReport(report *crosstalkv2.AudioControlReport) (crosstalk.AB
 			if !boundedString(pcm, MaxABCAudioStringBytes) {
 				return zero, false
 			}
-			cap.Extra = map[string]any{"pcm_route": pcm}
+			cap.Extra = map[string]string{"pcm_route": pcm}
 		}
 		caps = append(caps, cap)
 	}

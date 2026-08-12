@@ -429,7 +429,7 @@ export interface components {
             /** @description input, output, or both */
             direction?: string;
             extra?: {
-                [key: string]: unknown;
+                [key: string]: string;
             };
             path?: string;
             product_id?: string;
