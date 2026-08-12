@@ -102,3 +102,30 @@ type MediaTicketService interface {
 	// GetByNonceHash looks up a ticket by hash without consuming it.
 	GetByNonceHash(ctx context.Context, nonceHash string) (*MediaTicket, error)
 }
+
+// ABCAudioService manages durable desired/observed ABC USB audio control state.
+// SetDesired and RecordReport own transactions, revision ordering, idempotency,
+// and audit writes; handlers must not reimplement those rules.
+type ABCAudioService interface {
+	// Get returns durable audio status for an existing ABC. When no settings
+	// row exists yet, it returns an unconfigured status without creating a row.
+	// Returns ErrABCAudioABCNotFound when the ABC itself is missing.
+	Get(ctx context.Context, abcID string) (*ABCAudioStatus, error)
+
+	// SetDesired absolutely replaces desired state when expectedRevision matches.
+	// Duplicate (abcID, requestID) returns the originally accepted status.
+	// Byte-equal desired is a successful no-op (no revision bump).
+	// Conflicting expectedRevision returns ErrABCAudioRevisionConflict.
+	SetDesired(ctx context.Context, abcID, actorID, actorRole, requestID string,
+		expectedRevision uint64, desired ABCAudioDesired) (*ABCAudioStatus, error)
+
+	// RecordReport persists a validated board observation. Stale reports whose
+	// desired revision is lower than the persisted reported revision are ignored
+	// (status returned unchanged; no error). Inventory-only revision 0 may create
+	// a settings row and update capabilities without overwriting desired state.
+	RecordReport(ctx context.Context, abcID string, report ABCAudioObservation) (*ABCAudioStatus, error)
+
+	// ListAudit returns recent audit events for an ABC (newest first). limit<=0
+	// uses a sensible default. Optional helper for operators/tests.
+	ListAudit(ctx context.Context, abcID string, limit int) ([]ABCAudioAuditEvent, error)
+}

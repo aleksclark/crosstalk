@@ -539,6 +539,89 @@ func TestControlHandler_PingPong(t *testing.T) {
 	assert.True(t, hasPong, "expected control_pong event")
 }
 
+func TestControlHandler_AudioControlReport(t *testing.T) {
+	pm := NewPeerManagerWithAPI(testAPI())
+	peer, err := pm.CreatePeerConnection()
+	require.NoError(t, err)
+	defer pm.RemovePeer(peer.ID)
+
+	handler := &ControlHandler{Peer: peer, ServerVersion: "v3-test"}
+	var got *crosstalkv2.AudioControlReport
+	handler.OnAudioControlReport = func(p *PeerConn, report *crosstalkv2.AudioControlReport) {
+		assert.Equal(t, peer, p)
+		got = report
+	}
+
+	vol := uint32(65)
+	muted := false
+	gain := uint32(40)
+	msg := &crosstalkv2.ControlMessage{
+		Payload: &crosstalkv2.ControlMessage_AudioControlReport{
+			AudioControlReport: &crosstalkv2.AudioControlReport{
+				CommandId:       "abc-audio/x/1",
+				DesiredRevision: 1,
+				Devices: []*crosstalkv2.AudioDeviceCapability{
+					{DeviceUid: "usb:0d8c:0014:path:p1", Direction: "both", Backend: "alsa", SupportsVolume: true},
+				},
+				Output: &crosstalkv2.AudioOutputObserved{
+					DeviceUid:     "usb:0d8c:0014:path:p1",
+					VolumePercent: &vol,
+					Muted:         &muted,
+					VolumeState:   crosstalkv2.AudioApplyState_AUDIO_APPLY_STATE_APPLIED,
+					MuteState:     crosstalkv2.AudioApplyState_AUDIO_APPLY_STATE_APPLIED,
+				},
+				Input: &crosstalkv2.AudioInputObserved{
+					DeviceUid:   "usb:0d8c:0014:path:p1",
+					GainPercent: &gain,
+					GainState:   crosstalkv2.AudioApplyState_AUDIO_APPLY_STATE_APPLIED,
+				},
+			},
+		},
+	}
+	data, err := proto.Marshal(msg)
+	require.NoError(t, err)
+	handler.dispatch(data)
+
+	require.NotNil(t, got)
+	assert.Equal(t, uint64(1), got.GetDesiredRevision())
+	assert.Equal(t, "abc-audio/x/1", got.GetCommandId())
+	assert.Len(t, got.GetDevices(), 1)
+	assert.Equal(t, crosstalkv2.AudioApplyState_AUDIO_APPLY_STATE_APPLIED, got.GetOutput().GetVolumeState())
+}
+
+func TestControlHandler_AudioControlReportOversizedRejected(t *testing.T) {
+	pm := NewPeerManagerWithAPI(testAPI())
+	peer, err := pm.CreatePeerConnection()
+	require.NoError(t, err)
+	defer pm.RemovePeer(peer.ID)
+
+	handler := &ControlHandler{Peer: peer, ServerVersion: "v3-test"}
+	called := false
+	handler.OnAudioControlReport = func(*PeerConn, *crosstalkv2.AudioControlReport) {
+		called = true
+	}
+
+	// Oversized frame must be rejected before unmarshal / callback.
+	oversized := make([]byte, MaxControlMessageBytes+1)
+	handler.dispatch(oversized)
+	assert.False(t, called, "oversized control frame must not invoke OnAudioControlReport")
+}
+
+func TestControlHandler_AudioControlReportMalformedNoCallback(t *testing.T) {
+	pm := NewPeerManagerWithAPI(testAPI())
+	peer, err := pm.CreatePeerConnection()
+	require.NoError(t, err)
+	defer pm.RemovePeer(peer.ID)
+
+	handler := &ControlHandler{Peer: peer, ServerVersion: "v3-test"}
+	called := false
+	handler.OnAudioControlReport = func(*PeerConn, *crosstalkv2.AudioControlReport) {
+		called = true
+	}
+	handler.dispatch([]byte{0xff, 0x00, 0x01, 0x02})
+	assert.False(t, called)
+}
+
 func TestDebugHandler_PeerDetail(t *testing.T) {
 	pm := NewPeerManagerWithAPI(testAPI())
 

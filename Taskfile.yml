@@ -173,3 +173,20 @@ tasks:
     dir: client
     cmds:
       - go build ./...
+
+  generate:proto:v2:
+    desc: Regenerate server/proto/v2/control.pb.go from proto/crosstalk/v2/control.proto
+    cmds:
+      - |
+        set -euo pipefail
+        # Pinned generator matching committed header (protoc-gen-go v1.36.11).
+        go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
+        OUT=$(mktemp -d)
+        PATH="$(go env GOPATH)/bin:$PATH" protoc \
+          --go_out="$OUT" \
+          --go_opt=module=github.com/aleksclark/crosstalk/proto/gen/go \
+          -I. \
+          proto/crosstalk/v2/control.proto
+        cp "$OUT/crosstalk/v2/control.pb.go" server/proto/v2/control.pb.go
+        rm -rf "$OUT"
+        echo "wrote server/proto/v2/control.pb.go"

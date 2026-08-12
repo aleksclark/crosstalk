@@ -1,12 +1,16 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
 	crosstalk "github.com/aleksclark/crosstalk/cli"
+	"github.com/aleksclark/crosstalk/cli/audioctl"
+	"github.com/aleksclark/crosstalk/cli/protov2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -149,9 +153,162 @@ func TestNewABCClient(t *testing.T) {
 	assert.Equal(t, cfg, client.cfg)
 }
 
+func TestWriteManagedMarker(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, writeManagedMarker(dir))
+	path := ManagedMarkerPath(dir)
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "managed_at=")
+}
+
+func TestProtoCommandToAudioctl(t *testing.T) {
+	vol := uint32(0)
+	muted := false
+	gain := uint32(100)
+	cmd := &protov2.AudioControlCommand{
+		CommandID:       "abc-audio/x/1",
+		DesiredRevision: 1,
+		Output: &protov2.AudioOutputDesired{
+			DeviceUID:     "usb:0d8c:0014:serial:S1",
+			VolumePercent: &vol,
+			Muted:         &muted,
+		},
+		Input: &protov2.AudioInputDesired{
+			DeviceUID:   "usb:0d8c:0014:serial:S1",
+			GainPercent: &gain,
+		},
+	}
+	acmd, err := protoCommandToAudioctl(cmd)
+	require.NoError(t, err)
+	require.NotNil(t, acmd.Output.VolumePercent)
+	assert.Equal(t, 0, *acmd.Output.VolumePercent)
+	require.NotNil(t, acmd.Output.Muted)
+	assert.False(t, *acmd.Output.Muted)
+	require.NotNil(t, acmd.Input.GainPercent)
+	assert.Equal(t, 100, *acmd.Input.GainPercent)
+}
+
+func TestHandleAudioCommand_InvalidNoApply(t *testing.T) {
+	ctrl := &mockAudioController{}
+	client := NewABCClient(&ABCConfig{ServerURL: "ws://x", Token: "t"}, &mockPWService{})
+	stateDir := t.TempDir()
+	client.SetAudioController(ctrl, stateDir)
+
+	var sent [][]byte
+	var mu sync.Mutex
+	send := func(b []byte) error {
+		mu.Lock()
+		defer mu.Unlock()
+		sent = append(sent, append([]byte(nil), b...))
+		return nil
+	}
+
+	// Empty command → invalid, controller Apply must not be called.
+	client.handleAudioCommand(context.Background(), &protov2.AudioControlCommand{
+		CommandID:       "c",
+		DesiredRevision: 1,
+	}, send)
+	assert.Equal(t, 0, ctrl.applyCalls)
+	mu.Lock()
+	require.NotEmpty(t, sent)
+	mu.Unlock()
+	// Marker should not be written for invalid
+	_, err := os.Stat(ManagedMarkerPath(stateDir))
+	assert.True(t, os.IsNotExist(err))
+}
+
+func TestHandleAudioCommand_ApplyWritesMarker(t *testing.T) {
+	ctrl := &mockAudioController{
+		applyRep: &audioctl.Report{
+			CommandID:       "c",
+			DesiredRevision: 2,
+			Output:          &audioctl.OutputObserved{VolumeState: audioctl.StateApplied},
+			Input:           &audioctl.InputObserved{GainState: audioctl.StateApplied},
+		},
+	}
+	client := NewABCClient(&ABCConfig{ServerURL: "ws://x", Token: "t"}, &mockPWService{})
+	stateDir := t.TempDir()
+	client.SetAudioController(ctrl, stateDir)
+
+	var sent int
+	send := func([]byte) error { sent++; return nil }
+	vol := uint32(25)
+	client.handleAudioCommand(context.Background(), &protov2.AudioControlCommand{
+		CommandID:       "c",
+		DesiredRevision: 2,
+		Output: &protov2.AudioOutputDesired{
+			DeviceUID:     "usb:0d8c:0014:serial:S1",
+			VolumePercent: &vol,
+		},
+	}, send)
+	assert.Equal(t, 1, ctrl.applyCalls)
+	assert.Equal(t, 1, sent)
+	_, err := os.Stat(ManagedMarkerPath(stateDir))
+	require.NoError(t, err)
+}
+
+func TestAudioCommandLoopStopsOnCancel(t *testing.T) {
+	client := NewABCClient(&ABCConfig{ServerURL: "ws://x", Token: "t"}, &mockPWService{})
+	client.SetAudioController(&mockAudioController{}, t.TempDir())
+	ctx, cancel := context.WithCancel(context.Background())
+	ch := make(chan *protov2.AudioControlCommand)
+	done := make(chan struct{})
+	go func() {
+		client.audioCommandLoop(ctx, ch, func([]byte) error { return nil })
+		close(done)
+	}()
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("command loop did not stop")
+	}
+}
+
+func TestAudioHeartbeatLoopStopsOnCancel(t *testing.T) {
+	client := NewABCClient(&ABCConfig{ServerURL: "ws://x", Token: "t"}, &mockPWService{})
+	client.SetAudioController(&mockAudioController{}, t.TempDir())
+	client.heartbeatEvery = 50 * time.Millisecond
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		client.audioHeartbeatLoop(ctx, func([]byte) error { return nil })
+		close(done)
+	}()
+	time.Sleep(20 * time.Millisecond)
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("heartbeat loop did not stop")
+	}
+}
+
 // mockPWService implements crosstalk.PipeWireService for testing.
 type mockPWService struct{}
 
 func (m *mockPWService) Discover() ([]crosstalk.Source, []crosstalk.Sink, error) {
 	return nil, nil, nil
+}
+
+type mockAudioController struct {
+	applyCalls int
+	applyRep   *audioctl.Report
+}
+
+func (m *mockAudioController) Inventory(ctx context.Context) (*audioctl.Report, error) {
+	return &audioctl.Report{}, nil
+}
+
+func (m *mockAudioController) Apply(ctx context.Context, cmd audioctl.Command) (*audioctl.Report, error) {
+	m.applyCalls++
+	if m.applyRep != nil {
+		return m.applyRep, nil
+	}
+	return &audioctl.Report{CommandID: cmd.CommandID, DesiredRevision: cmd.DesiredRevision}, nil
+}
+
+func (m *mockAudioController) Readback(ctx context.Context) (*audioctl.Report, error) {
+	return &audioctl.Report{}, nil
 }

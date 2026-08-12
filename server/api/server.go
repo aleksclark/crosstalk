@@ -29,6 +29,11 @@ type Services struct {
 	Sources        crosstalk.SourceService
 	Mix            crosstalk.MixService
 	ABCs           crosstalk.ABCService
+	// ABCAudio manages durable desired/observed ABC USB audio control state.
+	// Optional for unit tests that do not exercise audio endpoints; production
+	// and audio API tests must inject postgres.NewABCAudioStore(db).
+	// Lane D consumes the same service for control-channel reconcile.
+	ABCAudio       crosstalk.ABCAudioService
 	Users          crosstalk.UserService
 	RefreshTokens  crosstalk.RefreshTokenService
 	Recordings     crosstalk.RecordingService
@@ -75,11 +80,14 @@ type Server struct {
 	auth     *auth.Service
 	log      *slog.Logger
 
-	// abcPeers maps an ABC ID to its live signaling peer ID so a change to the
+	// abcPeers maps an ABC ID to its live signaling peer so a change to the
 	// ABC's session/monitor assignment can force the (auto-reconnecting) board
-	// to re-establish its connection and pick up the new routing.
+	// to re-establish its connection and pick up the new routing. Generation
+	// is monotonically increasing so stale close callbacks cannot remove a
+	// newer connection (see registerABCPeer / deregisterABCPeer).
 	abcPeersMu sync.Mutex
-	abcPeers   map[string]string
+	abcPeers   map[string]abcPeerEntry
+	abcPeerGen uint64
 }
 
 // NewServer creates a new API server with all routes registered.
@@ -110,7 +118,7 @@ func NewServer(cfg Config, svc Services, log *slog.Logger) *Server {
 		services: svc,
 		auth:     svc.Auth,
 		log:      log,
-		abcPeers: make(map[string]string),
+		abcPeers: make(map[string]abcPeerEntry),
 	}
 
 	s.registerRoutes()
@@ -342,6 +350,33 @@ func (s *Server) registerRoutes() {
 		Tags:        []string{"ABCs"},
 		Security:    []map[string][]string{{"bearerAuth": {}}},
 	}, s.handleRestartABC)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID:   "get-abc-audio-settings",
+		Method:        http.MethodGet,
+		Path:          "/api/abcs/{id}/audio-settings",
+		Summary:       "Get durable ABC USB audio desired/reported settings",
+		Description:   "Admin-only. Returns durable desired state, latest reported/capability snapshot, and derived overall state. Does not wait for board acknowledgement.",
+		Tags:          []string{"ABCs", "Audio"},
+		Security:      []map[string][]string{{"bearerAuth": {}}},
+		DefaultStatus: http.StatusOK,
+	}, s.handleGetABCAudioSettings)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "put-abc-audio-settings",
+		Method:      http.MethodPut,
+		Path:        "/api/abcs/{id}/audio-settings",
+		Summary:     "Set durable ABC USB audio desired settings",
+		Description: "Admin-only absolute desired-state replacement. Returns 202 when a new revision is queued, 200 for duplicate request_id or byte-equal no-op. Never blocks waiting for board acknowledgement. Audit actor is taken from the JWT only.",
+		Tags:        []string{"ABCs", "Audio"},
+		Security:    []map[string][]string{{"bearerAuth": {}}},
+		// Default 202; handler sets Status 200 for duplicate/no-op.
+		DefaultStatus: http.StatusAccepted,
+		Responses: map[string]*huma.Response{
+			"200": {Description: "Duplicate request_id or no-op equal desired (no new revision)"},
+			"202": {Description: "New desired revision queued"},
+		},
+	}, s.handlePutABCAudioSettings)
 
 	// Translators
 	huma.Register(s.api, huma.Operation{

@@ -10,12 +10,13 @@ import {
 import type { components } from "@crosstalk/api-client";
 import { useAuth } from "../hooks/useAuth";
 import { getApiClient } from "../lib/api";
+import { ABCAudioControls } from "../components/ABCAudioControls";
 
 type ABC = components["schemas"]["ABCOut"];
 
 /**
- * Minimal visual parity migration for ABC detail.
- * Intentionally avoids K2B audio-control work and large restyle overlap.
+ * House-design ABC detail with master K2B ABC audio controls mounted.
+ * Preserves SPA chrome/tokens and abortable load; keeps audio control API surface.
  */
 export function ABCDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -35,17 +36,23 @@ export function ABCDetailPage() {
     const client = getApiClient(token);
     void (async () => {
       try {
-        const { data, error } = await client.GET("/api/abcs/{id}", {
+        const { data, error, response } = await client.GET("/api/abcs/{id}", {
           params: { path: { id } },
           signal: controller.signal,
         });
         if (controller.signal.aborted) return;
-        if (error || !data) {
-          setAbc(null);
-          setLoadError(error?.detail || "ABC not found");
+        if (data) {
+          setAbc(data);
           return;
         }
-        setAbc(data);
+        const status = response?.status;
+        const detail =
+          (error && typeof error === "object" && "detail" in error
+            ? String((error as { detail?: unknown }).detail ?? "")
+            : "") ||
+          (status ? `Failed to load ABC (${status})` : "Failed to load ABC");
+        setAbc(null);
+        setLoadError(detail || "ABC not found");
       } catch (err) {
         if (controller.signal.aborted) return;
         setLoadError(err instanceof Error ? err.message : "Failed to load ABC");
@@ -98,7 +105,11 @@ export function ABCDetailPage() {
         title="ABC unavailable"
         description={loadError ?? "ABC not found"}
         action={
-          <Link to="/abcs" className="text-sm text-primary hover:underline">
+          <Link
+            to="/abcs"
+            className="text-sm text-primary hover:underline"
+            data-testid="abc-detail-error"
+          >
             ← Back to ABCs
           </Link>
         }
@@ -178,6 +189,10 @@ export function ABCDetailPage() {
           </dd>
         </div>
       </dl>
+
+      {token && id ? (
+        <ABCAudioControls abcId={id} token={token} abcConnected={abc.connected} />
+      ) : null}
     </div>
   );
 }

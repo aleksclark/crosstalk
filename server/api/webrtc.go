@@ -11,6 +11,7 @@ import (
 
 	crosstalk "github.com/aleksclark/crosstalk/server"
 	"github.com/aleksclark/crosstalk/server/auth"
+	crosstalkv2 "github.com/aleksclark/crosstalk/server/proto/v2"
 	"github.com/aleksclark/crosstalk/server/sessionrtc"
 	"github.com/aleksclark/crosstalk/server/webrtc"
 )
@@ -49,37 +50,6 @@ func (s *Server) setABCConnected(ctx context.Context, abc *crosstalk.ABC, connec
 	if err := s.services.ABCs.Update(ctx, current); err != nil {
 		s.log.Warn("failed to update abc connection state", "abc", abc.ID, "connected", connected, "error", err)
 	}
-}
-
-// registerABCPeer records the live signaling peer for an ABC.
-func (s *Server) registerABCPeer(abcID, peerID string) {
-	s.abcPeersMu.Lock()
-	s.abcPeers[abcID] = peerID
-	s.abcPeersMu.Unlock()
-}
-
-// deregisterABCPeer clears the live peer mapping for an ABC, but only if it
-// still points at peerID (a newer connection may have already replaced it).
-func (s *Server) deregisterABCPeer(abcID, peerID string) {
-	s.abcPeersMu.Lock()
-	if s.abcPeers[abcID] == peerID {
-		delete(s.abcPeers, abcID)
-	}
-	s.abcPeersMu.Unlock()
-}
-
-// reconnectABC closes an ABC's live signaling peer, if any, so the
-// auto-reconnecting board re-establishes its connection and re-bridges with its
-// current session/monitor assignment. No-op when the ABC is not connected.
-func (s *Server) reconnectABC(abcID string) {
-	s.abcPeersMu.Lock()
-	peerID := s.abcPeers[abcID]
-	s.abcPeersMu.Unlock()
-	if peerID == "" || s.services.PeerManager == nil {
-		return
-	}
-	s.log.Info("reconnecting abc after assignment change", "abc", abcID, "peer", peerID)
-	s.services.PeerManager.RemovePeer(peerID)
 }
 
 // abcMonitorSelectors returns the Listen channel selectors for an ABC. When a
@@ -131,25 +101,46 @@ func (s *Server) mountWebRTC() {
 				// on this websocket path (not the HTTP Bearer path), so mark
 				// connected here and clear it when the peer closes. Track the
 				// live peer so an assignment/monitor change can force a
-				// reconnect (the board auto-reconnects and re-bridges).
+				// reconnect (the board auto-reconnects and re-bridges) and so
+				// audio control reconcile can push desired state.
+				var peerGen uint64
+				var abcID string
 				if abc != nil {
+					abcID = abc.ID
 					s.setABCConnected(req.Context(), abc, true)
-					s.registerABCPeer(abc.ID, peer.ID)
+					peerGen = s.registerABCPeer(abc.ID, peer)
 					peer.OnClose(func() {
 						s.setABCConnected(context.Background(), abc, false)
-						s.deregisterABCPeer(abc.ID, peer.ID)
+						s.deregisterABCPeer(abc.ID, peer.ID, peerGen)
 					})
 				}
 
 				// Install the control-protocol handler once the client opens
 				// its "control" data channel (the server adopts, not creates).
+				// Reports are bound to the authenticated ABC ID only.
 				peer.OnControlChannel(func(*pionwebrtc.DataChannel) {
 					ctrl := &webrtc.ControlHandler{
 						Peer:              peer,
 						ServerVersion:     "3.0.0",
 						AssignedSessionID: assigned,
 					}
+					if abcID != "" {
+						boundABC := abcID
+						ctrl.OnAudioControlReport = func(p *webrtc.PeerConn, report *crosstalkv2.AudioControlReport) {
+							s.handleABCAudioControlReport(boundABC, p, report)
+						}
+						ctrl.OnHello = func(*webrtc.PeerConn, *crosstalkv2.Hello) {
+							// Force re-push on Hello: last report may already be
+							// "applied" while hardware was reset across restart.
+							s.reconcileABCAudioForce(boundABC)
+						}
+					}
 					ctrl.Install()
+					// Also force-reconcile immediately after install (control open)
+					// for offline-PUT-then-connect and restart/reboot reapply.
+					if abcID != "" {
+						s.reconcileABCAudioForce(abcID)
+					}
 				})
 
 				// Bridge an assigned ABC from admitted channel IDs only.
