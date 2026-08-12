@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -27,6 +28,136 @@ type SignalMessage struct {
 
 // msgSeq is a global atomic sequence counter for correlation.
 var msgSeq atomic.Int64
+
+// signalOut serializes outbound signaling frames on one WebSocket.
+//
+// Pion may emit OnICECandidate from another goroutine as soon as
+// SetLocalDescription runs inside HandleOffer/Negotiate. Without coordination
+// those trickle candidates can be written before the matching SDP answer/offer
+// (and concurrent conn.Write is unsafe). Hold ICE until the local SDP is on
+// the wire, then flush in order under a single mutex.
+type signalOut struct {
+	mu         sync.Mutex
+	conn       *websocket.Conn
+	ctx        context.Context
+	peer       *PeerConn
+	hold       int // >0 while a local SDP is being prepared/written
+	pendingICE [][]byte
+}
+
+func newSignalOut(ctx context.Context, conn *websocket.Conn, peer *PeerConn) *signalOut {
+	return &signalOut{conn: conn, ctx: ctx, peer: peer}
+}
+
+// HoldICE starts buffering local ICE until the next successful WriteSDP.
+func (o *signalOut) HoldICE() {
+	o.mu.Lock()
+	o.hold++
+	o.mu.Unlock()
+}
+
+// AbortHold drops one hold level without writing SDP (e.g. HandleOffer failed).
+// Pending ICE is discarded when no holds remain — there is no local description
+// for clients to pair them with.
+func (o *signalOut) AbortHold() {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.hold > 0 {
+		o.hold--
+	}
+	if o.hold == 0 {
+		o.pendingICE = nil
+	}
+}
+
+// ReleaseLeftoverHold aborts a hold that was not consumed by WriteSDP.
+// Used after Negotiate when early-return paths skip OnNegotiationNeeded.
+func (o *signalOut) ReleaseLeftoverHold() {
+	o.mu.Lock()
+	leftover := o.hold > 0
+	o.mu.Unlock()
+	if leftover {
+		o.AbortHold()
+	}
+}
+
+// WriteSDP writes an offer/answer, ends one hold, and flushes buffered ICE.
+func (o *signalOut) WriteSDP(msgType, sdp string) error {
+	seq := msgSeq.Add(1)
+	msg := SignalMessage{Type: msgType, SDP: sdp, Seq: seq}
+	data, err := json.Marshal(msg)
+	if err != nil {
+		o.AbortHold()
+		return err
+	}
+
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	if err := o.conn.Write(o.ctx, websocket.MessageText, data); err != nil {
+		if o.hold > 0 {
+			o.hold--
+		}
+		if o.hold == 0 {
+			o.pendingICE = nil
+		}
+		return err
+	}
+
+	o.peer.events.Push(MakeEvent(o.peer.ID, EventSignalingMessage, map[string]any{
+		"direction": "outbound",
+		"type":      msgType,
+		"seq":       seq,
+	}))
+
+	if o.hold > 0 {
+		o.hold--
+	}
+	if o.hold == 0 && len(o.pendingICE) > 0 {
+		pending := o.pendingICE
+		o.pendingICE = nil
+		for _, frame := range pending {
+			if err := o.conn.Write(o.ctx, websocket.MessageText, frame); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// WriteICE writes a trickle candidate, or buffers it while a local SDP hold is active.
+func (o *signalOut) WriteICE(candidate webrtc.ICECandidateInit) {
+	seq := msgSeq.Add(1)
+	msg := SignalMessage{
+		Type:      "candidate",
+		Candidate: &candidate,
+		Seq:       seq,
+	}
+	data, err := json.Marshal(msg)
+	if err != nil {
+		slog.Error("webrtc: marshal ICE candidate", "peer", o.peer.ID, "err", err)
+		return
+	}
+
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	// Record the outbound signaling event when the frame is accepted for send
+	// (including while buffered) so seq/type remain observable to debug APIs.
+	o.peer.events.Push(MakeEvent(o.peer.ID, EventSignalingMessage, map[string]any{
+		"direction": "outbound",
+		"type":      "candidate",
+		"seq":       seq,
+	}))
+
+	if o.hold > 0 {
+		o.pendingICE = append(o.pendingICE, data)
+		return
+	}
+	if err := o.conn.Write(o.ctx, websocket.MessageText, data); err != nil {
+		slog.Debug("webrtc: send ICE candidate failed", "peer", o.peer.ID, "err", err)
+	}
+}
 
 // SignalingHandler upgrades HTTP to WebSocket and runs WebRTC signaling.
 // It creates an instrumented PeerConnection and logs every message.
@@ -113,67 +244,41 @@ func (h *SignalingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Register ICE candidate trickle callback.
+	// Outbound writer: serialize WS writes and keep ICE after local SDP.
 	ctx := r.Context()
+	out := newSignalOut(ctx, conn, peer)
+
+	// Register ICE candidate trickle callback.
 	peer.OnICECandidate(func(c *webrtc.ICECandidate) {
 		if c == nil {
 			return
 		}
-		candidate := c.ToJSON()
-		seq := msgSeq.Add(1)
 		// Emit "candidate" — the type the browser SPAs (and Go test client)
 		// expect for trickled ICE.
-		msg := SignalMessage{
-			Type:      "candidate",
-			Candidate: &candidate,
-			Seq:       seq,
-		}
-		data, err := json.Marshal(msg)
-		if err != nil {
-			slog.Error("webrtc: marshal ICE candidate", "peer", peer.ID, "err", err)
-			return
-		}
-		peer.events.Push(MakeEvent(peer.ID, EventSignalingMessage, map[string]any{
-			"direction": "outbound",
-			"type":      "candidate",
-			"seq":       seq,
-		}))
-		if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
-			slog.Debug("webrtc: send ICE candidate failed", "peer", peer.ID, "err", err)
-		}
+		out.WriteICE(c.ToJSON())
 	})
 
 	// Register renegotiation callback.
 	peer.OnNegotiationNeeded(func(offer webrtc.SessionDescription) {
-		seq := msgSeq.Add(1)
-		msg := SignalMessage{
-			Type: "offer",
-			SDP:  offer.SDP,
-			Seq:  seq,
-		}
-		data, err := json.Marshal(msg)
-		if err != nil {
-			slog.Error("webrtc: marshal renegotiation offer", "peer", peer.ID, "err", err)
-			return
-		}
-		peer.events.Push(MakeEvent(peer.ID, EventSignalingMessage, map[string]any{
-			"direction": "outbound",
-			"type":      "offer",
-			"seq":       seq,
-		}))
-		if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
+		if err := out.WriteSDP("offer", offer.SDP); err != nil {
 			slog.Debug("webrtc: send renegotiation offer failed", "peer", peer.ID, "err", err)
 		}
 	})
 
 	// For receive-only peers (e.g. broadcast listeners) the server drives
 	// negotiation: creating the offer now includes the tracks added in OnPeer.
+	// Hold ICE across SetLocalDescription inside Negotiate so candidates cannot
+	// precede the server offer on the wire.
 	if initiateOffer {
+		out.HoldICE()
 		peer.Negotiate()
+		// Negotiate invokes OnNegotiationNeeded → WriteSDP on success. If it
+		// returned without writing (not stable / create failed), drop the hold.
+		out.ReleaseLeftoverHold()
 	}
 
 	// Read loop: process signaling messages.
-	h.readLoop(ctx, conn, peer)
+	h.readLoop(ctx, out, peer)
 }
 
 // admissionLimits merges handler overrides with manager defaults.
@@ -201,8 +306,9 @@ func (h *SignalingHandler) admissionLimits() AdmissionLimits {
 }
 
 // readLoop reads signaling messages until the connection closes.
-func (h *SignalingHandler) readLoop(ctx context.Context, conn *websocket.Conn, peer *PeerConn) {
+func (h *SignalingHandler) readLoop(ctx context.Context, out *signalOut, peer *PeerConn) {
 	limits := h.admissionLimits()
+	conn := out.conn
 
 	for {
 		readCtx, cancel := context.WithTimeout(ctx, readTimeout)
@@ -255,7 +361,7 @@ func (h *SignalingHandler) readLoop(ctx context.Context, conn *websocket.Conn, p
 				slog.Warn("webrtc: offer SDP rejected", "peer", peer.ID, "err", err)
 				continue
 			}
-			h.handleOffer(ctx, conn, peer, msg)
+			h.handleOffer(out, peer, msg)
 		case "answer":
 			if err := CheckSDPSize(msg.SDP, limits.MaxSDPBytes); err != nil {
 				slog.Warn("webrtc: answer SDP rejected", "peer", peer.ID, "err", err)
@@ -271,37 +377,23 @@ func (h *SignalingHandler) readLoop(ctx context.Context, conn *websocket.Conn, p
 }
 
 // handleOffer processes an SDP offer and sends back an answer.
-func (h *SignalingHandler) handleOffer(ctx context.Context, conn *websocket.Conn, peer *PeerConn, msg SignalMessage) {
+// Local ICE is held until the answer is written so clients never observe a
+// trickle candidate before the SDP answer (CI flake class on MessageSequencing).
+func (h *SignalingHandler) handleOffer(out *signalOut, peer *PeerConn, msg SignalMessage) {
 	offer := webrtc.SessionDescription{
 		Type: webrtc.SDPTypeOffer,
 		SDP:  msg.SDP,
 	}
 
+	out.HoldICE()
 	answer, err := peer.HandleOffer(offer)
 	if err != nil {
+		out.AbortHold()
 		slog.Error("webrtc: handle offer failed", "peer", peer.ID, "err", err)
 		return
 	}
 
-	seq := msgSeq.Add(1)
-	resp := SignalMessage{
-		Type: "answer",
-		SDP:  answer.SDP,
-		Seq:  seq,
-	}
-	data, err := json.Marshal(resp)
-	if err != nil {
-		slog.Error("webrtc: marshal answer", "peer", peer.ID, "err", err)
-		return
-	}
-
-	peer.events.Push(MakeEvent(peer.ID, EventSignalingMessage, map[string]any{
-		"direction": "outbound",
-		"type":      "answer",
-		"seq":       seq,
-	}))
-
-	if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
+	if err := out.WriteSDP("answer", answer.SDP); err != nil {
 		slog.Error("webrtc: send answer failed", "peer", peer.ID, "err", err)
 	}
 }
