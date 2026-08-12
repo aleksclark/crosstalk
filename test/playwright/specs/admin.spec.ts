@@ -185,7 +185,8 @@ test.describe("Admin SPA", () => {
 
     await page.getByRole("navigation").getByRole("link", { name: "ABCs", exact: true }).click();
     await expect(page).toHaveURL(/\/admin\/abcs/);
-    await page.getByRole("button", { name: /new abc/i }).click();
+    // Header + empty-state both expose "+ New ABC"; prefer the page header action.
+    await page.locator("header").getByRole("button", { name: /new abc/i }).click();
     await page.getByPlaceholder(/booth a/i).fill(name);
     await page.getByRole("button", { name: /^create$/i }).click();
 
