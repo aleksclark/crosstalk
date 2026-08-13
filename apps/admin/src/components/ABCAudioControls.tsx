@@ -539,6 +539,9 @@ export function ABCAudioControls({
   const volSupported = supportsVolume(settings, ed.outputDeviceUid);
   const muteSupported = supportsMute(settings, ed.outputDeviceUid);
   const gainSupported = supportsGain(settings, ed.inputDeviceUid);
+  const awaitingCapabilities =
+    (settings?.reported.capabilities?.length ?? 0) === 0 &&
+    (settings?.desired.revision ?? 0) === 0;
   const hasUids = !!ed.outputDeviceUid && !!ed.inputDeviceUid;
   const canSave = hasUids && !saving && (volSupported || muteSupported || gainSupported);
 
@@ -589,6 +592,13 @@ export function ABCAudioControls({
           data-testid="abc-audio-status-message"
         >
           {conflict || saveError || statusNote || message}
+        </p>
+      )}
+
+      {awaitingCapabilities && (
+        <p className="text-sm text-muted-foreground" role="status">
+          Waiting for device capability report. Reconnect or update the K2B client if
+          this persists.
         </p>
       )}
 
@@ -687,7 +697,7 @@ export function ABCAudioControls({
               data-testid="abc-audio-output-volume-number"
             />
           </div>
-          {!volSupported && (
+          {!volSupported && !awaitingCapabilities && (
             <p className="text-xs text-muted-foreground">
               Output volume unsupported on this device
             </p>
@@ -720,7 +730,7 @@ export function ABCAudioControls({
                 : ""}
             </span>
           </div>
-          {!muteSupported && (
+          {!muteSupported && !awaitingCapabilities && (
             <p className="text-xs text-muted-foreground">
               Output mute unsupported on this device
             </p>
@@ -775,7 +785,7 @@ export function ABCAudioControls({
               data-testid="abc-audio-input-gain-number"
             />
           </div>
-          {!gainSupported && (
+          {!gainSupported && !awaitingCapabilities && (
             <p className="text-xs text-muted-foreground">
               Input gain unsupported on this device
             </p>

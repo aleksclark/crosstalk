@@ -589,6 +589,28 @@ test.describe("Admin SPA — ABC audio controls", () => {
     );
   });
 
+  test("missing capability inventory is not labeled unsupported", async ({ page }) => {
+    const abcId = "abc_audio_inventory_pending";
+    await adminLoginUI(page);
+
+    await page.route(`**/api/abcs/${abcId}/audio-settings`, async (route) => {
+      if (route.request().method() === "GET") {
+        await fulfillJson(route, 200, baseSettings(abcId));
+        return;
+      }
+      await route.continue();
+    });
+
+    await openAbcDetail(page, abcId, "Inventory Pending Booth");
+    await expect(page.getByTestId("abc-audio-output-volume")).toBeDisabled();
+    await expect(page.getByTestId("abc-audio-controls")).toContainText(
+      /waiting for device capability report/i,
+    );
+    await expect(page.getByTestId("abc-audio-controls")).not.toContainText(
+      /output volume unsupported on this device/i,
+    );
+  });
+
   test("stale and error states surface explicit messages", async ({ page }) => {
     const abcId = "abc_audio_stale_error";
     await adminLoginUI(page);
