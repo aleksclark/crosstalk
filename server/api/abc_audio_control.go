@@ -78,8 +78,29 @@ func (s *Server) reconnectABC(abcID string) {
 	if !ok || e.PeerID == "" || s.services.PeerManager == nil {
 		return
 	}
-	s.log.Info("reconnecting abc after assignment change", "abc", abcID, "peer", e.PeerID, "generation", e.Generation)
-	s.services.PeerManager.RemovePeer(e.PeerID)
+	peerID := e.PeerID
+	s.log.Info("reconnecting abc after assignment change", "abc", abcID, "peer", peerID, "generation", e.Generation)
+	// Async: PeerConn.Close can block on Pion teardown under load.
+	go s.services.PeerManager.RemovePeer(peerID)
+}
+
+// restartABC closes the current live peer so the board's reconnect loop creates
+// a fresh control/media connection. It reports false when no live peer exists.
+// Peer Close can block on Pion teardown, so removal runs asynchronously after
+// the live-peer check — the HTTP restart handler must not hang.
+func (s *Server) restartABC(abcID string) bool {
+	e, ok := s.lookupABCPeer(abcID)
+	if !ok || e.PeerID == "" || s.services.PeerManager == nil {
+		return false
+	}
+	if s.services.PeerManager.FindPeer(e.PeerID) == nil {
+		return false
+	}
+	peerID := e.PeerID
+	gen := e.Generation
+	s.log.Info("restarting abc connection", "abc", abcID, "peer", peerID, "generation", gen)
+	go s.services.PeerManager.RemovePeer(peerID)
+	return true
 }
 
 // handleABCAudioControlReport persists a board report bound to the authenticated

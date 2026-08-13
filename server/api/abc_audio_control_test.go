@@ -1,6 +1,7 @@
 package api
 
 import (
+	"time"
 	"io"
 	"log/slog"
 	"testing"
@@ -221,6 +222,27 @@ func TestABCPeerRegistry_GenerationRace(t *testing.T) {
 	s.deregisterABCPeer("abc-a", p2.ID, g2)
 	_, ok = s.lookupABCPeer("abc-a")
 	assert.False(t, ok)
+}
+
+func TestRestartABC_RemovesLivePeer(t *testing.T) {
+	pm := webrtc.NewPeerManagerWithAPI(webrtcTestAPI())
+	peer, err := pm.CreatePeerConnection()
+	require.NoError(t, err)
+
+	s := &Server{
+		services: Services{PeerManager: pm},
+		abcPeers: make(map[string]abcPeerEntry),
+		log:      testLogger(),
+	}
+	s.registerABCPeer("abc-a", peer)
+
+	require.True(t, s.restartABC("abc-a"))
+	// RemovePeer runs asynchronously so the HTTP handler cannot block on Pion Close.
+	require.Eventually(t, func() bool {
+		return pm.FindPeer(peer.ID) == nil
+	}, time.Second, 10*time.Millisecond)
+	// Registry still has the entry until OnClose deregisters; offline check uses FindPeer.
+	assert.False(t, s.restartABC("abc-a"), "peer already removed must not report a restart")
 }
 
 func testLogger() *slog.Logger {

@@ -658,8 +658,9 @@ func (s *Server) handleRestartABC(ctx context.Context, input *RestartABCRequest)
 		return nil, huma.Error404NotFound("ABC not found")
 	}
 
-	// TODO: Send restart command via control channel (WebRTC data channel)
-	s.log.Info("restart command sent", "abc_id", input.ID)
+	if !s.restartABC(input.ID) {
+		return nil, huma.Error409Conflict("ABC is not connected")
+	}
 
 	resp := &RestartABCResponse{}
 	resp.Body.OK = true
