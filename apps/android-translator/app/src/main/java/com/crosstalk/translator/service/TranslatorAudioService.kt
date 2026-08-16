@@ -13,7 +13,6 @@ import com.crosstalk.translator.CrossTalkApplication
 import com.crosstalk.translator.app.AppContainer
 import com.crosstalk.translator.audio.AudioFocusController
 import com.crosstalk.translator.audio.AudioRouteController
-import com.crosstalk.translator.auth.AuthRepository
 import com.crosstalk.translator.contract.ApiException
 import com.crosstalk.translator.contract.LastSession
 import com.crosstalk.translator.rtc.RtcConnectRequest
@@ -114,7 +113,6 @@ class TranslatorAudioService : Service() {
     private val _state = MutableStateFlow(ServiceState.Idle)
 
     private lateinit var container: AppContainer
-    private lateinit var authRepository: AuthRepository
     private lateinit var notification: ServiceNotification
     private lateinit var wakeLease: WakeLease
     private lateinit var networkMonitor: NetworkMonitor
@@ -124,7 +122,6 @@ class TranslatorAudioService : Service() {
     private lateinit var clock: Clock
     private lateinit var reconnectPolicy: ReconnectPolicy
     private lateinit var rtcFactory: () -> RtcEngine
-    private lateinit var wsBaseUrl: String
 
     private var rtcEngine: RtcEngine? = null
     private var rtcEventsJob: Job? = null
@@ -139,7 +136,6 @@ class TranslatorAudioService : Service() {
         super.onCreate()
         val app = application as CrossTalkApplication
         container = app.container
-        authRepository = container.authRepository
         clock = container.clock
         reconnectPolicy = ReconnectPolicy()
         notification = ServiceNotification(this)
@@ -147,7 +143,6 @@ class TranslatorAudioService : Service() {
         wakeLease = WakeLease(this, clock = clock)
         lastSessionStore = container.lastSessionStore
         rtcFactory = container.rtcEngineFactory
-        wsBaseUrl = container.wsBaseUrl()
         routeController = AudioRouteController(this)
         focusController =
             AudioFocusController(
@@ -410,6 +405,7 @@ class TranslatorAudioService : Service() {
         }
 
         dispatchFenced(ServiceEvent.Fenced.Minting, generation)
+        val authRepository = container.authRepository
         val ticket =
             try {
                 authRepository.requireAccessToken()
@@ -486,7 +482,7 @@ class TranslatorAudioService : Service() {
         try {
             engine.connect(
                 RtcConnectRequest(
-                    wsBaseUrl = wsBaseUrl,
+                    wsBaseUrl = container.wsBaseUrl(),
                     sessionId = sessionId,
                     mediaTicket = ticket.token,
                 ),

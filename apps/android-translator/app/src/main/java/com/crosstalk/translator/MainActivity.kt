@@ -116,8 +116,8 @@ private fun TranslatorNavHost(container: AppContainer) {
         composable(Routes.LOGIN) {
             val loginVm: LoginViewModel = viewModel(
                 factory = LoginViewModel.Factory(
-                    authRepository = container.authRepository,
-                    deploymentIdentity = container.deploymentIdentity,
+                    authRepositoryProvider = container::configureServer,
+                    initialServerUrl = container.apiBaseUrl,
                 ),
             )
             LoginRoute(

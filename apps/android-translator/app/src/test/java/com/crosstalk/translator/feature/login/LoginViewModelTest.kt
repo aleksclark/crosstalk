@@ -42,7 +42,7 @@ class LoginViewModelTest {
     @Test
     fun emptyCredentialsShowErrorWithoutCallingApi() = runTest(dispatcher) {
         val api = FakeApi()
-        val vm = LoginViewModel(repo(api), deploymentIdentity = "http://10.0.2.2:8080")
+        val vm = viewModel(api)
         vm.submit()
         advanceUntilIdle()
         assertEquals("Enter username and password", vm.uiState.value.errorMessage)
@@ -52,7 +52,7 @@ class LoginViewModelTest {
     @Test
     fun invalidCredentialsSurfaceErrorAndClearPassword() = runTest(dispatcher) {
         val api = FakeApi(loginError = ApiException.Unauthorized())
-        val vm = LoginViewModel(repo(api), deploymentIdentity = "https://crosstalk.local")
+        val vm = viewModel(api)
         vm.onUsernameChange("translator")
         vm.onPasswordChange("wrong")
         vm.submit()
@@ -66,7 +66,7 @@ class LoginViewModelTest {
     @Test
     fun successfulLoginClearsPasswordAndSignalsSignedIn() = runTest(dispatcher) {
         val api = FakeApi()
-        val vm = LoginViewModel(repo(api), deploymentIdentity = "https://crosstalk.local")
+        val vm = viewModel(api)
         vm.onUsernameChange("translator")
         vm.onPasswordChange("good-password")
         vm.submit()
@@ -78,9 +78,53 @@ class LoginViewModelTest {
     }
 
     @Test
+    fun submitUsesServerUrlSelectedOnLoginScreen() = runTest(dispatcher) {
+        val api = FakeApi()
+        val repository = repo(api)
+        var configuredServer: String? = null
+        val vm = LoginViewModel(
+            initialServerUrl = "https://crosstalk-sfu.fly.dev",
+            authRepositoryProvider = { serverUrl ->
+                configuredServer = serverUrl
+                repository
+            },
+        )
+
+        vm.onServerUrlChange("https://translation.example")
+        vm.onUsernameChange("translator")
+        vm.onPasswordChange("good-password")
+        vm.submit()
+        advanceUntilIdle()
+
+        assertEquals("https://translation.example", configuredServer)
+        assertEquals("translator", vm.uiState.value.signedInUsername)
+    }
+
+    @Test
+    fun invalidServerUrlShowsFieldErrorWithoutCallingApi() = runTest(dispatcher) {
+        val api = FakeApi()
+        val vm = LoginViewModel(
+            initialServerUrl = "https://crosstalk-sfu.fly.dev",
+            authRepositoryProvider = {
+                throw IllegalArgumentException("Server URL must use HTTPS")
+            },
+        )
+        vm.onServerUrlChange("http://production.example")
+        vm.onUsernameChange("translator")
+        vm.onPasswordChange("good-password")
+
+        vm.submit()
+        advanceUntilIdle()
+
+        assertEquals("Server URL must use HTTPS", vm.uiState.value.serverErrorMessage)
+        assertEquals(0, api.loginCalls)
+        assertEquals("good-password", vm.uiState.value.password)
+    }
+
+    @Test
     fun networkErrorShowsUnavailableMessage() = runTest(dispatcher) {
         val api = FakeApi(loginError = ApiException.Network("boom"))
-        val vm = LoginViewModel(repo(api), deploymentIdentity = "https://crosstalk.local")
+        val vm = viewModel(api)
         vm.onUsernameChange("translator")
         vm.onPasswordChange("pw")
         vm.submit()
@@ -93,6 +137,12 @@ class LoginViewModelTest {
         val vault = createTestCredentialVault(cipher = FakeKeystoreCipher())
         return AuthRepository(api = api, vault = vault, accessTokenSink = {})
     }
+
+    private fun viewModel(api: CrossTalkApi): LoginViewModel =
+        LoginViewModel(
+            authRepositoryProvider = { repo(api) },
+            initialServerUrl = "https://crosstalk-sfu.fly.dev",
+        )
 
     private class FakeApi(
         private val loginError: Exception? = null,

@@ -73,7 +73,7 @@ class TranslatorAudioServiceTest {
                 engines += it
             }
         }
-        setField(container, "authRepository", auth)
+        container.installAuthRepositoryForTests(auth)
     }
 
     @After
@@ -317,40 +317,6 @@ class TranslatorAudioServiceTest {
         } catch (_: Exception) {
             shadow.lastForegroundNotification != null
         }
-
-    private fun setField(target: Any, name: String, value: Any) {
-        var cls: Class<*>? = target.javaClass
-        while (cls != null) {
-            try {
-                val f = cls.getDeclaredField(name)
-                f.isAccessible = true
-                // Clear final if needed
-                try {
-                    val modifiers = java.lang.reflect.Field::class.java.getDeclaredField("modifiers")
-                    modifiers.isAccessible = true
-                    modifiers.setInt(f, f.modifiers and java.lang.reflect.Modifier.FINAL.inv())
-                } catch (_: Exception) {
-                    // Java 12+ may block; try anyway.
-                }
-                f.set(target, value)
-                return
-            } catch (_: NoSuchFieldException) {
-                cls = cls.superclass
-            }
-        }
-        // authRepository is a lazy delegate property — set the backing field.
-        try {
-            val f = target.javaClass.getDeclaredField("${name}\$delegate")
-            f.isAccessible = true
-            f.set(
-                target,
-                lazyOf(value),
-            )
-            return
-        } catch (_: Exception) {
-        }
-        error("Field $name not found on ${target.javaClass}")
-    }
 
     private class FakeApi : CrossTalkApi {
         var mintCount: Int = 0

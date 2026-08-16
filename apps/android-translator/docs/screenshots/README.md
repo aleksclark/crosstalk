@@ -8,7 +8,7 @@ Compose screenshots are produced by
 
 | File | Surface | Theme | Viewport | Notes |
 |---|---|---|---|---|
-| `login-dark-phone.png` | Login (Configure) | dark | ~390dp | Welcome (Newsreader), deployment identity mono, fields, Sign in |
+| `login-dark-phone.png` | Login (Configure) | dark | ~390dp | Welcome (Newsreader), editable server URL, credentials, Sign in |
 | `assignments-dark-phone.png` | Session list | dark | ~390dp | Name primary, status secondary, ULID collapsed |
 | `live-connected-dark-phone.png` | Live session | dark | ~390dp | Connected sentence, meters, Stop dominant, Mute |
 | `live-reconnecting-dark-phone.png` | Live session | dark | ~390dp | Reconnect banner + polite status |

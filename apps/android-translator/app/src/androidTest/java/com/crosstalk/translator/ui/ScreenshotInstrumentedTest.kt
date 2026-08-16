@@ -78,10 +78,11 @@ class ScreenshotInstrumentedTest {
             LoginScreen(
                 state =
                     LoginUiState(
+                        serverUrl = "https://crosstalk-sfu.fly.dev",
                         username = "",
                         password = "",
-                        deploymentIdentity = "https://crosstalk.example",
                     ),
+                onServerUrlChange = {},
                 onUsernameChange = {},
                 onPasswordChange = {},
                 onSubmit = {},

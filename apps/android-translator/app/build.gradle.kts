@@ -24,7 +24,7 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        buildConfigField("String", "API_BASE_URL", "\"https://crosstalk.local\"")
+        buildConfigField("String", "API_BASE_URL", "\"https://crosstalk-sfu.fly.dev\"")
         buildConfigField("Boolean", "ALLOW_CLEARTEXT", "false")
     }
 
@@ -46,7 +46,6 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
-            buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8080\"")
             buildConfigField("Boolean", "ALLOW_CLEARTEXT", "true")
         }
         release {

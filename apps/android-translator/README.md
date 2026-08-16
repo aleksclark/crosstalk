@@ -75,9 +75,11 @@ task api:validate:android
 
 ## Build config
 
-- Debug default base URL: `http://10.0.2.2:8080` (emulator loopback to host)
-- Release default base URL: `https://crosstalk.local` (override via Gradle property)
-- Release cleartext traffic is disabled; debug may allow localhost via network security config override.
+- Debug and release default base URL: `https://crosstalk-sfu.fly.dev`
+- The login screen allows the operator to select another server URL; the
+  normalized URL is persisted for session restore and future launches.
+- A bare host is normalized to HTTPS. Release builds reject cleartext URLs;
+  debug builds may use an explicit `http://` URL for local testing.
 
 ## Pin notes
 

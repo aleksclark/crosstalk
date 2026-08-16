@@ -47,6 +47,7 @@ fun LoginRoute(
 
     LoginScreen(
         state = state,
+        onServerUrlChange = viewModel::onServerUrlChange,
         onUsernameChange = viewModel::onUsernameChange,
         onPasswordChange = viewModel::onPasswordChange,
         onSubmit = viewModel::submit,
@@ -57,6 +58,7 @@ fun LoginRoute(
 @Composable
 fun LoginScreen(
     state: LoginUiState,
+    onServerUrlChange: (String) -> Unit,
     onUsernameChange: (String) -> Unit,
     onPasswordChange: (String) -> Unit,
     onSubmit: () -> Unit,
@@ -94,24 +96,24 @@ fun LoginScreen(
             style = type.pageTitle,
             color = colors.textPrimary,
         )
-        if (state.deploymentIdentity.isNotBlank()) {
-            Spacer(modifier = Modifier.height(spacing.space2))
-            Text(
-                text = state.deploymentIdentity,
-                style = type.metadata,
-                color = colors.textTertiary,
-                modifier = Modifier
-                    .testTag("deployment_identity")
-                    .semantics {
-                        contentDescription = "Deployment ${state.deploymentIdentity}"
-                    },
-            )
-        }
-
         Spacer(modifier = Modifier.height(spacing.space6))
         CtRule()
         Spacer(modifier = Modifier.height(spacing.space6))
 
+        CtField(
+            label = "Server URL",
+            value = state.serverUrl,
+            onValueChange = onServerUrlChange,
+            help = "Use the HTTPS address for your CrossTalk server",
+            error = state.serverErrorMessage,
+            enabled = !state.isLoading,
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Uri,
+                imeAction = ImeAction.Next,
+            ),
+            testTag = "login_server_url",
+        )
+        Spacer(modifier = Modifier.height(spacing.space4))
         CtField(
             label = "Username",
             value = state.username,
