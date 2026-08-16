@@ -8,7 +8,14 @@
   * {
     @apply border-border;
   }
+  html,
+  body,
+  #root {
+    height: 100%;
+    overflow: hidden;
+  }
   body {
+    min-height: 0;
     @apply bg-background text-foreground;
   }
 }

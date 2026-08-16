@@ -128,7 +128,7 @@ export function Layout() {
   );
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background text-foreground">
+    <div className="flex h-full min-h-0 overflow-hidden bg-background text-foreground">
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60] focus:rounded-[var(--house-radius-md)] focus:bg-[var(--house-accent)] focus:px-3 focus:py-2 focus:text-[var(--house-accent-ink)] focus:outline-none"
@@ -172,7 +172,7 @@ export function Layout() {
         </div>
       ) : null}
 
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <header className="flex items-center justify-between border-b border-border px-4 py-3 md:hidden">
           <button
             ref={menuButtonRef}
@@ -195,7 +195,7 @@ export function Layout() {
         <main
           id="main-content"
           tabIndex={-1}
-          className="flex-1 overflow-y-auto p-4 md:p-6"
+          className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-6"
         >
           <Outlet />
         </main>

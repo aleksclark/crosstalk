@@ -158,6 +158,59 @@ test.describe("Admin SPA", () => {
     await expect(page.getByText(/database healthy/i)).toHaveCount(0);
   });
 
+  test("sub-1980 desktop layout has a single viewport scrollbar", async ({
+    page,
+    request,
+  }) => {
+    await page.setViewportSize({ width: 1920, height: 720 });
+    const token = await adminLoginUI(page);
+    const name = `Scrollbar Session ${Date.now()}`;
+    const session = await apiFetch(request, token, "post", "/api/sessions", {
+      name,
+    });
+
+    await page.goto(`/admin/sessions/${String(session.id)}`);
+    await expect(page.getByRole("heading", { name })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    const scrollState = await page.evaluate(() => {
+      const main = document.getElementById("main-content");
+      if (!main) throw new Error("admin main content not found");
+      const htmlStyle = getComputedStyle(document.documentElement);
+      const bodyStyle = getComputedStyle(document.body);
+      const root = document.getElementById("root");
+      if (!root) throw new Error("admin root not found");
+      const rootStyle = getComputedStyle(root);
+      const mainStyle = getComputedStyle(main);
+      return {
+        htmlOverflowY: htmlStyle.overflowY,
+        bodyOverflowY: bodyStyle.overflowY,
+        rootOverflowY: rootStyle.overflowY,
+        mainOverflowX: mainStyle.overflowX,
+        mainOverflowY: mainStyle.overflowY,
+        mainClientHeight: main.clientHeight,
+        mainScrollHeight: main.scrollHeight,
+        documentClientHeight: document.documentElement.clientHeight,
+        documentScrollHeight: document.documentElement.scrollHeight,
+      };
+    });
+
+    expect(scrollState).toMatchObject({
+      htmlOverflowY: "hidden",
+      bodyOverflowY: "hidden",
+      rootOverflowY: "hidden",
+      mainOverflowX: "hidden",
+      mainOverflowY: "auto",
+    });
+    expect(scrollState.mainScrollHeight).toBeGreaterThan(
+      scrollState.mainClientHeight,
+    );
+    expect(scrollState.documentScrollHeight).toBe(
+      scrollState.documentClientHeight,
+    );
+  });
+
   test("create a session via the UI", async ({ page, request }) => {
     const token = await adminLoginUI(page);
     const name = `UI Session ${Date.now()}`;
