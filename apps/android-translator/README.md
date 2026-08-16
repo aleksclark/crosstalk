@@ -81,6 +81,18 @@ task api:validate:android
 - A bare host is normalized to HTTPS. Release builds reject cleartext URLs;
   debug builds may use an explicit `http://` URL for local testing.
 
+## Live-session tools
+
+- **Show QR code** loads the session-scoped broadcast token and renders the
+  public listener URL locally. Tokens are never written to logs or displayed as
+  plaintext.
+- **Route** expands the same core session-channel controls used by the web
+  translator: list sources per channel, assign/remove sources, mute/unmute, and
+  adjust mix level from 0–200%. Writes are serialized per channel and keep the
+  last server-confirmed state when a save fails.
+- QR encoding uses `com.google.zxing:core` only; it avoids sending the
+  session-scoped broadcast URL to a third-party QR service.
+
 ## Pin notes
 
 - Plan listed AndroidX test runner/core as `1.6.2`. Maven metadata shows

@@ -26,6 +26,26 @@ data class ChannelInfo(
     val sessionId: String,
 )
 
+data class BroadcastLink(
+    val token: String,
+    val url: String,
+)
+
+data class SourceInfo(
+    val id: String,
+    val name: String,
+    val origin: String,
+    val connected: Boolean,
+)
+
+data class MixEntry(
+    val id: String,
+    val channelId: String,
+    val sourceId: String,
+    val muted: Boolean,
+    val level: Double,
+)
+
 data class MediaTicket(
     val token: String,
     val sessionId: String,

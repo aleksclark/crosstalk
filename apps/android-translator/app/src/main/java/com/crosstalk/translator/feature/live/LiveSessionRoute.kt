@@ -45,6 +45,7 @@ import com.crosstalk.translator.ui.components.CtButtonVariant
 import com.crosstalk.translator.ui.components.CtMetadata
 import com.crosstalk.translator.ui.components.CtMetadataBlock
 import com.crosstalk.translator.ui.components.CtMeter
+import com.crosstalk.translator.ui.components.CtQrCode
 import com.crosstalk.translator.ui.components.CtRule
 import com.crosstalk.translator.ui.components.CtStatus
 import com.crosstalk.translator.ui.components.CtStatusTone
@@ -157,6 +158,14 @@ fun LiveSessionRoute(
             viewModel.setMuted(!state.service.micMuted)
         },
         onToggleDiagnostics = viewModel::toggleDiagnostics,
+        onToggleQr = viewModel::toggleQr,
+        onRetryQr = viewModel::retryBroadcastLink,
+        onToggleRouteControls = viewModel::toggleRouteControls,
+        onRetryRouteControls = viewModel::retryRouteControls,
+        onAssignSource = viewModel::assignSource,
+        onRemoveSource = viewModel::removeSource,
+        onMuteSource = viewModel::setMixMuted,
+        onSetSourceLevel = viewModel::setMixLevel,
         onRequestMicRationaleAck = {
             viewModel.onMicPermission(MicPermissionUi.Rationale)
             micLauncher.launch(Manifest.permission.RECORD_AUDIO)
@@ -181,6 +190,14 @@ fun LiveSessionScreen(
     onStop: () -> Unit,
     onToggleMute: () -> Unit,
     onToggleDiagnostics: () -> Unit,
+    onToggleQr: () -> Unit = {},
+    onRetryQr: () -> Unit = {},
+    onToggleRouteControls: () -> Unit = {},
+    onRetryRouteControls: () -> Unit = {},
+    onAssignSource: (String, String) -> Unit = { _, _ -> },
+    onRemoveSource: (String, String) -> Unit = { _, _ -> },
+    onMuteSource: (String, String, Boolean) -> Unit = { _, _, _ -> },
+    onSetSourceLevel: (String, String, Double) -> Unit = { _, _, _ -> },
     onRequestMicRationaleAck: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -390,16 +407,76 @@ fun LiveSessionScreen(
                 testTag = "live_mute",
             )
             CtButton(
-                text = "Route",
-                onClick = {
-                    // System audio route sheet is OS-owned; label retained for discoverability.
-                    // Actual route changes are reflected via service state / system UI.
-                },
+                text = if (state.routeControlsVisible) "Hide route" else "Route",
+                onClick = onToggleRouteControls,
                 variant = CtButtonVariant.Secondary,
-                enabled = live,
+                enabled = !state.channelsLoading,
                 modifier = Modifier.weight(1f),
                 testTag = "live_route",
             )
+        }
+
+        if (state.routeControlsVisible) {
+            Spacer(modifier = Modifier.height(spacing.space4))
+            SessionRouteControls(
+                channels = state.routeChannels,
+                sources = state.routeSources,
+                mixByChannel = state.mixByChannel,
+                savingChannelIds = state.savingMixChannelIds,
+                loading = state.routeControlsLoading,
+                error = state.routeControlsError,
+                onRetry = onRetryRouteControls,
+                onAssign = onAssignSource,
+                onRemove = onRemoveSource,
+                onMute = onMuteSource,
+                onLevel = onSetSourceLevel,
+            )
+        }
+
+        Spacer(modifier = Modifier.height(spacing.space3))
+        CtButton(
+            text = when {
+                state.qrVisible -> "Hide QR code"
+                state.broadcastLinkError != null -> "Retry QR code"
+                else -> "Show QR code"
+            },
+            onClick = if (state.broadcastListenerUrl != null) onToggleQr else onRetryQr,
+            variant = CtButtonVariant.Ghost,
+            fillMaxWidth = true,
+            loading = state.broadcastLinkLoading,
+            enabled = !state.broadcastLinkLoading &&
+                (state.broadcastListenerUrl != null || state.broadcastLinkError != null),
+            testTag = "live_qr_toggle",
+        )
+        state.broadcastLinkError?.let { message ->
+            Spacer(modifier = Modifier.height(spacing.space2))
+            Text(
+                text = message,
+                style = type.bodyCompact,
+                color = colors.statusWarning,
+                modifier = Modifier.testTag("live_qr_error"),
+            )
+        }
+        if (state.qrVisible && state.broadcastListenerUrl != null) {
+            Spacer(modifier = Modifier.height(spacing.space3))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("live_qr_panel"),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                CtQrCode(
+                    value = state.broadcastListenerUrl,
+                    contentDescription = "Broadcast listener QR code for ${state.sessionName}",
+                    testTag = "live_broadcast_qr",
+                )
+                Spacer(modifier = Modifier.height(spacing.space2))
+                Text(
+                    text = "Share this code only with listeners for this session.",
+                    style = type.metadata,
+                    color = colors.textTertiary,
+                )
+            }
         }
 
         if (phase == ServicePhase.ReconnectScheduled || phase == ServicePhase.WaitingForNetwork) {

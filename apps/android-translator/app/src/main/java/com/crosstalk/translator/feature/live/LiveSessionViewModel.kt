@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.crosstalk.translator.contract.ApiException
 import com.crosstalk.translator.contract.ChannelInfo
 import com.crosstalk.translator.contract.CrossTalkApi
+import com.crosstalk.translator.contract.MixEntry
+import com.crosstalk.translator.contract.SourceInfo
 import com.crosstalk.translator.service.AudioServiceGateway
 import com.crosstalk.translator.service.ServicePhase
 import com.crosstalk.translator.service.ServiceState
@@ -45,6 +47,18 @@ data class LiveSessionUiState(
     val notificationPermission: NotificationPermissionUi = NotificationPermissionUi.NotRequested,
     val activityResumed: Boolean = false,
     val diagnosticsExpanded: Boolean = false,
+    val broadcastListenerUrl: String? = null,
+    val broadcastLinkLoading: Boolean = false,
+    val broadcastLinkError: String? = null,
+    val qrVisible: Boolean = false,
+    val routeControlsVisible: Boolean = false,
+    val routeControlsLoading: Boolean = false,
+    val routeControlsLoaded: Boolean = false,
+    val routeControlsError: String? = null,
+    val routeChannels: List<ChannelInfo> = emptyList(),
+    val routeSources: List<SourceInfo> = emptyList(),
+    val mixByChannel: Map<String, List<MixEntry>> = emptyMap(),
+    val savingMixChannelIds: Set<String> = emptySet(),
     /** True when process-restored requires explicit Rejoin. */
     val requiresRejoin: Boolean = false,
 )
@@ -54,6 +68,7 @@ class LiveSessionViewModel(
     private val sessionName: String,
     private val api: CrossTalkApi,
     private val gateway: AudioServiceGateway,
+    private val apiBaseUrl: String = "",
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(
         LiveSessionUiState(
@@ -62,6 +77,9 @@ class LiveSessionViewModel(
         ).withDerived(),
     )
     val uiState: StateFlow<LiveSessionUiState> = _uiState.asStateFlow()
+    private val confirmedMixByChannel = mutableMapOf<String, List<MixEntry>>()
+    private val pendingMixByChannel = mutableMapOf<String, List<MixEntry>>()
+    private val writingMixChannelIds = mutableSetOf<String>()
 
     init {
         gateway.bind()
@@ -71,6 +89,7 @@ class LiveSessionViewModel(
             }
         }
         loadChannels()
+        loadBroadcastLink()
     }
 
     override fun onCleared() {
@@ -91,6 +110,7 @@ class LiveSessionViewModel(
                         broadcastName = resolved.broadcastName,
                         feedIds = resolved.feedIds,
                         broadcastIds = resolved.broadcastIds,
+                        routeChannels = channels,
                         channelsError = resolved.degradedMessage,
                     ).withDerived()
                 }
@@ -134,6 +154,228 @@ class LiveSessionViewModel(
 
     fun toggleDiagnostics() {
         _uiState.update { it.copy(diagnosticsExpanded = !it.diagnosticsExpanded) }
+    }
+
+    fun toggleQr() {
+        _uiState.update { state ->
+            if (state.broadcastListenerUrl == null) state else state.copy(qrVisible = !state.qrVisible)
+        }
+    }
+
+    fun retryBroadcastLink() {
+        if (_uiState.value.broadcastLinkLoading) return
+        loadBroadcastLink()
+    }
+
+    fun toggleRouteControls() {
+        val nextVisible = !_uiState.value.routeControlsVisible
+        _uiState.update { it.copy(routeControlsVisible = nextVisible) }
+        if (nextVisible && !_uiState.value.routeControlsLoaded && !_uiState.value.routeControlsLoading) {
+            loadRouteControls()
+        }
+    }
+
+    fun retryRouteControls() {
+        if (_uiState.value.routeControlsLoading) return
+        loadRouteControls()
+    }
+
+    private fun loadRouteControls() {
+        _uiState.update {
+            it.copy(
+                routeControlsLoading = true,
+                routeControlsError = null,
+            )
+        }
+        viewModelScope.launch {
+            try {
+                val channels = _uiState.value.routeChannels.ifEmpty { api.listChannels(sessionId) }
+                val sources = api.listSources(sessionId)
+                val mixes = buildMap {
+                    channels.forEach { channel ->
+                        put(channel.id, api.getMix(sessionId, channel.id))
+                    }
+                }
+                confirmedMixByChannel.clear()
+                confirmedMixByChannel.putAll(mixes)
+                pendingMixByChannel.clear()
+                _uiState.update {
+                    it.copy(
+                        routeControlsLoading = false,
+                        routeControlsLoaded = true,
+                        routeControlsError = null,
+                        routeChannels = channels,
+                        routeSources = sources,
+                        mixByChannel = mixes,
+                    )
+                }
+            } catch (e: ApiException.Forbidden) {
+                _uiState.update {
+                    it.copy(
+                        routeControlsLoading = false,
+                        routeControlsError = "You do not have access to session channel controls.",
+                    )
+                }
+            } catch (e: ApiException.Unauthorized) {
+                _uiState.update {
+                    it.copy(
+                        routeControlsLoading = false,
+                        routeControlsError = "Session expired. Sign in again.",
+                    )
+                }
+            } catch (e: ApiException.Network) {
+                _uiState.update {
+                    it.copy(
+                        routeControlsLoading = false,
+                        routeControlsError = "Unable to load channel controls. Check network.",
+                    )
+                }
+            } catch (_: Exception) {
+                _uiState.update {
+                    it.copy(
+                        routeControlsLoading = false,
+                        routeControlsError = "Session channel controls are unavailable.",
+                    )
+                }
+            }
+        }
+    }
+
+    fun assignSource(channelId: String, sourceId: String) {
+        val current = _uiState.value.mixByChannel[channelId].orEmpty()
+        if (current.any { it.sourceId == sourceId }) return
+        persistMix(
+            channelId,
+            current + MixEntry(
+                id = "",
+                channelId = channelId,
+                sourceId = sourceId,
+                muted = false,
+                level = 1.0,
+            ),
+        )
+    }
+
+    fun removeSource(channelId: String, sourceId: String) {
+        val current = _uiState.value.mixByChannel[channelId].orEmpty()
+        persistMix(channelId, current.filterNot { it.sourceId == sourceId })
+    }
+
+    fun setMixMuted(channelId: String, sourceId: String, muted: Boolean) {
+        val current = _uiState.value.mixByChannel[channelId].orEmpty()
+        persistMix(
+            channelId,
+            current.map { entry ->
+                if (entry.sourceId == sourceId) entry.copy(muted = muted) else entry
+            },
+        )
+    }
+
+    fun setMixLevel(channelId: String, sourceId: String, level: Double) {
+        val current = _uiState.value.mixByChannel[channelId].orEmpty()
+        persistMix(
+            channelId,
+            current.map { entry ->
+                if (entry.sourceId == sourceId) {
+                    entry.copy(level = level.coerceIn(0.0, 2.0))
+                } else {
+                    entry
+                }
+            },
+        )
+    }
+
+    private fun persistMix(channelId: String, desired: List<MixEntry>) {
+        pendingMixByChannel[channelId] = desired
+        _uiState.update {
+            it.copy(
+                mixByChannel = it.mixByChannel + (channelId to desired),
+                savingMixChannelIds = it.savingMixChannelIds + channelId,
+                routeControlsError = null,
+            )
+        }
+        if (!writingMixChannelIds.add(channelId)) return
+
+        viewModelScope.launch {
+            try {
+                while (true) {
+                    val next = pendingMixByChannel.remove(channelId) ?: break
+                    try {
+                        val saved = api.updateMix(sessionId, channelId, next)
+                        confirmedMixByChannel[channelId] = saved
+                        if (channelId !in pendingMixByChannel) {
+                            _uiState.update {
+                                it.copy(mixByChannel = it.mixByChannel + (channelId to saved))
+                            }
+                        }
+                    } catch (_: Exception) {
+                        if (channelId !in pendingMixByChannel) {
+                            val confirmed = confirmedMixByChannel[channelId].orEmpty()
+                            _uiState.update {
+                                it.copy(
+                                    mixByChannel = it.mixByChannel + (channelId to confirmed),
+                                    routeControlsError = "Could not save channel mix. Try again.",
+                                )
+                            }
+                            break
+                        }
+                    }
+                }
+            } finally {
+                writingMixChannelIds.remove(channelId)
+                _uiState.update {
+                    it.copy(
+                        savingMixChannelIds = it.savingMixChannelIds - channelId,
+                    )
+                }
+            }
+        }
+    }
+
+    private fun loadBroadcastLink() {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    broadcastLinkLoading = true,
+                    broadcastLinkError = null,
+                    qrVisible = false,
+                )
+            }
+            try {
+                val link = api.getBroadcastLink(sessionId)
+                require(link.token.isNotBlank()) { "Broadcast token is unavailable" }
+                require(apiBaseUrl.isNotBlank()) { "Server URL is unavailable" }
+                val listenerUrl = buildBroadcastListenerUrl(apiBaseUrl, sessionId, link.token)
+                _uiState.update {
+                    it.copy(
+                        broadcastLinkLoading = false,
+                        broadcastListenerUrl = listenerUrl,
+                        broadcastLinkError = null,
+                    )
+                }
+            } catch (e: ApiException.Unauthorized) {
+                _uiState.update {
+                    it.copy(
+                        broadcastLinkLoading = false,
+                        broadcastLinkError = "Session expired. Sign in again.",
+                    )
+                }
+            } catch (e: ApiException.Network) {
+                _uiState.update {
+                    it.copy(
+                        broadcastLinkLoading = false,
+                        broadcastLinkError = "Unable to load broadcast link. Check network.",
+                    )
+                }
+            } catch (_: Exception) {
+                _uiState.update {
+                    it.copy(
+                        broadcastLinkLoading = false,
+                        broadcastLinkError = "Broadcast link unavailable.",
+                    )
+                }
+            }
+        }
     }
 
     /**
@@ -227,6 +469,17 @@ class LiveSessionViewModel(
     }
 
     companion object {
+        fun buildBroadcastListenerUrl(
+            apiBaseUrl: String,
+            sessionId: String,
+            token: String,
+        ): String {
+            val base = apiBaseUrl.trim().trimEnd('/')
+            val encodedSession = java.net.URLEncoder.encode(sessionId, Charsets.UTF_8.name())
+            val encodedToken = java.net.URLEncoder.encode(token, Charsets.UTF_8.name())
+            return "$base/broadcast/listen/$encodedSession?t=$encodedToken"
+        }
+
         fun buildStatusSentence(local: LiveSessionUiState, service: ServiceState): String {
             if (local.micPermission == MicPermissionUi.RevokedLive) {
                 return "Microphone permission was revoked. Grant access and rejoin."
@@ -265,11 +518,12 @@ class LiveSessionViewModel(
         private val sessionName: String,
         private val api: CrossTalkApi,
         private val gateway: AudioServiceGateway,
+        private val apiBaseUrl: String,
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             require(modelClass.isAssignableFrom(LiveSessionViewModel::class.java))
-            return LiveSessionViewModel(sessionId, sessionName, api, gateway) as T
+            return LiveSessionViewModel(sessionId, sessionName, api, gateway, apiBaseUrl) as T
         }
     }
 }
