@@ -169,6 +169,7 @@ private fun TranslatorNavHost(container: AppContainer) {
                     sessionName = sessionName,
                     api = container.api,
                     gateway = container.audioServiceGateway,
+                    apiBaseUrl = container.apiBaseUrl,
                 ),
             )
             // System Back backgrounds without Stop — only pop the nav stack.
