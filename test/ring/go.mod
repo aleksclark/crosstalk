@@ -1,6 +1,6 @@
 module github.com/aleksclark/crosstalk/test/ring
 
-go 1.25.5
+go 1.26.6
 
 require (
 	github.com/pion/ice/v4 v4.2.2
