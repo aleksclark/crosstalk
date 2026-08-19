@@ -1,0 +1,17 @@
+FROM golang:1.25-bookworm
+
+WORKDIR /app
+
+RUN mkdir -p /app/bin \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        curl \
+        ca-certificates \
+        pkg-config \
+        libopus-dev \
+        libopusfile-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# CGO required for github.com/hraban/opus (same as deploy/Dockerfile).
+# Rebuilds on start when ./server is bind-mounted. exec so the server is PID1.
+CMD ["sh", "-c", "cd /app/server && CGO_ENABLED=1 go build -o /app/bin/ct-server ./cmd/ct-server && exec /app/bin/ct-server"]

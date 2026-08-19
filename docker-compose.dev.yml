@@ -1,0 +1,88 @@
+# Stacklane-compatible local stack for CrossTalk.
+#
+# Used ONLY by scripts/compose-dev.sh / paseo.json lifecycle.
+# Existing docker-compose.yml, test/*.yml, and host-dev paths stay unchanged
+# (fixed 8080/5432/5000 binds remain for CI and `docker compose up`).
+#
+# Always invoke with:
+#   docker compose -p "crosstalk-${STACKLANE_INSTANCE}" -f docker-compose.dev.yml
+#
+# Contract:
+# - Publish ONLY 127.0.0.1::<containerPort> (ephemeral loopback).
+# - One Stacklane endpoint per container: api (server :8080), postgres (:5432).
+# - Admin / translator / broadcast SPAs are path prefixes on api
+#   (/admin /translator /broadcast), not separate containers.
+# - WebRTC/media UDP is out of scope and is not published here.
+# - Compose project name is set via `docker compose -p` (never hardcoded).
+# - Host Vite / `go run` / task test:* remain the non-Docker fallbacks.
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: crosstalk
+    volumes:
+      - crosstalk_pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1::5432"
+    labels:
+      stacklane.enable: "true"
+      stacklane.project: "crosstalk"
+      stacklane.instance: ${STACKLANE_INSTANCE:-dev}
+      stacklane.endpoint: "postgres"
+      stacklane.port: "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d crosstalk"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  server:
+    build:
+      context: .
+      dockerfile: dev/Dockerfile.stacklane
+    depends_on:
+      postgres:
+        condition: service_healthy
+    working_dir: /app
+    environment:
+      STACKLANE_INSTANCE: ${STACKLANE_INSTANCE:-dev}
+      CT_ADDR: ":8080"
+      CT_DATABASE_URL: "postgres://postgres:postgres@postgres:5432/crosstalk?sslmode=disable"
+      # Local-dev placeholders only (same names as existing compose). Not provider secrets.
+      CT_JWT_SECRET: "dev-secret-change-me"
+      CT_ADMIN_PASSWORD: "admin"
+      CT_ALLOW_INSECURE_DEFAULTS: "1"
+      CT_INSTANCE_ID: "ct-${STACKLANE_INSTANCE:-dev}"
+      GOPATH: /go
+      GOCACHE: /go-cache
+      GOMODCACHE: /go/pkg/mod
+    volumes:
+      - ./server:/app/server
+      - ./proto:/app/proto
+      - crosstalk_go_mod_cache:/go/pkg/mod
+      - crosstalk_go_build_cache:/go-cache
+    ports:
+      - "127.0.0.1::8080"
+    labels:
+      stacklane.enable: "true"
+      stacklane.project: "crosstalk"
+      stacklane.instance: ${STACKLANE_INSTANCE:-dev}
+      stacklane.endpoint: "api"
+      stacklane.port: "8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/openapi.json"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 90s
+    restart: unless-stopped
+
+volumes:
+  crosstalk_pgdata:
+  crosstalk_go_mod_cache:
+  crosstalk_go_build_cache:

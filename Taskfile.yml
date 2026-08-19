@@ -253,3 +253,40 @@ tasks:
     desc: Physical/emulator Android golden harness (see test/android/run-device-golden.sh)
     cmds:
       - bash test/android/run-device-golden.sh
+
+  # ── Stacklane compose (additive; does not change host-dev or CI ports) ──
+
+  dev:compose:check:
+    desc: Fail-closed Stacklane compose contract check (docker-compose.dev.yml)
+    cmds:
+      - bash scripts/compose-dev.sh check
+
+  dev:compose:up:
+    desc: Start Stacklane compose stack (ephemeral 127.0.0.1 binds)
+    cmds:
+      - bash scripts/compose-dev.sh up
+
+  dev:compose:status:
+    desc: Stacklane compose status + endpoints
+    cmds:
+      - bash scripts/compose-dev.sh status
+
+  dev:compose:endpoints:
+    desc: Print Stacklane FQDNs and direct loopback URLs
+    cmds:
+      - bash scripts/compose-dev.sh endpoints
+
+  dev:compose:logs:
+    desc: Follow Stacklane compose logs (Ctrl-C leaves stack up)
+    cmds:
+      - bash scripts/compose-dev.sh logs {{.CLI_ARGS}}
+
+  dev:compose:down:
+    desc: Stop Stacklane compose stack (volumes preserved; never -v)
+    cmds:
+      - bash scripts/compose-dev.sh down
+
+  dev:compose:destroy:
+    desc: Destroy Stacklane compose stack and volumes (requires CONFIRM=<project>-destroy)
+    cmds:
+      - bash scripts/compose-dev.sh destroy
