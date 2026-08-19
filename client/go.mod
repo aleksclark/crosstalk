@@ -1,6 +1,6 @@
 module github.com/aleksclark/crosstalk/client
 
-go 1.25.5
+go 1.26.6
 
 require github.com/oapi-codegen/runtime v1.4.2
 

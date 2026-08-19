@@ -3,7 +3,7 @@
 # ── Stage 1: generate the OpenAPI spec from the Go server ──────────
 # The spec is derived from the real API code (no DB/network needed), so the
 # generated TypeScript client can never drift from the server.
-FROM golang:1.25-bookworm AS spec
+FROM golang:1.26.6-bookworm AS spec
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config libopus-dev libopusfile-dev \
@@ -38,7 +38,7 @@ RUN pnpm --filter @crosstalk/admin build \
     && pnpm --filter @crosstalk/translator build
 
 # ── Stage 3: build the Go server (embeds the SPA dist output) ──────
-FROM golang:1.25-bookworm AS build
+FROM golang:1.26.6-bookworm AS build
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config libopus-dev libopusfile-dev \

@@ -1,6 +1,6 @@
 module github.com/aleksclark/crosstalk/cli
 
-go 1.25.5
+go 1.26.6
 
 require (
 	github.com/aleksclark/crosstalk/proto/gen/go v0.0.0-00010101000000-000000000000
