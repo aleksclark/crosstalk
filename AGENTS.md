@@ -68,6 +68,17 @@ task test:e2e           # SPA-driven Playwright + real audio (needs PostgreSQL +
 All workflows go through `go-task`. Run `task --list` for the full list.
 → [agent_docs/commands.md](agent_docs/commands.md)
 
+## Stacklane compose (optional parallel worktrees)
+
+Additive lifecycle in `paseo.json` / `scripts/compose-dev.sh` uses `docker-compose.dev.yml` only.
+Existing `docker-compose.yml` (fixed 8080/5432/5000) and host `task` / Vite / `go run` paths are unchanged.
+
+```
+bash scripts/compose-dev.sh check|up|status|endpoints|logs|down|destroy
+```
+
+Compose project is always `crosstalk-${STACKLANE_INSTANCE}`. Host publishes are `127.0.0.1::<containerPort>`. WebRTC/media UDP is not proxied.
+
 ## Go Code
 
 - Two separate Go modules: `server/` and `cli/` (separate `go.mod` files)
