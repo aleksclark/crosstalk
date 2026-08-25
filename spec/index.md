@@ -88,7 +88,7 @@ System topology, component boundaries, and data flow. How the server, CLI client
 | 1.1 | [System Diagram](architecture/overview.md#system-diagram) | 1 | |
 | 1.2 | [Communication Layers](architecture/overview.md#communication-layers) | 1 | |
 | 1.3 | [Protocol Stack](architecture/protocols.md) | 1 | |
-| 1.4 | [Project Layout](architecture/project-layout.md) | 0 | No code yet |
+| 1.4 | [Project Layout](architecture/project-layout.md) | 7 | Includes standalone `abc/` transport module |
 
 ### [2. Server](server/overview.md) `confidence: 0`
 

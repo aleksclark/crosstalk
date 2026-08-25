@@ -21,6 +21,9 @@ crosstalk/
 │   └── crosstalk/
 │       └── v1/
 │           └── control.proto
+├── abc/                     # Published ABC transport module
+│   ├── go.mod               # github.com/aleksclark/crosstalk/abc
+│   └── internal/controlv2/  # Generated v2 proto (distinct package)
 ├── server/                  # Go server
 │   ├── domain.go            # Domain types + service interfaces (no deps)
 │   ├── cmd/
@@ -148,6 +151,19 @@ Main is also an adapter — it connects the terminal (flags, env, signals) to th
 - TypeScript Protobuf types → `proto/gen/ts/`
 - TypeScript API client → `web/src/lib/api/`
 - OpenAPI spec → `server/http/openapi.json` (generated on build)
+- ABC transport v2 control codec → `abc/internal/controlv2/`
+
+**ABC transport module (`abc/`)**:
+- Standalone Go module `github.com/aleksclark/crosstalk/abc`
+- Owns signaling, ICE/SDP, protobuf-v2 control, and RTP tracks
+- Device-independent: no capture, playback, or encoder processes
+- Consumed by `ct-abc` and external clients (Qol) that pin a commit
+- Generated v2 lives in `abc/internal/controlv2` with proto package
+  `abc.internal.controlv2` so it can link beside `server/proto/v2`
+  (`crosstalk.v2`). Wire field numbers stay in sync via
+  `task generate:proto:v2`.
+- In-tree `cli/` and `server/` may `replace` the module with `../abc`.
+  External consumers must not depend on gitignored `proto/gen/go`.
 
 **Version management**:
 - `.tool-versions` pins Go and Node versions for asdf
