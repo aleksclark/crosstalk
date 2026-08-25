@@ -8,9 +8,10 @@ tasks:
   # ── Test Tasks ─────────────────────────────────────────────────
 
   test:unit:go:
-    desc: Run Go unit tests for server and cli
+    desc: Run Go unit tests for abc, server, and cli
     cmds:
       - pkg-config --exists opus
+      - cd abc && go test ./...
       - cd server && CGO_ENABLED=1 go test ./audiocodec ./mixer ./sessionrtc ./webrtc ./api ./ownership ./mediaticket ./postgres -count=1
       - cd server && CGO_ENABLED=1 go test ./...
       - cd cli && go test ./...
@@ -113,12 +114,26 @@ tasks:
           -I. \
           proto/crosstalk/v2/control.proto
         cp "$OUT/crosstalk/v2/control.pb.go" server/proto/v2/control.pb.go
-        rm -rf "$OUT"
+        ABCDIR=$(mktemp -d)
+        sed -e 's/^package crosstalk.v2;/package abc.internal.controlv2;/' \
+            -e 's|option go_package = "github.com/aleksclark/crosstalk/proto/gen/go/crosstalk/v2;crosstalkv2";|option go_package = "github.com/aleksclark/crosstalk/abc/internal/controlv2;controlv2";|' \
+            proto/crosstalk/v2/control.proto > "$ABCDIR/control.proto"
+        ABCOUT=$(mktemp -d)
+        PATH="$(go env GOPATH)/bin:$PATH" protoc \
+          --go_out="$ABCOUT" \
+          --go_opt=module=github.com/aleksclark/crosstalk/abc \
+          -I"$ABCDIR" \
+          "$ABCDIR/control.proto"
+        mkdir -p abc/internal/controlv2
+        cp "$ABCOUT/internal/controlv2/control.pb.go" abc/internal/controlv2/control.pb.go
+        rm -rf "$OUT" "$ABCOUT" "$ABCDIR"
         echo "wrote server/proto/v2/control.pb.go"
+        echo "wrote abc/internal/controlv2/control.pb.go"
 
   lint:go:
-    desc: Run golangci-lint on server and cli
+    desc: Run golangci-lint on abc, server, and cli
     cmds:
+      - cd abc && golangci-lint run ./...
       - cd server && golangci-lint run ./...
       - cd cli && golangci-lint run ./...
 

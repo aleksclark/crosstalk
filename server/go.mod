@@ -1,8 +1,9 @@
 module github.com/aleksclark/crosstalk/server
 
-go 1.25.0
+go 1.25.5
 
 require (
+	github.com/aleksclark/crosstalk/abc v0.0.0
 	github.com/danielgtaylor/huma/v2 v2.38.0
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -56,3 +57,5 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	mellium.im/sasl v0.3.2 // indirect
 )
+
+replace github.com/aleksclark/crosstalk/abc => ../abc

@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aleksclark/crosstalk/abc"
 	crosstalk "github.com/aleksclark/crosstalk/cli"
 	"github.com/aleksclark/crosstalk/cli/audioctl"
-	"github.com/aleksclark/crosstalk/cli/protov2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -166,15 +166,15 @@ func TestProtoCommandToAudioctl(t *testing.T) {
 	vol := uint32(0)
 	muted := false
 	gain := uint32(100)
-	cmd := &protov2.AudioControlCommand{
+	cmd := &abc.AudioControlCommand{
 		CommandID:       "abc-audio/x/1",
 		DesiredRevision: 1,
-		Output: &protov2.AudioOutputDesired{
+		Output: &abc.AudioOutputDesired{
 			DeviceUID:     "usb:0d8c:0014:serial:S1",
 			VolumePercent: &vol,
 			Muted:         &muted,
 		},
-		Input: &protov2.AudioInputDesired{
+		Input: &abc.AudioInputDesired{
 			DeviceUID:   "usb:0d8c:0014:serial:S1",
 			GainPercent: &gain,
 		},
@@ -205,7 +205,7 @@ func TestHandleAudioCommand_InvalidNoApply(t *testing.T) {
 	}
 
 	// Empty command → invalid, controller Apply must not be called.
-	client.handleAudioCommand(context.Background(), &protov2.AudioControlCommand{
+	client.handleAudioCommand(context.Background(), &abc.AudioControlCommand{
 		CommandID:       "c",
 		DesiredRevision: 1,
 	}, send)
@@ -234,10 +234,10 @@ func TestHandleAudioCommand_ApplyWritesMarker(t *testing.T) {
 	var sent int
 	send := func([]byte) error { sent++; return nil }
 	vol := uint32(25)
-	client.handleAudioCommand(context.Background(), &protov2.AudioControlCommand{
+	client.handleAudioCommand(context.Background(), &abc.AudioControlCommand{
 		CommandID:       "c",
 		DesiredRevision: 2,
-		Output: &protov2.AudioOutputDesired{
+		Output: &abc.AudioOutputDesired{
 			DeviceUID:     "usb:0d8c:0014:serial:S1",
 			VolumePercent: &vol,
 		},
@@ -252,7 +252,7 @@ func TestAudioCommandLoopStopsOnCancel(t *testing.T) {
 	client := NewABCClient(&ABCConfig{ServerURL: "ws://x", Token: "t"}, &mockPWService{})
 	client.SetAudioController(&mockAudioController{}, t.TempDir())
 	ctx, cancel := context.WithCancel(context.Background())
-	ch := make(chan *protov2.AudioControlCommand)
+	ch := make(chan *abc.AudioControlCommand)
 	done := make(chan struct{})
 	go func() {
 		client.audioCommandLoop(ctx, ch, func([]byte) error { return nil })

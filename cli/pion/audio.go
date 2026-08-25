@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/aleksclark/crosstalk/abc"
 	"github.com/aleksclark/crosstalk/cli/display"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
@@ -40,6 +41,15 @@ const (
 // encodes to Opus using ffmpeg, and writes RTP packets to the WebRTC track.
 func CaptureSource(ctx context.Context, sourceName string, track *webrtc.TrackLocalStaticRTP) error {
 	if track == nil {
+		return fmt.Errorf("track is nil")
+	}
+	return CaptureToWriter(ctx, sourceName, track)
+}
+
+// CaptureToWriter is the device-adapter capture path used by ct-abc on top of
+// the reusable ABC transport. It never lives inside the abc package.
+func CaptureToWriter(ctx context.Context, sourceName string, dest abc.RTPWriter) error {
+	if dest == nil {
 		return fmt.Errorf("track is nil")
 	}
 
@@ -213,7 +223,7 @@ func CaptureSource(ctx context.Context, sourceName string, track *webrtc.TrackLo
 			slog.Debug("audio capture: invalid RTP packet", "bytes", n, "err", err)
 			continue
 		}
-		if err := track.WriteRTP(&pkt); err != nil {
+		if err := dest.WriteRTP(&pkt); err != nil {
 			slog.Warn("audio capture: WriteRTP failed", "err", err)
 		}
 
