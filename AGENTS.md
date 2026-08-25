@@ -5,20 +5,21 @@ CrossTalk — realtime audio/video/data bridge using WebRTC.
 ## Quick Reference
 
 ```
-task test:unit:go        # Go unit tests (server + cli)
+task test:unit:go        # Go unit tests (abc + server + cli)
 task test:unit:web       # TypeScript unit tests (vitest)
 task test:integration    # Go in-process + Playwright browser tests (Docker)
 task build:server        # Build server binary (bin/ct-server)
 task build:cli           # Build CLI binary (bin/ct-client)
-task lint:go             # golangci-lint on server + cli
+task lint:go             # golangci-lint on abc + server + cli
 task lint:web            # ESLint + typecheck on web/
 ```
 
 ## Project Structure
 
-Monorepo with three components + shared protobuf:
+Monorepo with four Go/web components + shared protobuf:
 
 ```
+abc/             Device-independent ABC transport (published Go module)
 server/          Go server (REST, WebRTC, SQLite, serves web UI)
 cli/             Go CLI client (PipeWire audio, WebRTC)
 web/             React + Vite + TypeScript admin UI

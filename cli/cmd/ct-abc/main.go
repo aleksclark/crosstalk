@@ -21,13 +21,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/aleksclark/crosstalk/abc"
 	crosstalk "github.com/aleksclark/crosstalk/cli"
 	"github.com/aleksclark/crosstalk/cli/audioctl"
 	"github.com/aleksclark/crosstalk/cli/display"
 	"github.com/aleksclark/crosstalk/cli/pipewire"
 	"github.com/aleksclark/crosstalk/cli/pion"
-	"github.com/aleksclark/crosstalk/cli/protov2"
-	"github.com/pion/webrtc/v4"
 )
 
 // managedMarkerName is the atomic marker under StateDirectory after first managed command.
@@ -88,8 +87,8 @@ type ABCClient struct {
 	disp           *display.Service
 	audio          audioctl.Controller
 	stateDir       string
-	connFactory    func(serverURL, token string, opts ...pion.ConnectionOption) pion.ConnectionInterface
-	captureSource  func(context.Context, string, *webrtc.TrackLocalStaticRTP) error
+	dial          func(ctx context.Context, cfg abc.Config) (*abc.Session, error)
+	captureSource func(context.Context, string, abc.RTPWriter) error
 	heartbeatEvery time.Duration
 
 	mu               sync.Mutex
@@ -103,7 +102,7 @@ func NewABCClient(cfg *ABCConfig, pwSvc crosstalk.PipeWireService) *ABCClient {
 	return &ABCClient{
 		cfg:            cfg,
 		pwSvc:          pwSvc,
-		captureSource:  pion.CaptureSource,
+		captureSource:  pion.CaptureToWriter,
 		heartbeatEvery: 15 * time.Second,
 	}
 }
@@ -132,7 +131,7 @@ func (c *ABCClient) Run(ctx context.Context) error {
 
 		err := c.connectOnce(ctx)
 		if err != nil {
-			if pion.IsAuthError(err) {
+			if abc.IsAuthError(err) {
 				slog.Error("abc: authentication failed, not retrying", "error", err)
 				return fmt.Errorf("authentication failed: %w", err)
 			}
@@ -189,198 +188,117 @@ func (c *ABCClient) connectOnce(ctx context.Context) error {
 	connectionCtx, cancelConnection := context.WithCancel(ctx)
 	defer cancelConnection()
 
-	controlOpened := make(chan struct{}, 1)
-	welcomeReceived := make(chan *protov2.WelcomeV2, 1)
-	disconnected := make(chan struct{}, 1)
 	restartCh := make(chan string, 1)
 	sessionAssignCh := make(chan string, 1)
-	audioCmdCh := make(chan *protov2.AudioControlCommand, 4)
+	audioCmdCh := make(chan *abc.AudioControlCommand, 4)
 
-	var conn pion.ConnectionInterface
-	var connMu sync.Mutex
-	sendControl := func(data []byte) error {
-		connMu.Lock()
-		defer connMu.Unlock()
-		if conn == nil {
-			return fmt.Errorf("no connection")
-		}
-		return conn.SendControl(data)
-	}
-
-	connOpts := []pion.ConnectionOption{
-		pion.WithOnControlOpen(func() {
-			select {
-			case controlOpened <- struct{}{}:
-			default:
-			}
-		}),
-		pion.WithOnControlMessage(func(data []byte) {
-			// Parse as v2 control message.
-			msg, err := protov2.ParseControlMessageV2(data)
-			if err != nil {
-				slog.Warn("abc: unparseable control message", "error", err)
-				return
-			}
-
-			switch msg.Type {
-			case protov2.PayloadWelcome:
-				if msg.Welcome != nil {
-					select {
-					case welcomeReceived <- msg.Welcome:
-					default:
-					}
-				}
-			case protov2.PayloadRestart:
-				if msg.Restart != nil {
-					slog.Info("abc: received restart command", "reason", msg.Restart.Reason)
-					select {
-					case restartCh <- msg.Restart.Reason:
-					default:
-					}
-				}
-			case protov2.PayloadSessionAssignment:
-				if msg.SessionAssignment != nil {
-					slog.Info("abc: received session assignment",
-						"session_id", msg.SessionAssignment.SessionID,
-						"role", msg.SessionAssignment.Role,
-					)
-					select {
-					case sessionAssignCh <- msg.SessionAssignment.SessionID:
-					default:
-					}
-				}
-			case protov2.PayloadAudioControlCommand:
-				if msg.AudioControlCommand != nil {
-					select {
-					case audioCmdCh <- msg.AudioControlCommand:
-					default:
-						slog.Warn("abc: audio control command dropped (busy)")
-					}
-				}
-			}
-		}),
-		pion.WithOnConnectionStateChange(func(state webrtc.ICEConnectionState) {
-			slog.Info("abc: ICE connection state changed", "state", state.String())
-			switch state {
-			case webrtc.ICEConnectionStateDisconnected,
-				webrtc.ICEConnectionStateFailed,
-				webrtc.ICEConnectionStateClosed:
-				select {
-				case disconnected <- struct{}{}:
-				default:
-				}
-			}
-		}),
-		// Publish the booth microphone up-front. The server (SFU) forwards this
-		// track into the ABC's assigned session feed channel. Capture can fail
-		// if the USB sound card is unplugged; restart it with backoff so audio
-		// recovers automatically when the device comes back.
-		pion.WithPublishAudio("abc-mic", func(track *webrtc.TrackLocalStaticRTP) {
-			go func() {
-				for connectionCtx.Err() == nil {
-					err := c.captureSource(connectionCtx, c.cfg.SourceName, track)
-					if connectionCtx.Err() != nil {
-						return
-					}
-					if err != nil {
-						slog.Error("abc: audio capture failed, restarting",
-							"source", c.cfg.SourceName, "error", err)
-					} else {
-						slog.Warn("abc: audio capture ended, restarting", "source", c.cfg.SourceName)
-					}
-					select {
-					case <-connectionCtx.Done():
-						return
-					case <-time.After(time.Second):
-					}
-				}
-			}()
-		}),
-		// Play booth return audio (the broadcast mix) to the sink.
-		pion.WithOnTrack(func(remote *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
-			if remote.Kind() != webrtc.RTPCodecTypeAudio {
-				return
-			}
-			go func() {
-				if err := pion.PlaybackSink(connectionCtx, c.cfg.SinkName, remote); err != nil && connectionCtx.Err() == nil {
-					slog.Error("abc: audio playback failed", "sink", c.cfg.SinkName, "error", err)
-				}
-			}()
-		}),
-	}
-	if c.connFactory != nil {
-		connMu.Lock()
-		conn = c.connFactory(c.cfg.ServerURL, c.cfg.Token, connOpts...)
-		connMu.Unlock()
-	} else {
-		connMu.Lock()
-		conn = pion.NewConnection(c.cfg.ServerURL, c.cfg.Token, connOpts...)
-		connMu.Unlock()
-	}
-
-	// Connect (WebSocket + WebRTC).
-	connectCtx, connectCancel := context.WithTimeout(ctx, 30*time.Second)
-	defer connectCancel()
-
-	connectDone := make(chan error, 1)
-	go func() {
-		connectDone <- conn.Connect(connectCtx)
-	}()
-
-	// Wait for control channel or connection error.
-	select {
-	case <-controlOpened:
-		slog.Info("abc: control channel established")
-	case err := <-connectDone:
-		if err != nil {
-			return fmt.Errorf("connect failed: %w", err)
-		}
-		select {
-		case <-controlOpened:
-		case <-time.After(5 * time.Second):
-			conn.Close()
-			return fmt.Errorf("timeout waiting for control channel")
-		}
-	case <-ctx.Done():
-		conn.Close()
-		return ctx.Err()
-	}
-
-	// Send Hello with client_type="abc" using v2 proto format.
 	clientName := c.cfg.SourceName
 	if clientName == "" {
 		clientName = "ct-abc"
 	}
-	helloData := protov2.BuildHelloV2("abc", clientName)
-	if err := conn.SendControl(helloData); err != nil {
-		conn.Close()
-		return fmt.Errorf("sending Hello: %w", err)
-	}
-	slog.Info("abc: Hello sent", "client_type", "abc", "client_name", clientName)
 
-	// Wait for Welcome.
-	select {
-	case welcome := <-welcomeReceived:
-		slog.Info("abc: received Welcome",
-			"peer_id", welcome.PeerID,
-			"server_version", welcome.ServerVersion,
-			"assigned_session", welcome.AssignedSessionID,
+	dial := c.dial
+	if dial == nil {
+		dial = abc.Dial
+	}
+	connectCtx, connectCancel := context.WithTimeout(ctx, 30*time.Second)
+	defer connectCancel()
+	sess, err := dial(connectCtx, abc.Config{
+		ServerURL:      c.cfg.ServerURL,
+		Token:          c.cfg.Token,
+		ClientName:     clientName,
+		PublishTrackID: "abc-mic",
+		WelcomeTimeout: 5 * time.Second,
+		Logger:         slog.Default(),
+	})
+	if err != nil {
+		return fmt.Errorf("connect failed: %w", err)
+	}
+	defer sess.Close()
+
+	welcome := sess.Welcome()
+	slog.Info("abc: received Welcome",
+		"peer_id", welcome.PeerID,
+		"server_version", welcome.ServerVersion,
+		"assigned_session", welcome.AssignedSessionID,
+		"epoch", welcome.Epoch,
+	)
+	if codec, ok := sess.NegotiatedCodec(); ok {
+		slog.Info("abc: negotiated codec",
+			"mime", codec.MimeType,
+			"clock_rate", codec.ClockRate,
+			"channels", codec.Channels,
+			"payload_type", codec.PayloadType,
 		)
-		// If session pre-assigned in Welcome, use it.
-		if welcome.AssignedSessionID != "" {
-			c.mu.Lock()
-			c.assignedSession = welcome.AssignedSessionID
-			c.mu.Unlock()
+	}
+	if welcome.AssignedSessionID != "" {
+		c.mu.Lock()
+		c.assignedSession = welcome.AssignedSessionID
+		c.mu.Unlock()
+	}
+	if c.disp != nil {
+		c.disp.Status().SetControlState("connected")
+		c.disp.Status().SetSession(welcome.AssignedSessionID, "abc", welcome.AssignedSessionID != "")
+	}
+
+	sess.OnControl(func(msg abc.ControlMessage) {
+		switch {
+		case msg.Restart != nil:
+			slog.Info("abc: received restart command", "reason", msg.Restart.Reason)
+			select {
+			case restartCh <- msg.Restart.Reason:
+			default:
+			}
+		case msg.SessionAssignment != nil:
+			slog.Info("abc: received session assignment",
+				"session_id", msg.SessionAssignment.SessionID,
+				"role", msg.SessionAssignment.Role,
+			)
+			select {
+			case sessionAssignCh <- msg.SessionAssignment.SessionID:
+			default:
+			}
+		case msg.AudioControlCommand != nil:
+			select {
+			case audioCmdCh <- msg.AudioControlCommand:
+			default:
+				slog.Warn("abc: audio control command dropped (busy)")
+			}
 		}
-		if c.disp != nil {
-			c.disp.Status().SetControlState("connected")
-			c.disp.Status().SetSession(welcome.AssignedSessionID, "abc", welcome.AssignedSessionID != "")
+	})
+	sess.OnTrack(func(track abc.IncomingTrack) {
+		if track.Pion == nil {
+			return
 		}
-	case <-time.After(5 * time.Second):
-		slog.Warn("abc: timeout waiting for Welcome message")
-	case <-ctx.Done():
-		conn.Close()
-		return ctx.Err()
+		go func() {
+			if err := pion.PlaybackSink(connectionCtx, c.cfg.SinkName, track.Pion); err != nil && connectionCtx.Err() == nil {
+				slog.Error("abc: audio playback failed", "sink", c.cfg.SinkName, "error", err)
+			}
+		}()
+	})
+
+	go func() {
+		for connectionCtx.Err() == nil {
+			err := c.captureSource(connectionCtx, c.cfg.SourceName, sess.SendTrack())
+			if connectionCtx.Err() != nil {
+				return
+			}
+			if err != nil {
+				slog.Error("abc: audio capture failed, restarting",
+					"source", c.cfg.SourceName, "error", err)
+			} else {
+				slog.Warn("abc: audio capture ended, restarting", "source", c.cfg.SourceName)
+			}
+			select {
+			case <-connectionCtx.Done():
+				return
+			case <-time.After(time.Second):
+			}
+		}
+	}()
+
+	sendControl := func(data []byte) error {
+		return sess.SendControl(data)
 	}
 
 	c.mu.Lock()
@@ -389,36 +307,19 @@ func (c *ABCClient) connectOnce(ctx context.Context) error {
 
 	slog.Info("abc: connected and ready")
 
-	// Inventory report after Hello/Welcome.
 	if c.audio != nil {
 		c.sendInventoryReport(connectionCtx, sendControl)
-	}
-
-	// Heartbeat/readback every 15s with jitter; cancelled with connectionCtx.
-	if c.audio != nil {
 		go c.audioHeartbeatLoop(connectionCtx, sendControl)
-	}
-
-	// Audio command worker (serialised by controller mutex internally).
-	if c.audio != nil {
 		go c.audioCommandLoop(connectionCtx, audioCmdCh, sendControl)
 	}
 
-	// Main event loop: wait for disconnection or restart command.
 	for {
 		select {
 		case <-ctx.Done():
-			conn.Close()
+			c.markDisconnected()
 			return ctx.Err()
-		case <-disconnected:
-			c.mu.Lock()
-			c.connected = false
-			c.mu.Unlock()
-			if c.disp != nil {
-				c.disp.Status().SetControlState("disconnected")
-				c.disp.Status().SetSession("", "", false)
-			}
-			conn.Close()
+		case <-sess.Done():
+			c.markDisconnected()
 			return nil
 		case reason := <-restartCh:
 			slog.Info("abc: executing restart", "reason", reason)
@@ -429,21 +330,26 @@ func (c *ABCClient) connectOnce(ctx context.Context) error {
 			if c.disp != nil {
 				c.disp.Status().SetControlState("connecting")
 			}
-			conn.Close()
 			return nil
 		case sessionID := <-sessionAssignCh:
 			c.mu.Lock()
 			c.assignedSession = sessionID
 			c.mu.Unlock()
-			slog.Info("abc: session assigned, joining", "session_id", sessionID)
+			slog.Info("abc: session assigned", "session_id", sessionID)
 			if c.disp != nil {
 				c.disp.Status().SetSession(sessionID, "abc", sessionID != "")
 			}
-			// Join the session via v1 proto (JoinSession is field 4 in both v1).
-			if err := conn.SendJoinSession(sessionID, "abc"); err != nil {
-				slog.Error("abc: failed to join session", "session_id", sessionID, "error", err)
-			}
 		}
+	}
+}
+
+func (c *ABCClient) markDisconnected() {
+	c.mu.Lock()
+	c.connected = false
+	c.mu.Unlock()
+	if c.disp != nil {
+		c.disp.Status().SetControlState("disconnected")
+		c.disp.Status().SetSession("", "", false)
 	}
 }
 
@@ -473,7 +379,7 @@ func (c *ABCClient) audioHeartbeatLoop(ctx context.Context, send func([]byte) er
 	}
 }
 
-func (c *ABCClient) audioCommandLoop(ctx context.Context, ch <-chan *protov2.AudioControlCommand, send func([]byte) error) {
+func (c *ABCClient) audioCommandLoop(ctx context.Context, ch <-chan *abc.AudioControlCommand, send func([]byte) error) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -490,7 +396,7 @@ func (c *ABCClient) audioCommandLoop(ctx context.Context, ch <-chan *protov2.Aud
 	}
 }
 
-func (c *ABCClient) handleAudioCommand(ctx context.Context, cmd *protov2.AudioControlCommand, send func([]byte) error) {
+func (c *ABCClient) handleAudioCommand(ctx context.Context, cmd *abc.AudioControlCommand, send func([]byte) error) {
 	acmd, err := protoCommandToAudioctl(cmd)
 	if err != nil {
 		slog.Warn("abc: invalid audio control command", "error", err)
@@ -550,7 +456,7 @@ func (c *ABCClient) sendAudioReport(send func([]byte) error, rep *audioctl.Repor
 		return
 	}
 	preport := audioctlToProtoReport(rep)
-	data, err := protov2.BuildAudioControlReport(preport)
+	data, err := abc.EncodeAudioControlReport(preport)
 	if err != nil {
 		slog.Warn("abc: build audio report failed", "error", err)
 		return
@@ -560,7 +466,7 @@ func (c *ABCClient) sendAudioReport(send func([]byte) error, rep *audioctl.Repor
 	}
 }
 
-func protoCommandToAudioctl(cmd *protov2.AudioControlCommand) (audioctl.Command, error) {
+func protoCommandToAudioctl(cmd *abc.AudioControlCommand) (audioctl.Command, error) {
 	out := audioctl.Command{
 		CommandID:       cmd.CommandID,
 		DesiredRevision: cmd.DesiredRevision,
@@ -591,15 +497,15 @@ func protoCommandToAudioctl(cmd *protov2.AudioControlCommand) (audioctl.Command,
 	return out, nil
 }
 
-func audioctlToProtoReport(rep *audioctl.Report) protov2.AudioControlReport {
-	pr := protov2.AudioControlReport{
+func audioctlToProtoReport(rep *audioctl.Report) abc.AudioControlReport {
+	pr := abc.AudioControlReport{
 		CommandID:       rep.CommandID,
 		DesiredRevision: rep.DesiredRevision,
 		ErrorCode:       rep.ErrorCode,
 		ErrorDetail:     rep.ErrorDetail,
 	}
 	for _, d := range rep.Devices {
-		pr.Devices = append(pr.Devices, protov2.AudioDeviceCapability{
+		pr.Devices = append(pr.Devices, abc.AudioDeviceCapability{
 			DeviceUID:          d.DeviceUID,
 			Direction:          d.Direction,
 			Backend:            string(d.Backend),
@@ -607,7 +513,7 @@ func audioctlToProtoReport(rep *audioctl.Report) protov2.AudioControlReport {
 			ProductID:          d.ProductID,
 			Serial:             d.Serial,
 			Path:               d.Path,
-			ALSACardID:         d.ALSACardID,
+			CardID:             d.ALSACardID,
 			CardName:           d.CardName,
 			PCMRoute:           d.PCMRoute,
 			SupportsVolume:     d.SupportsVolume,
@@ -617,7 +523,7 @@ func audioctlToProtoReport(rep *audioctl.Report) protov2.AudioControlReport {
 		})
 	}
 	if rep.Output != nil {
-		o := &protov2.AudioOutputObserved{
+		o := &abc.AudioOutputObserved{
 			DeviceUID:   rep.Output.DeviceUID,
 			VolumeState: applyStateToProto(rep.Output.VolumeState),
 			MuteState:   applyStateToProto(rep.Output.MuteState),
@@ -633,7 +539,7 @@ func audioctlToProtoReport(rep *audioctl.Report) protov2.AudioControlReport {
 		pr.Output = o
 	}
 	if rep.Input != nil {
-		i := &protov2.AudioInputObserved{
+		i := &abc.AudioInputObserved{
 			DeviceUID: rep.Input.DeviceUID,
 			GainState: applyStateToProto(rep.Input.GainState),
 		}
@@ -646,20 +552,20 @@ func audioctlToProtoReport(rep *audioctl.Report) protov2.AudioControlReport {
 	return pr
 }
 
-func applyStateToProto(s audioctl.ApplyState) protov2.AudioApplyState {
+func applyStateToProto(s audioctl.ApplyState) abc.AudioApplyState {
 	switch s {
 	case audioctl.StateApplied:
-		return protov2.AudioApplyApplied
+		return abc.AudioApplyApplied
 	case audioctl.StateUnsupported:
-		return protov2.AudioApplyUnsupported
+		return abc.AudioApplyUnsupported
 	case audioctl.StateError:
-		return protov2.AudioApplyError
+		return abc.AudioApplyError
 	case audioctl.StateDeviceMismatch:
-		return protov2.AudioApplyDeviceMismatch
+		return abc.AudioApplyDeviceMismatch
 	case audioctl.StateStaleRevision:
-		return protov2.AudioApplyStaleRevision
+		return abc.AudioApplyStaleRevision
 	default:
-		return protov2.AudioApplyUnspecified
+		return abc.AudioApplyUnspecified
 	}
 }
 
